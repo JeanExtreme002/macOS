@@ -510,6 +510,15 @@ def test_spotlight_invalid_query(mdfind):
         macos.spotlight.search("kMDItemFoo ==")
 
 
+def test_spotlight_limit_zero(mdfind):
+    mdfind(["/a", "/b"])
+    assert macos.spotlight.search("x", limit=0) == []
+
+    mdfind(["Failed to create query for 'kMDItemFoo =='."], returncode=1)
+    with pytest.raises(ValueError):
+        macos.spotlight.search("kMDItemFoo ==", limit=0)
+
+
 def test_spotlight_failure_is_a_command_error(mdfind):
     mdfind([], returncode=2, stderr="boom")
 

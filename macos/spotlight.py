@@ -50,6 +50,9 @@ def _mdfind(args: List[str], limit: Optional[int]) -> List[Path]:
         raise ValueError("limit must be zero or more, not {}".format(limit))
 
     require_macos()
+    # No `-interpret`: without it, mdfind already understands Spotlight-bar
+    # syntax (plain words, kind:, date:), and with it raw `kMDItem...` queries
+    # are taken as text and return wrong results.
     try:
         process = subprocess.Popen(
             ["mdfind", *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8"
@@ -61,15 +64,18 @@ def _mdfind(args: List[str], limit: Optional[int]) -> List[Path]:
     try:
         # Read lazily: with a limit, stop (and stop mdfind) once there are
         # enough results, instead of collecting every match of a broad query.
-        lines = list(islice((line.rstrip("\n") for line in process.stdout if line.strip()), limit))
+        # Read at least one line even with limit=0: that's where a malformed
+        # query's diagnostic shows up.
+        wanted = None if limit is None else max(limit, 1)
+        lines = list(islice((line.rstrip("\n") for line in process.stdout if line.strip()), wanted))
         if lines and lines[0].startswith(_INVALID):
             raise _invalid(query)
-        if limit is None or len(lines) < limit:
+        if wanted is None or len(lines) < wanted:
             # mdfind ran to the end, so its exit status is meaningful.
             stderr = process.stderr.read()
             if process.wait() != 0:
                 raise CommandError(["mdfind", *args], process.returncode, stderr)
-        return [Path(line) for line in lines]
+        return [Path(line) for line in lines[:limit]]
     finally:
         if process.poll() is None:
             process.kill()
