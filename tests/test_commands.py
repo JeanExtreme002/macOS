@@ -240,6 +240,7 @@ class _ImmediateThread:
         lambda: macos.finder.reveal(__file__),
         lambda: macos.clipboard.copy_image(b"image"),
         lambda: macos.clipboard.paste_image(),
+        lambda: macos.notifications.is_allowed(),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -370,6 +371,8 @@ def test_notify_can_skip_the_check(fake_run, monkeypatch):
 def test_is_allowed_reads_the_notification_settings(monkeypatch, apps, expected):
     import plistlib
 
+    monkeypatch.setattr(_system.sys, "platform", "darwin")
+
     def fake(args, **kwargs):
         return subprocess.CompletedProcess(args, 0, plistlib.dumps({"apps": apps}), b"")
 
@@ -379,6 +382,8 @@ def test_is_allowed_reads_the_notification_settings(monkeypatch, apps, expected)
 
 
 def test_is_allowed_is_unknown_when_the_settings_are_unreadable(monkeypatch):
+    monkeypatch.setattr(_system.sys, "platform", "darwin")
+
     def fake(args, **kwargs):
         return subprocess.CompletedProcess(args, 0, b"not a plist", b"")
 

@@ -20,7 +20,7 @@ import plistlib
 import subprocess
 from typing import List, Optional
 
-from ._system import run
+from ._system import require_macos, run
 from .errors import PermissionDeniedError
 
 __all__ = ["notify", "is_allowed"]
@@ -40,6 +40,7 @@ def is_allowed() -> Optional[bool]:
     the settings couldn't be read. Focus modes such as Do Not Disturb can still
     hide notifications that are allowed.
     """
+    require_macos()
     try:
         raw = subprocess.run(["defaults", "export", "com.apple.ncprefs", "-"], capture_output=True, check=True).stdout
         settings = plistlib.loads(raw)
@@ -54,8 +55,8 @@ def is_allowed() -> Optional[bool]:
 
 def _refuse() -> None:
     raise PermissionDeniedError(
-        "notifications are turned off for Script Editor, which macOS shows them as: allow them in "
-        "System Settings › Notifications › Script Editor"
+        "macOS would silently drop this notification: notifications are turned off for Script Editor, "
+        "which posts them. Turn them on in System Settings › Notifications › Script Editor."
     )
 
 

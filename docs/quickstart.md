@@ -56,7 +56,9 @@ path = macos.screenshot("screen.png")
 ## Check the battery and stay awake
 
 ```python
-print(macos.power.battery().percent)
+battery = macos.power.battery()   # None on a Mac without a battery
+if battery is not None:
+    print(battery.percent)
 
 with macos.power.keep_awake():
     long_task()
