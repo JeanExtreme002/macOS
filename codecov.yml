@@ -1,0 +1,20 @@
+# Codecov is used for *visibility* only: the enforced coverage gate lives in
+# CI as pytest's `--cov-fail-under` (see .github/workflows/python-package.yml),
+# which is deterministic and needs no external service. Marking Codecov's status
+# checks informational keeps a flaky upload or a transient dip from blocking the
+# merge button while still showing the trend and per-PR diff coverage.
+#
+# Coverage is uploaded from every cell of the macOS matrix and from the Linux
+# job (flagged by OS and Python version); Codecov merges them into one report.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: false
