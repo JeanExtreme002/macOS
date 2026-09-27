@@ -775,6 +775,14 @@ def test_eject(fake_run, monkeypatch):
         macos.system.eject("Nope")
 
 
+def test_eject_refuses_folders_that_are_not_mount_points(fake_run, monkeypatch, tmp_path):
+    monkeypatch.setattr(macos.system, "volumes", lambda: [])
+
+    with pytest.raises(ValueError, match="no mounted volume"):
+        macos.system.eject(tmp_path)
+    assert fake_run.calls == []
+
+
 def test_battery_health_fields_are_optional():
     battery = macos.power.Battery(percent=50, charging=False, plugged_in=False, time_remaining=None)
 

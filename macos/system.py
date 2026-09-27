@@ -259,8 +259,10 @@ def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
         text = os.fspath(volume)
         as_path = Path(text).expanduser()
         matches = [found.path for found in volumes() if text == found.name or as_path == found.path]
-        if not matches and os.path.isdir(text):
-            matches = [Path(text)]
+        # A volume Finder hides still counts, but only if the path really is
+        # where a volume is mounted: an ordinary folder must never reach diskutil.
+        if not matches and os.path.ismount(as_path):
+            matches = [as_path.resolve()]
         if not matches:
             raise ValueError("no mounted volume is named {!r}".format(text))
         target = matches[0]
