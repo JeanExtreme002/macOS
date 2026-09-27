@@ -169,3 +169,30 @@ class _ImmediateThread:
 
     def start(self):
         self.target(*self.args)
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="checks behaviour outside macOS")
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: macos.notify("x"),
+        lambda: macos.say("x"),
+        lambda: macos.say("x", wait=False),
+        lambda: macos.speech.voices(),
+        lambda: macos.screenshot(),
+        lambda: macos.screen.has_permission(),
+        lambda: macos.clipboard.copy("x"),
+        lambda: macos.clipboard.paste(),
+        lambda: macos.appearance.is_dark(),
+        lambda: macos.apps.running(),
+        lambda: macos.apps.frontmost(),
+        lambda: macos.apps.get("Safari"),
+        lambda: macos.apps.open("Safari"),
+        lambda: macos.apps.App("Safari", None, 1, None).quit(),
+        lambda: macos.keychain.get("service", "account"),
+        lambda: macos.keychain.set("service", "account", "password"),
+    ],
+)
+def test_every_feature_raises_not_supported_outside_macos(call):
+    with pytest.raises(macos.NotSupportedError):
+        call()

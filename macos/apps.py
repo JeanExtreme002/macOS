@@ -25,7 +25,7 @@ from typing import Iterator, List, Optional
 
 from . import _objc
 from ._objc import BOOL, NSInteger, NSUInteger
-from ._system import framework, run
+from ._system import framework, require_macos, run
 from .errors import AppNotFoundError, CommandError
 
 __all__ = ["App", "running", "frontmost", "get", "open"]
@@ -51,6 +51,8 @@ def _workspace() -> int:
 
 @lru_cache(maxsize=None)
 def _libproc() -> ctypes.CDLL:
+    # libproc is part of libSystem (there is no separate libproc.dylib to load).
+    require_macos()
     lib = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
     lib.proc_listallpids.argtypes = (ctypes.c_void_p, ctypes.c_int)
     lib.proc_listallpids.restype = ctypes.c_int

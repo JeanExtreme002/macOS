@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any, Iterator, Optional, Sequence
 
-from ._system import require_macos
+from ._system import framework, require_macos
 
 id = ctypes.c_void_p
 SEL = ctypes.c_void_p
@@ -31,6 +31,10 @@ BOOL = ctypes.c_bool
 def _libobjc() -> ctypes.CDLL:
     require_macos()
     lib = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+    # Foundation defines NSString, NSArray and NSBundle, which the helpers
+    # below use directly. Load it explicitly instead of relying on AppKit (or
+    # the interpreter) having pulled it in already.
+    framework("Foundation")
 
     lib.objc_getClass.argtypes = (ctypes.c_char_p,)
     lib.objc_getClass.restype = Class
