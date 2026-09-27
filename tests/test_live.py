@@ -158,3 +158,98 @@ def test_running_apps_from_a_worker_thread():
         in_thread = pool.submit(macos.apps.running, include_background=True).result()
 
     assert {app.pid for app in in_thread} & {app.pid for app in macos.apps.running(include_background=True)}
+
+
+def _png(width=4, height=4):
+    """A small valid PNG, so the image tests don't depend on screen access."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    rows = b"".join(b"\x00" + b"\xff\x00\x00" * width for _ in range(height))
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+_PIXEL_PNG = _png()
+
+
+@pytest.mark.usefixtures("restore_clipboard")
+def test_clipboard_image_round_trip():
+    macos.clipboard.copy_image(_PIXEL_PNG)
+
+    assert macos.clipboard.has_image()
+    assert macos.clipboard.paste() is None
+    assert macos.clipboard.paste_image().startswith(b"\x89PNG\r\n\x1a\n")
+
+    macos.clipboard.copy("text again")
+    assert not macos.clipboard.has_image()
+    assert macos.clipboard.paste_image() is None
+
+
+def test_copy_image_rejects_non_images():
+    with pytest.raises(ValueError):
+        macos.clipboard.copy_image(b"not an image")
+
+
+def test_battery():
+    battery = macos.power.battery()
+
+    if battery is not None:  # desktops, and CI runners, have none
+        assert 0 <= battery.percent <= 100
+        assert isinstance(battery.charging, bool)
+        assert isinstance(battery.plugged_in, bool)
+
+
+def test_keep_awake_holds_a_power_assertion():
+    import subprocess
+
+    reason = "pymacos test {}".format(uuid.uuid4())
+
+    def active():
+        return reason in subprocess.run(["pmset", "-g", "assertions"], capture_output=True, text=True).stdout
+
+    with macos.power.keep_awake(reason=reason):
+        assert active()
+    assert not active()
+
+
+def test_shortcuts():
+    assert isinstance(macos.shortcuts.list(), list)
+    with pytest.raises(macos.ShortcutNotFoundError):
+        macos.shortcuts.run("Definitely Not A Shortcut {}".format(uuid.uuid4()))
+
+
+def test_finder_tags(tmp_path):
+    path = tmp_path / "tagged.txt"
+    path.write_text("hi")
+
+    assert macos.finder.tags(path) == []
+    assert macos.finder.add_tags(path, "pymacos-a", "pymacos-b", "pymacos-a") == ["pymacos-a", "pymacos-b"]
+    assert macos.finder.remove_tags(path, "pymacos-a", "missing") == ["pymacos-b"]
+    macos.finder.set_tags(path, [])
+    assert macos.finder.tags(path) == []
+
+
+def test_finder_trash(tmp_path):
+    path = tmp_path / "trash me {}.txt".format(uuid.uuid4())
+    path.write_text("bye")
+
+    trashed = macos.finder.trash(path)
+    try:
+        assert not path.exists()
+        assert trashed.exists()
+        assert ".Trash" in trashed.parts
+    finally:
+        trashed.unlink(missing_ok=True)
+
+
+def test_finder_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        macos.finder.tags(tmp_path / "missing")
+
+
+def test_notifications_is_allowed():
+    assert macos.notifications.is_allowed() in (True, False, None)

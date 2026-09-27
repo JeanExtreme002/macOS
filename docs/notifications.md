@@ -42,8 +42,24 @@ which a Python script isn't. The text is passed to AppleScript as arguments,
 never pasted into the script source, so quotes or backslashes in it are safe.
 
 Because of this, macOS shows the notification as coming from *Script Editor*.
-If nothing appears, see [Permissions](permissions.md#notifications).
+
+## When notifications are turned off
+
+If notifications are turned off for Script Editor, macOS drops them without any
+error. {func}`macos.notify` checks that setting first and raises
+{class}`~macos.PermissionDeniedError` instead, saying where to turn them on. See
+[Permissions](permissions.md#notifications).
+
+{func}`macos.notifications.is_allowed` tells you in advance: `True`, `False`,
+or `None` when it can't tell yet (Script Editor has never posted a
+notification). Pass `check_permission=False` to {func}`macos.notify` to skip
+the check.
+
+The setting is read from an undocumented macOS format, so the check is best
+effort: if it can't be read, the notification is posted as usual. Focus modes
+such as Do Not Disturb can still hide allowed notifications.
 
 ## Reference
 
 - {func}`macos.notify`
+- {func}`macos.notifications.is_allowed`

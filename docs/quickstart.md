@@ -53,6 +53,28 @@ macos.say("Hello from Python")
 path = macos.screenshot("screen.png")
 ```
 
+## Check the battery and stay awake
+
+```python
+print(macos.power.battery().percent)
+
+with macos.power.keep_awake():
+    long_task()
+```
+
+## Run a shortcut
+
+```python
+macos.shortcuts.run("Translate", input="Olá")
+```
+
+## Trash and tag files
+
+```python
+macos.finder.add_tags("report.pdf", "Work")
+macos.finder.trash("old.log")
+```
+
 ## Handle errors
 
 Everything the package raises derives from {class}`~macos.MacOSError`:

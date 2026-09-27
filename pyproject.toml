@@ -1,7 +1,7 @@
 [project]
 name = "pymacos"
 dynamic = ["version"]
-description = "A Pythonic interface to macOS — notifications, clipboard, dark mode, apps, Keychain, speech and screenshots in one dependency-free import."
+description = "A Pythonic interface to macOS — notifications, clipboard, dark mode, apps, Keychain, speech, screenshots, battery, Shortcuts and Finder in one dependency-free import."
 authors = [
     { name = "Jean Loui Bernard Silva de Jesus", email = "contact@jeanloui.dev" },
 ]
@@ -22,6 +22,10 @@ keywords = [
     "keychain",
     "text-to-speech",
     "screenshot",
+    "battery",
+    "caffeinate",
+    "shortcuts",
+    "finder",
     "appkit",
     "cocoa",
     "ctypes",

@@ -122,6 +122,21 @@ def pystring(obj: Optional[int]) -> Optional[str]:
     return ctypes.string_at(send(data, "bytes", restype=ctypes.c_void_p), length).decode("utf-8") if length else ""
 
 
+def nsdata(payload: bytes) -> int:
+    """Create an autoreleased ``NSData`` holding a copy of ``payload``."""
+    return send(
+        cls("NSData"), "dataWithBytes:length:", payload, len(payload), argtypes=(ctypes.c_char_p, NSUInteger)
+    )
+
+
+def pybytes(obj: Optional[int]) -> Optional[bytes]:
+    """Copy the contents of an ``NSData`` into Python bytes (``None`` stays ``None``)."""
+    if not obj:
+        return None
+    length = send(obj, "length", restype=NSUInteger)
+    return ctypes.string_at(send(obj, "bytes", restype=ctypes.c_void_p), length) if length else b""
+
+
 def nsarray(obj: Optional[int]) -> Iterator[int]:
     """Iterate over the elements of an ``NSArray``."""
     if not obj:

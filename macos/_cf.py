@@ -12,7 +12,7 @@ to :func:`release`; :func:`owned` does that automatically at the end of a
 import ctypes
 from contextlib import contextmanager
 from functools import lru_cache
-from typing import Dict, Iterator, Optional
+from typing import Dict, Iterator, List, Optional
 
 from ._system import framework
 
@@ -68,6 +68,17 @@ def lib() -> ctypes.CDLL:
     cf.CFPreferencesAppSynchronize.restype = ctypes.c_bool
     cf.CFPreferencesCopyAppValue.argtypes = (CFTypeRef, CFTypeRef)
     cf.CFPreferencesCopyAppValue.restype = CFTypeRef
+
+    cf.CFArrayGetCount.argtypes = (CFTypeRef,)
+    cf.CFArrayGetCount.restype = CFIndex
+    cf.CFArrayGetValueAtIndex.argtypes = (CFTypeRef, CFIndex)
+    cf.CFArrayGetValueAtIndex.restype = CFTypeRef
+    cf.CFDictionaryGetValue.argtypes = (CFTypeRef, CFTypeRef)
+    cf.CFDictionaryGetValue.restype = CFTypeRef
+    cf.CFNumberGetTypeID.argtypes = ()
+    cf.CFNumberGetTypeID.restype = ctypes.c_ulong
+    cf.CFNumberGetValue.argtypes = (CFTypeRef, ctypes.c_long, ctypes.c_void_p)
+    cf.CFNumberGetValue.restype = ctypes.c_bool
     return cf
 
 
@@ -124,6 +135,35 @@ def to_bool(ref: Optional[int]) -> bool:
     """Read a ``CFBoolean`` (``False`` for anything else)."""
     cf = lib()
     return is_type(ref, cf.CFBooleanGetTypeID()) and bool(cf.CFBooleanGetValue(ref))
+
+
+kCFNumberLongLongType = 11
+
+
+def to_int(ref: Optional[int]) -> Optional[int]:
+    """Read a ``CFNumber`` as an integer (``None`` for anything else)."""
+    cf = lib()
+    if not is_type(ref, cf.CFNumberGetTypeID()):
+        return None
+    value = ctypes.c_longlong()
+    cf.CFNumberGetValue(ref, kCFNumberLongLongType, ctypes.byref(value))
+    return value.value
+
+
+def items(ref: Optional[int]) -> List[int]:
+    """The elements of a ``CFArray`` (borrowed references: don't release them)."""
+    if not ref:
+        return []
+    cf = lib()
+    return [cf.CFArrayGetValueAtIndex(ref, index) for index in range(cf.CFArrayGetCount(ref))]
+
+
+def lookup(ref: Optional[int], key: str) -> Optional[int]:
+    """The value for ``key`` in a ``CFDictionary`` (borrowed), or ``None``."""
+    if not ref:
+        return None
+    with owned(string(key)) as name:
+        return lib().CFDictionaryGetValue(ref, name)
 
 
 def to_bytes(ref: Optional[int]) -> bytes:

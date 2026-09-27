@@ -3,8 +3,8 @@
 """
 pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
-Notifications, clipboard, appearance, apps, Keychain, speech and screenshots
-in one import, with no dependencies::
+Notifications, clipboard, appearance, apps, Keychain, speech, screenshots,
+power, Shortcuts and Finder in one import, with no dependencies::
 
     import macos
 
@@ -15,6 +15,9 @@ in one import, with no dependencies::
     macos.keychain.get("my-app", "alice")
     macos.say("Done!")
     macos.screenshot("screen.png")
+    macos.power.battery()
+    macos.shortcuts.run("Resize Image", input=Path("photo.jpg"))
+    macos.finder.trash("old.log")
 
 The package imports on any platform (so it can sit in cross-platform code and
 docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
@@ -22,7 +25,7 @@ docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
 
 __version__ = "1.0.0"
 
-from . import appearance, apps, clipboard, keychain, screen, speech
+from . import appearance, apps, clipboard, finder, keychain, notifications, power, screen, shortcuts, speech
 from .errors import (
     AppNotFoundError,
     CommandError,
@@ -30,6 +33,7 @@ from .errors import (
     MacOSError,
     NotSupportedError,
     PermissionDeniedError,
+    ShortcutNotFoundError,
 )
 from .notifications import notify
 from .screen import screenshot
@@ -39,8 +43,12 @@ __all__ = [
     "appearance",
     "apps",
     "clipboard",
+    "finder",
     "keychain",
+    "notifications",
+    "power",
     "screen",
+    "shortcuts",
     "speech",
     "notify",
     "say",
@@ -51,4 +59,5 @@ __all__ = [
     "MacOSError",
     "NotSupportedError",
     "PermissionDeniedError",
+    "ShortcutNotFoundError",
 ]
