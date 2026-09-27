@@ -4,7 +4,7 @@
 pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
 Notifications, clipboard, appearance, apps, Keychain, speech, screenshots,
-power, Shortcuts and Finder in one import, with no dependencies::
+power, Shortcuts, Finder, volume and Spotlight in one import, with no dependencies::
 
     import macos
 
@@ -18,6 +18,8 @@ power, Shortcuts and Finder in one import, with no dependencies::
     macos.power.battery()
     macos.shortcuts.run("Resize Image", input=Path("photo.jpg"))
     macos.finder.trash("old.log")
+    macos.volume.set(30)
+    macos.spotlight.search("kind:pdf invoice")
 
 The package imports on any platform (so it can sit in cross-platform code and
 docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
@@ -25,7 +27,20 @@ docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
 
 __version__ = "1.1.0"
 
-from . import appearance, apps, clipboard, finder, keychain, notifications, power, screen, shortcuts, speech
+from . import (
+    appearance,
+    apps,
+    clipboard,
+    finder,
+    keychain,
+    notifications,
+    power,
+    screen,
+    shortcuts,
+    speech,
+    spotlight,
+    volume,
+)
 from .errors import (
     AppNotFoundError,
     CommandError,
@@ -50,6 +65,8 @@ __all__ = [
     "screen",
     "shortcuts",
     "speech",
+    "spotlight",
+    "volume",
     "notify",
     "say",
     "screenshot",
