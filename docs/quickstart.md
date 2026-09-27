@@ -57,6 +57,7 @@ path = macos.screenshot("screen.png")
 
 ```python
 battery = macos.power.battery()   # None on a Mac without a battery
+
 if battery is not None:
     print(battery.percent)
 
@@ -112,6 +113,21 @@ macos.image.convert("IMG_0042.heic", "IMG_0042.jpg")
 
 ```python
 macos.pdf.text("report.pdf")
+```
+
+## Remove a photo's background
+
+```python
+from pathlib import Path
+
+image = macos.vision.remove_background("dog.jpg")
+Path("cutout.png").write_bytes(image)
+```
+
+## Switch the audio output
+
+```python
+macos.audio.set_output("AirPods")
 ```
 
 ## Open a file with an app

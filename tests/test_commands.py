@@ -284,6 +284,23 @@ class _ImmediateThread:
         lambda: macos.vision.faces(b"image"),
         lambda: macos.language.detect("Olá"),
         lambda: macos.language.sentiment("Olá"),
+        lambda: macos.vision.remove_background(b"image"),
+        lambda: macos.vision.animals(b"image"),
+        lambda: macos.audio.outputs(),
+        lambda: macos.audio.default_output(),
+        lambda: macos.audio.set_output("Speakers"),
+        lambda: macos.language.similarity("car", "automobile"),
+        lambda: macos.language.embedding("hello"),
+        lambda: macos.language.entities("Tim Cook"),
+        lambda: macos.language.keywords("battery life"),
+        lambda: macos.sound.play("Glass"),
+        lambda: macos.sound.beep(),
+        lambda: macos.sound.names(),
+        lambda: macos.network.is_online(),
+        lambda: macos.network.ip(),
+        lambda: macos.network.wifi_power(),
+        lambda: macos.network.set_wifi_power(True),
+        lambda: macos.appearance.wait_for_change(timeout=0.1),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -862,3 +879,70 @@ def test_vision_and_language_argument_checks():
         macos.vision.classify(b"image", limit=0)
     with pytest.raises(ValueError):
         macos.language.guess("x", limit=0)
+
+
+def test_network_ip_follows_the_default_route(commands):
+    commands.answers["-n"] = (0, "   route to: default\n   interface: en7\n", "")
+    commands.answers["getifaddr"] = (0, "10.0.0.5\n", "")
+
+    assert macos.network.interface() == "en7"
+    assert macos.network.ip() == "10.0.0.5"
+    assert commands.calls[-1] == ["ipconfig", "getifaddr", "en7"]
+
+
+def test_network_offline(commands):
+    commands.answers["-n"] = (1, "", "route: writing to routing socket: not in table")
+
+    assert macos.network.interface() is None
+    assert macos.network.ip() is None
+
+
+def test_wifi_power(commands):
+    commands.answers["-listallhardwareports"] = (
+        0,
+        "Hardware Port: Ethernet\nDevice: en1\n\nHardware Port: Wi-Fi\nDevice: en0\n",
+        "",
+    )
+    commands.answers["-getairportpower"] = (0, "Wi-Fi Power (en0): Off\n", "")
+
+    assert macos.network.wifi_power() is False
+    macos.network.set_wifi_power(True)
+    assert commands.calls[-1] == ["networksetup", "-setairportpower", "en0", "on"]
+
+
+def test_no_wifi(commands):
+    commands.answers["-listallhardwareports"] = (0, "Hardware Port: Ethernet\nDevice: en1\n", "")
+
+    with pytest.raises(macos.NotSupportedError, match="no Wi-Fi"):
+        macos.network.wifi_power()
+
+
+def test_audio_device_matching():
+    speakers = macos.audio.Device(1, "MacBook Pro Speakers", "BuiltInSpeakerDevice", "builtin", True, False)
+    airpods = macos.audio.Device(2, "Alice's AirPods Pro", "AA-BB", "bluetooth", True, True)
+    display = macos.audio.Device(3, "LG Display", "LG-1", "hdmi", True, False)
+    devices = [speakers, airpods, display]
+    find = macos.audio._find
+
+    assert find("MacBook Pro Speakers", devices, "output") is speakers
+    assert find("AA-BB", devices, "output") is airpods
+    assert find("airpods", devices, "output") is airpods  # part of the name, any case
+    assert find(display, devices, "output") is display
+    with pytest.raises(ValueError, match="several"):
+        find("p", devices, "output")
+    with pytest.raises(ValueError, match="no output device"):
+        find("Headphones", devices, "output")
+
+
+def test_sound_and_appearance_argument_checks():
+    with pytest.raises(ValueError):
+        macos.sound.play("Glass", volume=2)
+    with pytest.raises(ValueError):
+        macos.appearance.wait_for_change(interval=0)
+
+
+def test_appearance_wait_for_change(monkeypatch):
+    modes = iter(["light", "light", "light", "dark"])
+    monkeypatch.setattr(macos.appearance, "mode", lambda: next(modes))
+
+    assert macos.appearance.wait_for_change(interval=0.001) == "dark"

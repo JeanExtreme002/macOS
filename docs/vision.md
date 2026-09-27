@@ -100,6 +100,32 @@ it doesn't recognize people.
 len(macos.vision.faces("team.jpg"))   # 4
 ```
 
+## Removing the background
+
+{func}`~macos.vision.remove_background` cuts out the subject of a photo (a
+person, an animal, an object) and returns it as a PNG with a transparent
+background, like *Lift Subject from Background* in Photos:
+
+```python
+from pathlib import Path
+
+Path("cutout.png").write_bytes(macos.vision.remove_background("dog.jpg"))
+Path("tight.png").write_bytes(macos.vision.remove_background("dog.jpg", crop=True))
+```
+
+By default the result keeps the photo's size; `crop=True` trims it to the
+subject. It returns `None` when nothing stands out, and needs macOS 14 or later.
+
+## Cats and dogs
+
+{func}`~macos.vision.animals` finds cats and dogs, the only animals Vision
+recognizes:
+
+```python
+for animal in macos.vision.animals("garden.jpg"):
+    print(animal.kind, animal.confidence)   # dog 0.93
+```
+
 ## Reference
 
 - {func}`macos.vision.text`
@@ -110,3 +136,6 @@ len(macos.vision.faces("team.jpg"))   # 4
 - {class}`macos.vision.Barcode`
 - {func}`macos.vision.classify`
 - {func}`macos.vision.faces`
+- {func}`macos.vision.remove_background`
+- {func}`macos.vision.animals`
+- {class}`macos.vision.Animal`
