@@ -1,0 +1,29 @@
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# `open-pull-requests-limit: 0` disables routine version-update PRs (no weekly
+# bump churn). Dependabot security advisories still surface via the Security
+# tab and security-update PRs are unaffected by this limit.
+#
+# The package itself has no runtime dependencies; the "pip" entry covers the
+# dev and docs tooling (pyproject.toml extras and docs/requirements.txt).
+
+version: 2
+
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: "pip"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
