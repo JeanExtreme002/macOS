@@ -19,6 +19,7 @@ from typing import Optional
 from . import _objc
 from ._objc import BOOL, NSInteger
 from ._system import framework
+from .errors import MacOSError
 
 __all__ = ["copy", "paste", "clear", "change_count"]
 
@@ -44,7 +45,7 @@ def copy(text: str) -> None:
             restype=BOOL,
         )
     if not ok:
-        raise RuntimeError("the pasteboard refused the text")
+        raise MacOSError("the pasteboard refused the text")
 
 
 def paste() -> Optional[str]:

@@ -29,8 +29,8 @@ def lib() -> ctypes.CDLL:
     cf.CFRelease.argtypes = (CFTypeRef,)
     cf.CFRelease.restype = None
 
-    cf.CFStringCreateWithCString.argtypes = (CFTypeRef, ctypes.c_char_p, ctypes.c_uint32)
-    cf.CFStringCreateWithCString.restype = CFTypeRef
+    cf.CFStringCreateWithBytes.argtypes = (CFTypeRef, ctypes.c_char_p, CFIndex, ctypes.c_uint32, ctypes.c_bool)
+    cf.CFStringCreateWithBytes.restype = CFTypeRef
     cf.CFStringGetLength.argtypes = (CFTypeRef,)
     cf.CFStringGetLength.restype = CFIndex
     cf.CFStringGetMaximumSizeForEncoding.argtypes = (CFIndex, ctypes.c_uint32)
@@ -54,6 +54,20 @@ def lib() -> ctypes.CDLL:
         ctypes.c_void_p,
     )
     cf.CFDictionaryCreate.restype = CFTypeRef
+
+    cf.CFGetTypeID.argtypes = (CFTypeRef,)
+    cf.CFGetTypeID.restype = ctypes.c_ulong
+    cf.CFBooleanGetTypeID.argtypes = ()
+    cf.CFBooleanGetTypeID.restype = ctypes.c_ulong
+    cf.CFBooleanGetValue.argtypes = (CFTypeRef,)
+    cf.CFBooleanGetValue.restype = ctypes.c_bool
+    cf.CFStringGetTypeID.argtypes = ()
+    cf.CFStringGetTypeID.restype = ctypes.c_ulong
+
+    cf.CFPreferencesAppSynchronize.argtypes = (CFTypeRef,)
+    cf.CFPreferencesAppSynchronize.restype = ctypes.c_bool
+    cf.CFPreferencesCopyAppValue.argtypes = (CFTypeRef, CFTypeRef)
+    cf.CFPreferencesCopyAppValue.restype = CFTypeRef
     return cf
 
 
@@ -80,13 +94,18 @@ def owned(ref: Optional[int]) -> Iterator[Optional[int]]:
 
 
 def string(text: str) -> int:
-    """Create a ``CFString`` (caller owns it)."""
-    return lib().CFStringCreateWithCString(None, text.encode("utf-8"), kCFStringEncodingUTF8)
+    """Create a ``CFString`` (caller owns it). Embedded NUL characters are kept."""
+    raw = text.encode("utf-8")
+    return lib().CFStringCreateWithBytes(None, raw, len(raw), kCFStringEncodingUTF8, False)
+
+
+def is_type(ref: Optional[int], type_id: int) -> bool:
+    return bool(ref) and lib().CFGetTypeID(ref) == type_id
 
 
 def to_str(ref: Optional[int]) -> Optional[str]:
-    """Copy a ``CFString`` into a Python string."""
-    if not ref:
+    """Copy a ``CFString`` into a Python string (``None`` for anything else)."""
+    if not is_type(ref, lib().CFStringGetTypeID()):
         return None
     cf = lib()
     size = cf.CFStringGetMaximumSizeForEncoding(cf.CFStringGetLength(ref), kCFStringEncodingUTF8) + 1
@@ -99,6 +118,12 @@ def to_str(ref: Optional[int]) -> Optional[str]:
 def data(payload: bytes) -> int:
     """Create a ``CFData`` (caller owns it)."""
     return lib().CFDataCreate(None, payload, len(payload))
+
+
+def to_bool(ref: Optional[int]) -> bool:
+    """Read a ``CFBoolean`` (``False`` for anything else)."""
+    cf = lib()
+    return is_type(ref, cf.CFBooleanGetTypeID()) and bool(cf.CFBooleanGetValue(ref))
 
 
 def to_bytes(ref: Optional[int]) -> bytes:

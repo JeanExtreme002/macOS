@@ -84,17 +84,38 @@ def autorelease_pool() -> Iterator[None]:
         lib.objc_autoreleasePoolPop(pool)
 
 
+NSUTF8StringEncoding = 4
+
+
 def nsstring(text: str) -> int:
-    """Create an autoreleased ``NSString`` from a Python string."""
-    return send(cls("NSString"), "stringWithUTF8String:", text.encode("utf-8"), argtypes=(ctypes.c_char_p,))
+    """
+    Create an autoreleased ``NSString`` from a Python string.
+
+    Built from an explicit byte length, not a C string, so an embedded NUL
+    character is kept instead of silently ending the string.
+    """
+    raw = text.encode("utf-8")
+    string = send(cls("NSString"), "alloc")
+    string = send(
+        string,
+        "initWithBytes:length:encoding:",
+        raw,
+        len(raw),
+        NSUTF8StringEncoding,
+        argtypes=(ctypes.c_char_p, NSUInteger, NSUInteger),
+    )
+    return send(string, "autorelease")
 
 
 def pystring(obj: Optional[int]) -> Optional[str]:
-    """Convert an ``NSString`` to a Python string (``None`` stays ``None``)."""
+    """Convert an ``NSString`` to a Python string (``None`` stays ``None``), NUL characters included."""
     if not obj:
         return None
-    raw = send(obj, "UTF8String", restype=ctypes.c_char_p)
-    return raw.decode("utf-8") if raw is not None else None
+    data = send(obj, "dataUsingEncoding:", NSUTF8StringEncoding, argtypes=(NSUInteger,))
+    if not data:
+        return None
+    length = send(data, "length", restype=NSUInteger)
+    return ctypes.string_at(send(data, "bytes", restype=ctypes.c_void_p), length).decode("utf-8") if length else ""
 
 
 def nsarray(obj: Optional[int]) -> Iterator[int]:

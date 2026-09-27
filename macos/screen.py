@@ -89,10 +89,11 @@ def screenshot(
         target = Path(name)
     else:
         target = Path(path).expanduser().resolve()
-
+        if target.suffix.lower() not in _FORMATS:
+            raise ValueError(
+                "unsupported image format {!r}; use one of {}".format(target.suffix, ", ".join(sorted(_FORMATS)))
+            )
     extension = target.suffix.lower()
-    if extension not in _FORMATS:
-        raise ValueError("unsupported image format {!r}; use one of {}".format(extension, ", ".join(sorted(_FORMATS))))
 
     args = ["screencapture", "-x", "-t", _FORMATS[extension]]  # -x: no shutter sound
     if cursor:
@@ -104,5 +105,10 @@ def screenshot(
         args.append("-D{}".format(display))
     args.append(str(target))
 
-    run(args)
+    try:
+        run(args)
+    except BaseException:
+        if path is None:
+            target.unlink(missing_ok=True)
+        raise
     return target

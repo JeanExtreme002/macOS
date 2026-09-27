@@ -100,3 +100,36 @@ def test_screenshot_writes_an_image(tmp_path):
     assert os.path.getsize(target) > 0
     with open(target, "rb") as image:
         assert image.read(8) == b"\x89PNG\r\n\x1a\n"
+
+
+@pytest.mark.usefixtures("restore_clipboard")
+def test_clipboard_keeps_nul_characters():
+    macos.clipboard.copy("a\0b")
+
+    assert macos.clipboard.paste() == "a\0b"
+
+
+def test_get_matches_the_app_file_name_and_path():
+    app = next(app for app in macos.apps.running(include_background=True) if app.path and app.path.endswith(".app"))
+    file_name = os.path.basename(app.path)
+
+    assert macos.apps.get(file_name).pid == app.pid
+    assert macos.apps.get(app.path + "/").pid == app.pid
+
+
+def test_locate_resolves_bundle_ids_names_and_symlinks():
+    finder = "/System/Library/CoreServices/Finder.app"
+
+    assert macos.apps._locate("com.apple.finder") == os.path.realpath(finder)
+    assert macos.apps._locate(finder) == os.path.realpath(finder)
+    with pytest.raises(macos.AppNotFoundError):
+        macos.apps._locate("com.example.definitely-not-installed")
+
+
+def test_running_apps_from_a_worker_thread():
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(1) as pool:
+        in_thread = pool.submit(macos.apps.running, include_background=True).result()
+
+    assert {app.pid for app in in_thread} & {app.pid for app in macos.apps.running(include_background=True)}

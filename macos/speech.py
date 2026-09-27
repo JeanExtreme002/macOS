@@ -11,10 +11,12 @@ Text to speech with the system voices.
 """
 
 import subprocess
+import threading
 from dataclasses import dataclass
 from typing import List, Optional
 
 from ._system import require_macos, run
+from .errors import NotSupportedError
 
 __all__ = ["say", "voices", "Voice"]
 
@@ -35,6 +37,9 @@ def say(text: str, *, voice: Optional[str] = None, rate: Optional[int] = None, w
     ``voice`` is a voice name from :func:`voices` (the system default when
     omitted) and ``rate`` is the speed in words per minute (about 175–200 is
     normal). With ``wait=False`` this returns immediately while speech plays.
+
+    An unknown ``voice`` is not an error: ``say`` falls back to the default
+    voice, matching names loosely (``"luciana"`` and ``"Eddy"`` both work).
     """
     args = ["say"]
     if voice is not None:
@@ -50,10 +55,14 @@ def say(text: str, *, voice: Optional[str] = None, rate: Optional[int] = None, w
         return
 
     require_macos()
-    process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    assert process.stdin is not None
-    process.stdin.write(text.encode("utf-8"))
-    process.stdin.close()
+    try:
+        process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        raise NotSupportedError("the 'say' command was not found on this system") from None
+
+    # communicate() feeds stdin, tolerates say exiting early (no
+    # BrokenPipeError) and reaps the process, so no zombie is left behind.
+    threading.Thread(target=process.communicate, args=(text.encode("utf-8"),), daemon=True).start()
 
 
 def voices() -> List[Voice]:
