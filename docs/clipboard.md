@@ -7,9 +7,9 @@ pasteboard) as text.
 import macos
 
 macos.clipboard.copy("hello")
-macos.clipboard.paste()      # 'hello'
+macos.clipboard.paste()       # 'hello'
 macos.clipboard.clear()
-macos.clipboard.paste()      # None
+macos.clipboard.paste()       # None
 ```
 
 {func}`~macos.clipboard.paste` returns `None` when the clipboard holds no text,
@@ -19,7 +19,7 @@ Unicode round-trips correctly, whatever your terminal's locale is:
 
 ```python
 macos.clipboard.copy("olá 🍎")
-macos.clipboard.paste()      # 'olá 🍎'
+macos.clipboard.paste()        # 'olá 🍎'
 ```
 
 ## Images
@@ -40,6 +40,7 @@ bytes, whatever format it was copied in, or `None` if there is no image:
 from pathlib import Path
 
 image = macos.clipboard.paste_image()
+
 if image is not None:
     Path("pasted.png").write_bytes(image)
 ```
@@ -57,11 +58,14 @@ import time
 import macos
 
 last = macos.clipboard.change_count()
+
 while True:
     count = macos.clipboard.change_count()
+
     if count != last:
         last = count
         print("Copied:", macos.clipboard.paste())
+
     time.sleep(0.5)
 ```
 

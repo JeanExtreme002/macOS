@@ -1,4 +1,4 @@
-# Why `pymacos`?
+# Why pymacos?
 
 Showing a notification, reading the clipboard or checking for Dark mode from
 Python usually means shelling out to `osascript`, remembering `defaults` keys,
