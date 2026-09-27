@@ -67,9 +67,16 @@ permissions
 :hidden:
 
 apps
+clipboard
+shortcuts
+```
+
+```{toctree}
+:caption: User Interaction
+:hidden:
+
 dialog
 notifications
-shortcuts
 speech
 ```
 
@@ -77,23 +84,10 @@ speech
 :caption: Files & Documents
 :hidden:
 
-clipboard
 finder
 image
 pdf
 spotlight
-```
-
-```{toctree}
-:caption: System & Hardware
-:hidden:
-
-appearance
-keychain
-power
-screen
-system
-volume
 ```
 
 ```{toctree}
@@ -102,6 +96,24 @@ volume
 
 language
 vision
+```
+
+```{toctree}
+:caption: Security
+:hidden:
+
+keychain
+```
+
+```{toctree}
+:caption: System & Hardware
+:hidden:
+
+appearance
+power
+screen
+system
+volume
 ```
 
 ```{toctree}
