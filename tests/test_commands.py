@@ -104,3 +104,64 @@ def test_other_platforms_raise_not_supported(monkeypatch):
 def test_permission_error_is_also_the_builtin():
     assert issubclass(macos.PermissionDeniedError, PermissionError)
     assert issubclass(macos.AppNotFoundError, LookupError)
+
+
+def test_notify_ends_options_before_user_text(fake_run):
+    macos.notify("-5 degrees", title="-e")
+
+    args = fake_run.args
+    assert args[-3:] == ["--", "-5 degrees", "-e"]
+
+
+def test_say_without_waiting_reaps_the_process(fake_run, monkeypatch):
+    started = []
+
+    class FakePopen:
+        def __init__(self, args, **kwargs):
+            self.args = args
+            started.append(self)
+
+        def communicate(self, data):
+            self.data = data
+
+    monkeypatch.setattr(macos.speech.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(macos.speech.threading, "Thread", _ImmediateThread)
+
+    macos.say("-hi", wait=False)
+
+    assert started[0].args == ["say", "-f", "-"]
+    assert started[0].data == b"-hi"
+
+
+def test_say_without_waiting_reports_a_missing_command(fake_run, monkeypatch):
+    def missing(*args, **kwargs):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(macos.speech.subprocess, "Popen", missing)
+
+    with pytest.raises(macos.NotSupportedError):
+        macos.say("x", wait=False)
+
+
+def test_failed_screenshot_removes_its_temporary_file(fake_run, monkeypatch, tmp_path):
+    fake_run.returncode = 1
+    monkeypatch.setattr(screen.tempfile, "tempdir", str(tmp_path))
+
+    with pytest.raises(macos.CommandError):
+        macos.screenshot(display=9, check_permission=False)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("service, account", [("svc\0x", "alice"), ("svc", "al\0ice")])
+def test_keychain_rejects_nul_characters(service, account):
+    with pytest.raises(ValueError, match="NUL"):
+        macos.keychain.get(service, account)
+
+
+class _ImmediateThread:
+    def __init__(self, target, args=(), daemon=None):
+        self.target, self.args = target, args
+
+    def start(self):
+        self.target(*self.args)

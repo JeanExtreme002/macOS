@@ -39,4 +39,6 @@ def notify(message: str, *, title: Optional[str] = None, subtitle: Optional[str]
             values.append(value)
             statement += " {} (item {} of argv)".format(clause, len(values))
 
-    run(["osascript", "-e", "on run argv", "-e", statement, "-e", "end run", *values])
+    # "--" ends osascript's options, so text starting with "-" (a message like
+    # "-5 degrees", or "-e") is taken as an argument instead of a flag.
+    run(["osascript", "-e", "on run argv", "-e", statement, "-e", "end run", "--", *values])

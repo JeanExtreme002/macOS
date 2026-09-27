@@ -31,6 +31,7 @@ errSecAuthFailed = -25293
 errSecDuplicateItem = -25299
 errSecItemNotFound = -25300
 errSecInteractionNotAllowed = -25308
+errSecDecode = -26275
 
 
 @lru_cache(maxsize=None)
@@ -64,6 +65,12 @@ def _check(status: int) -> None:
 
 def _query(service: str, account: str, extra: Optional[Dict[str, int]] = None) -> int:
     """Build the ``CFDictionary`` identifying one generic-password item."""
+    # The file-based keychain stores these attributes as C strings: "svc\0x"
+    # would silently address (and overwrite) the "svc" item.
+    for label, text in (("service", service), ("account", account)):
+        if "\0" in text:
+            raise ValueError("the keychain {} must not contain NUL characters".format(label))
+
     sec = _security()
     service_ref = _cf.string(service)
     account_ref = _cf.string(account)
@@ -98,7 +105,12 @@ def get(service: str, account: str) -> Optional[str]:
     _check(status)
 
     with _cf.owned(result.value) as ref:
-        return _cf.to_bytes(ref).decode("utf-8")
+        secret = _cf.to_bytes(ref)
+    try:
+        return secret.decode("utf-8")
+    except UnicodeDecodeError:
+        # Another app stored binary data under this service/account.
+        raise KeychainError(errSecDecode, "the stored password is not UTF-8 text") from None
 
 
 def set(service: str, account: str, password: str) -> None:

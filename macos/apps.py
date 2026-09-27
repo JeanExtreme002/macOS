@@ -21,9 +21,9 @@ import os
 import time
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
-from . import _cf, _objc
+from . import _objc
 from ._objc import BOOL, NSInteger, NSUInteger
 from ._system import framework, run
 from .errors import AppNotFoundError, CommandError
@@ -38,23 +38,59 @@ _ACTIVATE_ALL_WINDOWS = 1 << 0
 
 
 @lru_cache(maxsize=None)
+def _running_application_class() -> int:
+    framework("AppKit")
+    return _objc.cls("NSRunningApplication")
+
+
+@lru_cache(maxsize=None)
 def _workspace() -> int:
     framework("AppKit")
     return _objc.send(_objc.cls("NSWorkspace"), "sharedWorkspace")
 
 
-def _refresh() -> None:
-    """
-    Let ``NSWorkspace`` process pending launch/quit notifications.
+@lru_cache(maxsize=None)
+def _libproc() -> ctypes.CDLL:
+    lib = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    lib.proc_listallpids.argtypes = (ctypes.c_void_p, ctypes.c_int)
+    lib.proc_listallpids.restype = ctypes.c_int
+    return lib
 
-    Its application list is updated by notifications delivered on the run
-    loop, which a script never spins, so without this a long-running process
-    would keep seeing the list from its first call.
+
+def _pids() -> List[int]:
+    lib = _libproc()
+    # The process count can grow between the sizing call and the real one, so
+    # leave headroom and retry if the buffer came back full.
+    capacity = lib.proc_listallpids(None, 0) + 64
+    while True:
+        buffer = (ctypes.c_int * capacity)()
+        count = lib.proc_listallpids(buffer, ctypes.sizeof(buffer))
+        if count < capacity:
+            return [pid for pid in buffer[: max(count, 0)] if pid > 0]
+        capacity *= 2
+
+
+def _handle(pid: int) -> Optional[int]:
+    """The ``NSRunningApplication`` for ``pid``, or ``None`` if it isn't an app."""
+    return _objc.send(
+        _running_application_class(), "runningApplicationWithProcessIdentifier:", pid, argtypes=(ctypes.c_int,)
+    )
+
+
+def _handles(include_background: bool) -> Iterator[int]:
     """
-    cf = _cf.lib()
-    cf.CFRunLoopRunInMode.argtypes = (ctypes.c_void_p, ctypes.c_double, ctypes.c_bool)
-    cf.CFRunLoopRunInMode.restype = ctypes.c_int32
-    cf.CFRunLoopRunInMode(_cf.constant(cf, "kCFRunLoopDefaultMode"), 0.0, True)
+    Yield an ``NSRunningApplication`` for every running app.
+
+    ``NSWorkspace.runningApplications`` would be the obvious source, but it is
+    only refreshed by notifications on the *main* run loop, which a script
+    never spins: from a worker thread it keeps returning a stale list. Asking
+    LaunchServices about each process is always current, and costs a few
+    milliseconds.
+    """
+    for pid in _pids():
+        handle = _handle(pid)
+        if handle and (include_background or _objc.send(handle, "activationPolicy", restype=NSInteger) == _POLICY_REGULAR):
+            yield handle
 
 
 @dataclass(frozen=True)
@@ -67,12 +103,7 @@ class App:
     path: Optional[str]
 
     def _handle(self) -> int:
-        handle = _objc.send(
-            _objc.cls("NSRunningApplication"),
-            "runningApplicationWithProcessIdentifier:",
-            self.pid,
-            argtypes=(ctypes.c_int,),
-        )
+        handle = _handle(self.pid)
         if not handle:
             raise AppNotFoundError("{} (pid {}) is no longer running".format(self.name, self.pid))
         return handle
@@ -80,12 +111,7 @@ class App:
     @property
     def is_running(self) -> bool:
         with _objc.autorelease_pool():
-            handle = _objc.send(
-                _objc.cls("NSRunningApplication"),
-                "runningApplicationWithProcessIdentifier:",
-                self.pid,
-                argtypes=(ctypes.c_int,),
-            )
+            handle = _handle(self.pid)
             return bool(handle) and not _objc.send(handle, "isTerminated", restype=BOOL)
 
     @property
@@ -157,38 +183,95 @@ def running(*, include_background: bool = False) -> List[App]:
     By default only regular apps (the ones with a Dock icon) are listed.
     ``include_background=True`` adds menu-bar extras, agents and helpers.
     """
-    _refresh()
     with _objc.autorelease_pool():
-        apps = []
-        for handle in _objc.nsarray(_objc.send(_workspace(), "runningApplications")):
-            if include_background or _objc.send(handle, "activationPolicy", restype=NSInteger) == _POLICY_REGULAR:
-                apps.append(_app(handle))
-        return apps
+        return [_app(handle) for handle in _handles(include_background)]
 
 
 def frontmost() -> Optional[App]:
     """Return the application that currently has keyboard focus."""
-    _refresh()
     with _objc.autorelease_pool():
-        handle = _objc.send(_workspace(), "frontmostApplication")
-        return _app(handle) if handle else None
+        for handle in _handles(include_background=True):
+            if _objc.send(handle, "isActive", restype=BOOL):
+                return _app(handle)
+    return None
+
+
+def _is_path(name: str) -> bool:
+    return "/" in name or name.startswith("~")
 
 
 def get(name: str) -> Optional[App]:
     """
     Find a running application by name, bundle identifier or path.
 
-    Names are compared case-insensitively against both the displayed
-    (localized) name and the ``.app`` file name, so ``"Calculator"`` also
-    finds it on a system where it is shown as ``"Calculadora"``. Returns
-    ``None`` if it isn't running.
+    Names are compared case-insensitively against the displayed (localized)
+    name and the ``.app`` file name, with or without the extension, so
+    ``"Calculator"`` also finds it on a system where it is shown as
+    ``"Calculadora"``. Paths may be symlinks. Returns ``None`` if it isn't
+    running.
     """
+    if _is_path(name):
+        wanted_path = os.path.realpath(os.path.expanduser(name))
+        for app in running(include_background=True):
+            if app.path and os.path.realpath(app.path) == wanted_path:
+                return app
+        return None
+
     wanted = name.casefold()
     for app in running(include_background=True):
-        bundle_name = os.path.splitext(os.path.basename(app.path or ""))[0]
-        if wanted in {part.casefold() for part in (app.name, app.bundle_id, app.path, bundle_name) if part}:
+        file_name = os.path.basename(app.path or "")
+        candidates = (app.name, app.bundle_id, file_name, os.path.splitext(file_name)[0])
+        if wanted in {part.casefold() for part in candidates if part}:
             return app
     return None
+
+
+def _locate(name: str) -> str:
+    """Resolve an app name, bundle identifier or path to the real path of its bundle."""
+    if _is_path(name) or os.path.isdir(name):
+        expanded = os.path.expanduser(name)
+        if not os.path.isdir(expanded):
+            raise AppNotFoundError("no application at {!r}".format(name))
+        return os.path.realpath(expanded)
+
+    with _objc.autorelease_pool():
+        url = _objc.send(
+            _workspace(), "URLForApplicationWithBundleIdentifier:", _objc.nsstring(name), argtypes=(_objc.id,)
+        )
+        path = _objc.pystring(_objc.send(url, "path")) if url else None
+        if path is None:
+            # Looks the name up the way `open -a` does: "Safari", "Safari.app"
+            # and names with dots in them, like "zoom.us", all work.
+            path = _objc.pystring(
+                _objc.send(_workspace(), "fullPathForApplication:", _objc.nsstring(name), argtypes=(_objc.id,))
+            )
+    if path is None:
+        raise AppNotFoundError("unable to find application {!r}".format(name))
+    return os.path.realpath(path)
+
+
+def _bundle_id(path: str) -> Optional[str]:
+    with _objc.autorelease_pool():
+        bundle = _objc.send(_objc.cls("NSBundle"), "bundleWithPath:", _objc.nsstring(path), argtypes=(_objc.id,))
+        return _objc.pystring(_objc.send(bundle, "bundleIdentifier")) if bundle else None
+
+
+def _find_launched(path: str, bundle_id: Optional[str]) -> Optional[App]:
+    with _objc.autorelease_pool():
+        if bundle_id is not None:
+            # Only asks about this one bundle id, instead of listing every
+            # process on each poll.
+            launched = _objc.send(
+                _running_application_class(),
+                "runningApplicationsWithBundleIdentifier:",
+                _objc.nsstring(bundle_id),
+                argtypes=(_objc.id,),
+            )
+            for handle in _objc.nsarray(launched):
+                if not _objc.send(handle, "isTerminated", restype=BOOL):
+                    return _app(handle)
+            return None
+    return get(path)
 
 
 def open(name: str, *, background: bool = False, timeout: float = 10.0) -> App:
@@ -199,25 +282,19 @@ def open(name: str, *, background: bool = False, timeout: float = 10.0) -> App:
     (``"com.apple.Safari"``) or a path to an ``.app``. ``background=True``
     launches it without bringing it to the front.
     """
-    if os.path.isdir(name):
-        target = ["-a", os.path.abspath(name)]
-    elif "." in name and "/" not in name and not name.endswith(".app"):
-        target = ["-b", name]
-    else:
-        target = ["-a", name]
+    path = _locate(name)
+    bundle_id = _bundle_id(path)
 
     try:
-        run(["open", *(["-g"] if background else []), *target])
+        run(["open", *(["-g"] if background else []), "-a", path])
     except CommandError as error:
-        raise AppNotFoundError("unable to find application {!r}".format(name)) from error
+        raise AppNotFoundError("unable to launch {!r}: {}".format(name, error.stderr or error)) from error
 
     deadline = time.monotonic() + timeout
     while True:
-        app = get(os.path.abspath(name) if os.path.isdir(name) else name)
-        if app is not None or time.monotonic() >= deadline:
-            break
-        time.sleep(0.05)
-
-    if app is None:
-        raise AppNotFoundError("{!r} was launched but did not show up within {}s".format(name, timeout))
-    return app
+        app = _find_launched(path, bundle_id)
+        if app is not None:
+            return app
+        if time.monotonic() >= deadline:
+            raise AppNotFoundError("{!r} was launched but did not show up within {}s".format(name, timeout))
+        time.sleep(0.1)
