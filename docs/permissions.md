@@ -10,7 +10,7 @@ itself, so a script can work in one terminal and not in another.
 | {func}`macos.notify` | Notifications for *Script Editor* | System Settings › Notifications › Script Editor |
 
 The other features (clipboard, appearance, apps, Keychain, speech, power,
-Shortcuts, Finder) need no permission.
+Shortcuts, Finder, volume, Spotlight) need no permission.
 
 ## Screen Recording
 

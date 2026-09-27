@@ -77,6 +77,18 @@ macos.finder.add_tags("report.pdf", "Work")
 macos.finder.trash("old.log")
 ```
 
+## Change the volume
+
+```python
+macos.volume.set(30)
+```
+
+## Search with Spotlight
+
+```python
+macos.spotlight.search("kind:pdf invoice")
+```
+
 ## Handle errors
 
 Everything the package raises derives from {class}`~macos.MacOSError`:

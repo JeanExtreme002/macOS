@@ -107,6 +107,28 @@ explain how to use each part.
 .. autofunction:: macos.finder.remove_tags
 ```
 
+## macos.volume
+
+```{eval-rst}
+.. module:: macos.volume
+
+.. autofunction:: macos.volume.get
+.. autofunction:: macos.volume.set
+.. autofunction:: macos.volume.mute
+.. autofunction:: macos.volume.unmute
+.. autofunction:: macos.volume.is_muted
+```
+
+## macos.spotlight
+
+```{eval-rst}
+.. module:: macos.spotlight
+
+.. autofunction:: macos.spotlight.search
+.. autofunction:: macos.spotlight.search_name
+.. autofunction:: macos.spotlight.metadata
+```
+
 ## macos.screen
 
 ```{eval-rst}

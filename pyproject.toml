@@ -26,6 +26,8 @@ keywords = [
     "caffeinate",
     "shortcuts",
     "finder",
+    "volume",
+    "spotlight",
     "appkit",
     "cocoa",
     "ctypes",

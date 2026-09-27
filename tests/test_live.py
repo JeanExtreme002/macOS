@@ -2,6 +2,7 @@
 
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -253,3 +254,38 @@ def test_finder_missing_file(tmp_path):
 
 def test_notifications_is_allowed():
     assert macos.notifications.is_allowed() in (True, False, None)
+
+
+def test_volume_round_trip():
+    level, muted = macos.volume.get(), macos.volume.is_muted()
+    if level is None:
+        pytest.skip("the output device has no volume control")
+    try:
+        macos.volume.set(level)
+        assert macos.volume.get() == level
+        macos.volume.mute()
+        assert macos.volume.is_muted() is True
+        assert macos.volume.get() == level  # muting keeps the level
+    finally:
+        macos.volume.set(level)
+        (macos.volume.mute if muted else macos.volume.unmute)()
+    assert macos.volume.is_muted() is muted
+
+
+def test_spotlight_finds_an_app_by_file_name():
+    found = macos.spotlight.search_name("Calculator.app", folder="/System/Applications")
+    if not found:
+        pytest.skip("Spotlight indexing is off")
+    assert Path("/System/Applications/Calculator.app") in found
+
+
+def test_spotlight_limit_and_invalid_query():
+    assert len(macos.spotlight.search("kind:app", folder="/System/Applications", limit=1)) <= 1
+    with pytest.raises(ValueError):
+        macos.spotlight.search("kMDItemFoo ==")
+
+
+def test_spotlight_metadata():
+    data = macos.spotlight.metadata("/System/Applications/Calculator.app")
+
+    assert data["kMDItemFSName"] == "Calculator.app"
