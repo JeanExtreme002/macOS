@@ -47,6 +47,17 @@ if image is not None:
 
 {func}`~macos.clipboard.has_image` checks for an image without converting it.
 
+## Waiting for a copy
+
+{func}`~macos.clipboard.wait_for_change` blocks until something new is copied,
+and returns it as text (`None` if it isn't text). With `timeout`, it raises
+`TimeoutError` if nothing is copied in time:
+
+```python
+print("Copy a link...")
+link = macos.clipboard.wait_for_change(timeout=60)
+```
+
 ## Detecting changes
 
 {func}`~macos.clipboard.change_count` returns a counter that increases every
@@ -75,6 +86,7 @@ while True:
 - {func}`macos.clipboard.paste`
 - {func}`macos.clipboard.clear`
 - {func}`macos.clipboard.change_count`
+- {func}`macos.clipboard.wait_for_change`
 - {func}`macos.clipboard.copy_image`
 - {func}`macos.clipboard.paste_image`
 - {func}`macos.clipboard.has_image`

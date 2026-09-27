@@ -4,7 +4,7 @@
 pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
 Notifications, clipboard, appearance, apps, Keychain, speech, screenshots,
-power, Shortcuts, Finder, volume and Spotlight in one import, with no dependencies::
+power, Shortcuts, Finder, volume, Spotlight, dialogs and system info in one import, with no dependencies::
 
     import macos
 
@@ -20,6 +20,8 @@ power, Shortcuts, Finder, volume and Spotlight in one import, with no dependenci
     macos.finder.trash("old.log")
     macos.volume.set(30)
     macos.spotlight.search("kind:pdf invoice")
+    macos.dialog.confirm("Continue?")
+    macos.system.idle_time()
 
 The package imports on any platform (so it can sit in cross-platform code and
 docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
@@ -31,6 +33,7 @@ from . import (
     appearance,
     apps,
     clipboard,
+    dialog,
     finder,
     keychain,
     notifications,
@@ -39,6 +42,7 @@ from . import (
     shortcuts,
     speech,
     spotlight,
+    system,
     volume,
 )
 from .errors import (
@@ -58,6 +62,7 @@ __all__ = [
     "appearance",
     "apps",
     "clipboard",
+    "dialog",
     "finder",
     "keychain",
     "notifications",
@@ -66,6 +71,7 @@ __all__ = [
     "shortcuts",
     "speech",
     "spotlight",
+    "system",
     "volume",
     "notify",
     "say",

@@ -289,3 +289,69 @@ def test_spotlight_metadata():
     data = macos.spotlight.metadata("/System/Applications/Calculator.app")
 
     assert data["kMDItemFSName"] == "Calculator.app"
+
+
+def test_system_info():
+    import re
+    from datetime import timedelta
+
+    assert re.fullmatch(r"\d+\.\d+(\.\d+)?", macos.system.version())
+    assert macos.system.build()
+    assert macos.system.model()
+    assert re.fullmatch(r"[A-Za-z]+\d+,\d+", macos.system.model_identifier())
+    assert macos.system.processor()
+    assert macos.system.memory() >= 2**30
+    assert macos.system.computer_name()
+    assert macos.system.uptime() > timedelta(0)
+    assert macos.system.idle_time() >= timedelta(0)
+
+
+def test_displays():
+    displays = macos.screen.displays()
+    if not displays:
+        pytest.skip("no display attached")
+
+    main = displays[0]
+    assert main.is_main
+    assert main.width > 0 and main.height > 0
+    assert main.pixel_width >= main.width
+    assert main.scale >= 1
+
+
+def test_keychain_accounts():
+    service = "macos-tests-{}".format(uuid.uuid4())
+    try:
+        assert macos.keychain.accounts(service) == []
+        macos.keychain.set(service, "bob", "1")
+        macos.keychain.set(service, "alice", "2")
+        assert macos.keychain.accounts(service) == ["alice", "bob"]
+    finally:
+        macos.keychain.delete(service, "bob")
+        macos.keychain.delete(service, "alice")
+
+
+def test_say_to_a_file(tmp_path):
+    for name in ("speech.aiff", "speech.m4a", "speech.wav"):
+        target = macos.say("pymacos", output=tmp_path / name)
+        assert target.exists() and target.stat().st_size > 0
+
+
+@pytest.mark.usefixtures("restore_clipboard")
+def test_clipboard_wait_for_change():
+    import threading
+
+    timer = threading.Timer(0.3, macos.clipboard.copy, args=("changed",))
+    timer.start()
+    try:
+        assert macos.clipboard.wait_for_change(timeout=5, interval=0.05) == "changed"
+    finally:
+        timer.cancel()
+
+
+def test_dialogs_close_after_their_timeout():
+    try:
+        assert macos.dialog.confirm("pymacos test: this closes by itself", timeout=1) is False
+        assert macos.dialog.prompt("pymacos test: this closes by itself", timeout=1) is None
+        macos.dialog.alert("pymacos test: this closes by itself", timeout=1)
+    except macos.CommandError as error:  # e.g. no window server on a CI runner
+        pytest.skip("dialogs can't be shown here: {}".format(error))

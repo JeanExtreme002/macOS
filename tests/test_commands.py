@@ -248,6 +248,19 @@ class _ImmediateThread:
         lambda: macos.spotlight.search("kind:pdf"),
         lambda: macos.spotlight.search_name("report"),
         lambda: macos.spotlight.metadata(__file__),
+        lambda: macos.dialog.alert("x"),
+        lambda: macos.dialog.confirm("x"),
+        lambda: macos.dialog.prompt("x"),
+        lambda: macos.dialog.choose(["a"]),
+        lambda: macos.dialog.choose_file(),
+        lambda: macos.system.version(),
+        lambda: macos.system.model_identifier(),
+        lambda: macos.system.uptime(),
+        lambda: macos.system.idle_time(),
+        lambda: macos.screen.displays(),
+        lambda: macos.power.sleep(),
+        lambda: macos.keychain.accounts("service"),
+        lambda: macos.say("x", output="speech.aiff"),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -559,3 +572,145 @@ def test_spotlight_metadata(monkeypatch, tmp_path):
     assert macos.spotlight.metadata(target) == {"kMDItemNumberOfPages": 3, "kMDItemFSCreationDate": created}
     with pytest.raises(FileNotFoundError):
         macos.spotlight.metadata(tmp_path / "missing")
+
+
+def _script(args):
+    """The AppleScript source of an osascript call (everything before "--")."""
+    return "\n".join(args[i + 1] for i in range(args.index("--")) if args[i] == "-e")
+
+
+def test_dialog_passes_text_as_arguments(fake_run):
+    fake_run.stdout = "ok\nAlice\n"
+
+    assert macos.dialog.prompt('Name? "quoted" -e', default="x", title="T", hidden=True) == "Alice"
+
+    args = fake_run.args
+    assert args[args.index("--") + 1:] == ['Name? "quoted" -e', "x", "T"]
+    script = _script(args)
+    assert "with hidden answer" in script and "Name?" not in script
+    assert "activate" in script
+
+
+@pytest.mark.parametrize("output, expected", [("ok\n", True), ("cancel\n", False), ("timeout\n", False)])
+def test_dialog_confirm(fake_run, output, expected):
+    fake_run.stdout = output
+
+    assert macos.dialog.confirm("Delete?", ok="Delete", cancel="Keep", timeout=5) is expected
+    assert "giving up after 5" in _script(fake_run.args)
+    assert fake_run.args[-3:] == ["Delete?", "Delete", "Keep"]
+
+
+def test_dialog_prompt_cancel_and_multiline(fake_run):
+    fake_run.stdout = "cancel\n"
+    assert macos.dialog.prompt("x") is None
+
+    fake_run.stdout = "ok\nline 1\nline 2\n"
+    assert macos.dialog.prompt("x") == "line 1\nline 2"
+
+
+def test_dialog_choose(fake_run):
+    fake_run.stdout = "ok\nPear\n"
+
+    assert macos.dialog.choose(["Apple", "Pear"], prompt="Fruit?", default="Pear") == "Pear"
+    assert fake_run.args[-5:] == ["Fruit?", "Pear", "", "Apple", "Pear"]
+    assert "with title" not in _script(fake_run.args)
+
+    macos.dialog.choose(["Apple", "Pear"], title="Fruits")
+    assert fake_run.args[-3:] == ["Fruits", "Apple", "Pear"]
+    assert "with title (item 3 of argv)" in _script(fake_run.args)
+
+    fake_run.stdout = "cancel\n"
+    assert macos.dialog.choose(["Apple"]) is None
+
+
+@pytest.mark.parametrize(
+    "options, default", [([], None), (["a\nb"], None), (["a"], "b")]
+)
+def test_dialog_choose_rejects_bad_options(options, default):
+    with pytest.raises(ValueError):
+        macos.dialog.choose(options, default=default)
+
+
+def test_dialog_choose_files(fake_run, tmp_path):
+    fake_run.stdout = "ok\n/a/one.pdf\n/b/two words.pdf\n"
+
+    assert macos.dialog.choose_files(types=[".pdf", "public.image"], folder=tmp_path) == [
+        Path("/a/one.pdf"),
+        Path("/b/two words.pdf"),
+    ]
+    script = _script(fake_run.args)
+    assert "with multiple selections allowed" in script and "of type fileTypes" in script
+    assert fake_run.args[-2:] == ["pdf\npublic.image", str(tmp_path.resolve())]
+
+    fake_run.stdout = "cancel\n"
+    assert macos.dialog.choose_files() == []
+    assert macos.dialog.choose_file() is None
+    assert macos.dialog.choose_folder() is None
+
+
+@pytest.mark.parametrize("timeout, seconds", [(0.1, 1), (0.5, 1), (1, 1), (1.4, 2), (2.5, 3)])
+def test_dialog_timeouts_round_up_to_whole_seconds(fake_run, timeout, seconds):
+    fake_run.stdout = "timeout\n"
+
+    macos.dialog.confirm("x", timeout=timeout)
+    assert "giving up after {}".format(seconds) in _script(fake_run.args)
+
+
+def test_dialog_rejects_bad_timeout():
+    with pytest.raises(ValueError):
+        macos.dialog.confirm("x", timeout=0)
+
+
+def test_system_commands(fake_run):
+    fake_run.stdout = "24G90\n"
+    assert macos.system.build() == "24G90"
+    assert fake_run.args == ["sw_vers", "-buildVersion"]
+
+    fake_run.stdout = "My Mac\n"
+    assert macos.system.computer_name() == "My Mac"
+    assert fake_run.args == ["scutil", "--get", "ComputerName"]
+
+
+def test_power_sleep_commands(fake_run):
+    macos.power.sleep()
+    assert fake_run.args == ["pmset", "sleepnow"]
+    macos.power.sleep_display()
+    assert fake_run.args == ["pmset", "displaysleepnow"]
+
+
+def test_say_to_a_file(fake_run, tmp_path):
+    target = macos.say("hi", output=tmp_path / "speech.WAV", wait=False)
+
+    assert target == (tmp_path / "speech.WAV").resolve()
+    assert fake_run.args == ["say", "-o", str(target), "--data-format=LEI16", "-f", "-"]
+
+
+def test_say_rejects_unknown_audio_formats(fake_run, tmp_path):
+    with pytest.raises(ValueError, match="unsupported audio format"):
+        macos.say("hi", output=tmp_path / "speech.mp3")
+
+
+def test_clipboard_wait_for_change(monkeypatch):
+    counts = iter([1, 1, 1, 2])
+    monkeypatch.setattr(macos.clipboard, "change_count", lambda: next(counts))
+    monkeypatch.setattr(macos.clipboard, "paste", lambda: "new text")
+
+    assert macos.clipboard.wait_for_change(interval=0.001) == "new text"
+
+
+def test_clipboard_wait_for_change_times_out(monkeypatch):
+    monkeypatch.setattr(macos.clipboard, "change_count", lambda: 1)
+
+    with pytest.raises(TimeoutError):
+        macos.clipboard.wait_for_change(timeout=0.01, interval=0.001)
+
+
+def test_clipboard_wait_for_change_never_sleeps_past_the_timeout(monkeypatch):
+    import time
+
+    monkeypatch.setattr(macos.clipboard, "change_count", lambda: 1)
+    start = time.monotonic()
+
+    with pytest.raises(TimeoutError):
+        macos.clipboard.wait_for_change(timeout=0.05, interval=10)
+    assert time.monotonic() - start < 1

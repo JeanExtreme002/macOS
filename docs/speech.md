@@ -22,6 +22,17 @@ macos.say("Starting the backup", wait=False)
 run_backup()
 ```
 
+## Saving to a file
+
+With `output`, nothing is played: the speech is saved to an audio file, and
+its path is returned:
+
+```python
+macos.say("Welcome to the show", voice="Samantha", output="intro.m4a")
+```
+
+The format follows the extension: `.aiff`, `.m4a`, `.wav` or `.caf`.
+
 ## Voices
 
 {func}`macos.speech.voices` lists the installed voices:

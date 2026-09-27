@@ -89,6 +89,13 @@ macos.volume.set(30)
 macos.spotlight.search("kind:pdf invoice")
 ```
 
+## Ask the user
+
+```python
+if macos.dialog.confirm("Continue?"):
+    name = macos.dialog.prompt("Your name:")
+```
+
 ## Handle errors
 
 Everything the package raises derives from {class}`~macos.MacOSError`:

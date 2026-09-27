@@ -16,6 +16,7 @@ regardless of the terminal's locale (``pbcopy``/``pbpaste`` mangle it unless
 
 import ctypes
 import os
+import time
 from typing import Optional, Union
 
 from . import _objc
@@ -23,7 +24,7 @@ from ._objc import BOOL, NSInteger, NSUInteger
 from ._system import framework
 from .errors import MacOSError
 
-__all__ = ["copy", "paste", "clear", "change_count", "copy_image", "paste_image", "has_image"]
+__all__ = ["copy", "paste", "clear", "change_count", "wait_for_change", "copy_image", "paste_image", "has_image"]
 
 _TYPE_STRING = "public.utf8-plain-text"  # NSPasteboardTypeString
 _TYPE_PNG = "public.png"  # NSPasteboardTypePNG
@@ -74,6 +75,30 @@ def change_count() -> int:
     """
     with _objc.autorelease_pool():
         return _objc.send(_pasteboard(), "changeCount", restype=NSInteger)
+
+
+def wait_for_change(*, timeout: Optional[float] = None, interval: float = 0.2) -> Optional[str]:
+    """
+    Wait until something new is copied, and return it as text.
+
+    Returns ``None`` if the new content isn't text (an image, files...).
+    Raises :class:`TimeoutError` if nothing changes within ``timeout`` seconds.
+    ``interval`` is how often to check, in seconds.
+    """
+    if interval <= 0:
+        raise ValueError("interval must be positive, not {}".format(interval))
+    start = change_count()
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while change_count() == start:
+        if deadline is None:
+            time.sleep(interval)
+            continue
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("the clipboard didn't change within {}s".format(timeout))
+        # Never sleep past the deadline, even with a long interval.
+        time.sleep(min(interval, remaining))
+    return paste()
 
 
 def copy_image(image: Union[bytes, str, "os.PathLike[str]"]) -> None:

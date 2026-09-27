@@ -1,4 +1,9 @@
-# Screenshots
+# Screen
+
+{mod}`macos.screen` takes screenshots and tells you about the connected
+displays.
+
+## Screenshots
 
 {func}`macos.screenshot` captures the screen to an image file and returns its
 path as a {class}`pathlib.Path`.
@@ -18,7 +23,7 @@ path = macos.screenshot()
 path.unlink()
 ```
 
-## Options
+### Options
 
 ```python
 macos.screenshot("area.png", region=(0, 0, 800, 600))   # x, y, width, height
@@ -32,7 +37,7 @@ macos.screenshot("pointer.png", cursor=True)             # include the mouse poi
 The format follows the file extension: `.png`, `.jpg` (or `.jpeg`), `.heic`,
 `.tiff`, `.gif` or `.pdf`. Anything else raises `ValueError`.
 
-## Permission
+### Permission
 
 Capturing other apps' windows requires the *Screen Recording* permission.
 
@@ -49,8 +54,29 @@ If a capture without other apps' windows is fine, pass
 `check_permission=False` to skip the check. See
 [Permissions](permissions.md#screen-recording).
 
+## Displays
+
+{func}`~macos.screen.displays` lists the connected displays, the main one (with
+the menu bar) first:
+
+```python
+for display in macos.screen.displays():
+    print(display.name, display.width, display.height, display.scale)
+```
+
+```text
+Built-in Retina Display 1512 982 2.0
+```
+
+Each {class}`~macos.screen.Display` has its size and position in points (the
+unit `region` uses), its physical resolution (`pixel_width`, `pixel_height`),
+the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
+`is_main` or `is_builtin`.
+
 ## Reference
 
 - {func}`macos.screenshot`
 - {func}`macos.screen.has_permission`
 - {func}`macos.screen.request_permission`
+- {func}`macos.screen.displays`
+- {class}`macos.screen.Display`
