@@ -4,7 +4,7 @@ from typing import List
 
 import pytest
 
-from macos import _system
+from macos import _system, notifications
 
 
 def pytest_collection_modifyitems(config, items):
@@ -40,4 +40,6 @@ def fake_run(monkeypatch):
     fake = FakeRun()
     monkeypatch.setattr(_system.sys, "platform", "darwin")
     monkeypatch.setattr(_system.subprocess, "run", fake)
+    # notify() reads the notification settings first; in unit tests they allow it.
+    monkeypatch.setattr(notifications, "is_allowed", lambda: True)
     return fake

@@ -20,6 +20,17 @@ explain how to use each part.
 .. autofunction:: macos.clipboard.paste
 .. autofunction:: macos.clipboard.clear
 .. autofunction:: macos.clipboard.change_count
+.. autofunction:: macos.clipboard.copy_image
+.. autofunction:: macos.clipboard.paste_image
+.. autofunction:: macos.clipboard.has_image
+```
+
+## macos.notifications
+
+```{eval-rst}
+.. module:: macos.notifications
+
+.. autofunction:: macos.notifications.is_allowed
 ```
 
 ## macos.appearance
@@ -64,6 +75,38 @@ explain how to use each part.
 .. autoclass:: macos.speech.Voice
 ```
 
+## macos.power
+
+```{eval-rst}
+.. module:: macos.power
+
+.. autofunction:: macos.power.battery
+.. autoclass:: macos.power.Battery
+.. autofunction:: macos.power.keep_awake
+```
+
+## macos.shortcuts
+
+```{eval-rst}
+.. module:: macos.shortcuts
+
+.. autofunction:: macos.shortcuts.run
+.. autofunction:: macos.shortcuts.list
+```
+
+## macos.finder
+
+```{eval-rst}
+.. module:: macos.finder
+
+.. autofunction:: macos.finder.reveal
+.. autofunction:: macos.finder.trash
+.. autofunction:: macos.finder.tags
+.. autofunction:: macos.finder.set_tags
+.. autofunction:: macos.finder.add_tags
+.. autofunction:: macos.finder.remove_tags
+```
+
 ## macos.screen
 
 ```{eval-rst}
@@ -80,6 +123,7 @@ explain how to use each part.
 .. autoexception:: macos.NotSupportedError
 .. autoexception:: macos.PermissionDeniedError
 .. autoexception:: macos.AppNotFoundError
+.. autoexception:: macos.ShortcutNotFoundError
 .. autoexception:: macos.KeychainError
 .. autoexception:: macos.CommandError
 ```

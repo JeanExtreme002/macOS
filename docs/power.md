@@ -1,0 +1,58 @@
+# Power
+
+{mod}`macos.power` reads the battery and keeps the Mac awake while your code
+runs.
+
+## Battery
+
+```python
+import macos
+
+battery = macos.power.battery()
+battery.percent          # 87
+battery.charging         # True
+battery.plugged_in       # True
+battery.time_remaining   # datetime.timedelta(seconds=2700), or None
+```
+
+{func}`~macos.power.battery` returns `None` on a Mac without a battery, such as
+a Mac mini or an iMac.
+
+`time_remaining` is the time until the battery is empty, or until it's full
+while charging. It's `None` while macOS is still estimating it, and when the
+battery is full and plugged in.
+
+## Keeping the Mac awake
+
+{func}`~macos.power.keep_awake` stops the Mac from going to sleep while a block
+runs, like the `caffeinate` command:
+
+```python
+with macos.power.keep_awake():
+    train_model()   # takes hours; the Mac won't sleep meanwhile
+```
+
+It also works as a decorator:
+
+```python
+@macos.power.keep_awake()
+def backup():
+    ...
+```
+
+By default the display can still turn off. Pass `display=True` to keep it on
+too, for example while showing a dashboard:
+
+```python
+with macos.power.keep_awake(display=True):
+    run_dashboard()
+```
+
+The `reason` argument names the request in `pmset -g assertions` and in
+Activity Monitor. Closing a laptop's lid still puts it to sleep.
+
+## Reference
+
+- {func}`macos.power.battery`
+- {class}`macos.power.Battery`
+- {func}`macos.power.keep_awake`

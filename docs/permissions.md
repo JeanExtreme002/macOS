@@ -9,8 +9,8 @@ itself, so a script can work in one terminal and not in another.
 | {func}`macos.screenshot` | Screen Recording | System Settings › Privacy & Security › Screen & System Audio Recording |
 | {func}`macos.notify` | Notifications for *Script Editor* | System Settings › Notifications › Script Editor |
 
-The other features (clipboard, appearance, apps, Keychain, speech) need no
-permission.
+The other features (clipboard, appearance, apps, Keychain, speech, power,
+Shortcuts, Finder) need no permission.
 
 ## Screen Recording
 
@@ -30,9 +30,10 @@ only applies the change to newly started processes.
 
 Notifications are posted through AppleScript, so macOS attributes them to *Script Editor*.
 
-If {func}`macos.notify` runs without errors but nothing shows
-up, notifications for Script Editor are turned off. If Script Editor isn't
-listed in System Settings › Notifications yet, open Script Editor, run
+When notifications for Script Editor are turned off, macOS drops them without
+an error, so {func}`macos.notify` raises {class}`~macos.PermissionDeniedError`
+instead. Turn them on in System Settings › Notifications › Script Editor. If
+Script Editor isn't listed there yet, open Script Editor, run
 `display notification "hi"` once and accept the prompt.
 
 Also check that a Focus mode (such as Do Not Disturb) isn't hiding them.

@@ -47,6 +47,10 @@ class CommandError(MacOSError):
         return message
 
 
+class ShortcutNotFoundError(CommandError, LookupError):
+    """No shortcut in the Shortcuts app has the given name or identifier."""
+
+
 class KeychainError(MacOSError):
     """The Security framework returned an error status (``OSStatus``)."""
 

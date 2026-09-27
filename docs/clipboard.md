@@ -7,9 +7,9 @@ pasteboard) as text.
 import macos
 
 macos.clipboard.copy("hello")
-macos.clipboard.paste()      # 'hello'
+macos.clipboard.paste()       # 'hello'
 macos.clipboard.clear()
-macos.clipboard.paste()      # None
+macos.clipboard.paste()       # None
 ```
 
 {func}`~macos.clipboard.paste` returns `None` when the clipboard holds no text,
@@ -19,8 +19,33 @@ Unicode round-trips correctly, whatever your terminal's locale is:
 
 ```python
 macos.clipboard.copy("olá 🍎")
-macos.clipboard.paste()      # 'olá 🍎'
+macos.clipboard.paste()        # 'olá 🍎'
 ```
+
+## Images
+
+{func}`~macos.clipboard.copy_image` puts an image on the clipboard, from a file
+or from its bytes. Any format macOS can open works (PNG, JPEG, HEIC, GIF, TIFF,
+PDF...):
+
+```python
+macos.clipboard.copy_image("chart.png")
+macos.clipboard.copy_image(png_bytes)
+```
+
+{func}`~macos.clipboard.paste_image` returns the image on the clipboard as PNG
+bytes, whatever format it was copied in, or `None` if there is no image:
+
+```python
+from pathlib import Path
+
+image = macos.clipboard.paste_image()
+
+if image is not None:
+    Path("pasted.png").write_bytes(image)
+```
+
+{func}`~macos.clipboard.has_image` checks for an image without converting it.
 
 ## Detecting changes
 
@@ -33,11 +58,14 @@ import time
 import macos
 
 last = macos.clipboard.change_count()
+
 while True:
     count = macos.clipboard.change_count()
+
     if count != last:
         last = count
         print("Copied:", macos.clipboard.paste())
+
     time.sleep(0.5)
 ```
 
@@ -47,3 +75,6 @@ while True:
 - {func}`macos.clipboard.paste`
 - {func}`macos.clipboard.clear`
 - {func}`macos.clipboard.change_count`
+- {func}`macos.clipboard.copy_image`
+- {func}`macos.clipboard.paste_image`
+- {func}`macos.clipboard.has_image`
