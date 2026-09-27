@@ -6,6 +6,12 @@ import with zero dependencies.
 
 <table class="badge-table">
   <tr>
+    <th>docs</th>
+    <td>
+      <a href="https://macos.readthedocs.io/?badge=latest"><img alt="Documentation Status" src="https://readthedocs.org/projects/macos/badge/?version=latest"></a>
+    </td>
+  </tr>
+  <tr>
     <th>tests</th>
     <td>
       <a href="https://github.com/JeanExtreme002/pymacos/actions/workflows/python-package.yml"><img alt="GitHub Actions build status" src="https://github.com/JeanExtreme002/pymacos/actions/workflows/python-package.yml/badge.svg"></a>
