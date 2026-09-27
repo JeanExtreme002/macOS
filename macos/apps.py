@@ -23,12 +23,12 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Iterator, List, Optional
 
-from . import _objc
+from . import _cf, _objc
 from ._objc import BOOL, NSInteger, NSUInteger
 from ._system import framework, require_macos, run
 from .errors import AppNotFoundError, CommandError
 
-__all__ = ["App", "running", "frontmost", "get", "open"]
+__all__ = ["App", "running", "frontmost", "get", "open", "default_for", "default_browser"]
 
 # NSApplicationActivationPolicy
 _POLICY_REGULAR = 0
@@ -335,3 +335,64 @@ def open(name: str, *, background: bool = False, timeout: float = 10.0) -> App:
         if time.monotonic() >= deadline:
             raise AppNotFoundError("{!r} was launched but did not show up within {}s".format(name, timeout))
         time.sleep(0.1)
+
+
+_ALL_ROLES = 0xFFFFFFFF  # kLSRolesAll
+_POSIX_PATH_STYLE = 0  # kCFURLPOSIXPathStyle
+
+
+@lru_cache(maxsize=None)
+def _launch_services() -> ctypes.CDLL:
+    services = framework("CoreServices")
+    services.UTTypeCreatePreferredIdentifierForTag.argtypes = (_cf.CFTypeRef, _cf.CFTypeRef, _cf.CFTypeRef)
+    services.UTTypeCreatePreferredIdentifierForTag.restype = _cf.CFTypeRef
+    services.LSCopyDefaultApplicationURLForContentType.argtypes = (_cf.CFTypeRef, ctypes.c_uint32, ctypes.c_void_p)
+    services.LSCopyDefaultApplicationURLForContentType.restype = _cf.CFTypeRef
+    services.LSCopyDefaultApplicationURLForURL.argtypes = (_cf.CFTypeRef, ctypes.c_uint32, ctypes.c_void_p)
+    services.LSCopyDefaultApplicationURLForURL.restype = _cf.CFTypeRef
+
+    cf = _cf.lib()
+    cf.CFURLCopyFileSystemPath.argtypes = (_cf.CFTypeRef, ctypes.c_long)
+    cf.CFURLCopyFileSystemPath.restype = _cf.CFTypeRef
+    cf.CFURLCreateWithString.argtypes = (_cf.CFTypeRef, _cf.CFTypeRef, _cf.CFTypeRef)
+    cf.CFURLCreateWithString.restype = _cf.CFTypeRef
+    return services
+
+
+def _app_path(url: Optional[int]) -> Optional[str]:
+    """The path of an owned ``CFURL`` (released here), or ``None``."""
+    with _cf.owned(url):
+        if not url:
+            return None
+        with _cf.owned(_cf.lib().CFURLCopyFileSystemPath(url, _POSIX_PATH_STYLE)) as path:
+            return _cf.to_str(path)
+
+
+def default_for(kind: str) -> Optional[str]:
+    """
+    Return the path of the app that opens a kind of file by default, or ``None`` if none does.
+
+    ``kind`` is a file extension (``"pdf"``, ``".png"``) or a type identifier
+    (``"public.plain-text"``)::
+
+        macos.apps.default_for("pdf")    # '/System/Applications/Preview.app'
+    """
+    services = _launch_services()
+    # ".png" and "png" are extensions; anything else with a dot is a type
+    # identifier, which is reverse-DNS ("com.adobe.pdf").
+    if "." in kind and not kind.startswith("."):
+        with _cf.owned(_cf.string(kind)) as identifier:
+            return _app_path(services.LSCopyDefaultApplicationURLForContentType(identifier, _ALL_ROLES, None))
+
+    extension = kind.lstrip(".")
+    with _cf.owned(_cf.string("public.filename-extension")) as tag_class, _cf.owned(_cf.string(extension)) as tag:
+        with _cf.owned(services.UTTypeCreatePreferredIdentifierForTag(tag_class, tag, None)) as identifier:
+            return _app_path(services.LSCopyDefaultApplicationURLForContentType(identifier, _ALL_ROLES, None))
+
+
+def default_browser() -> Optional[str]:
+    """Return the path of the default web browser, e.g. ``'/Applications/Safari.app'``."""
+    services = _launch_services()
+    with _cf.owned(_cf.string("https://example.com")) as text:
+        with _cf.owned(_cf.lib().CFURLCreateWithString(None, text, None)) as url:
+            return _app_path(services.LSCopyDefaultApplicationURLForURL(url, _ALL_ROLES, None))

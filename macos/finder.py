@@ -21,12 +21,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, List, Union
 
-from . import _objc
+from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
 from ._system import framework, run
 from .errors import MacOSError
 
-__all__ = ["reveal", "trash", "tags", "set_tags", "add_tags", "remove_tags"]
+__all__ = ["reveal", "trash", "tags", "set_tags", "add_tags", "remove_tags", "thumbnail"]
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -144,3 +144,131 @@ def remove_tags(path: PathLike, *names: str) -> List[str]:
     updated = [name for name in tags(path) if name not in names]
     set_tags(path, updated)
     return updated
+
+
+class _CGSize(ctypes.Structure):
+    _fields_ = [("width", ctypes.c_double), ("height", ctypes.c_double)]
+
+
+class _CGRect(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double), ("width", ctypes.c_double), ("height", ctypes.c_double)]
+
+
+_BITMAP_PNG = 4  # NSBitmapImageFileTypePNG
+
+
+@lru_cache(maxsize=None)
+def _graphics() -> ctypes.CDLL:
+    cg = framework("CoreGraphics")
+    cg.CGImageGetWidth.argtypes = (ctypes.c_void_p,)
+    cg.CGImageGetWidth.restype = ctypes.c_size_t
+    cg.CGImageGetHeight.argtypes = (ctypes.c_void_p,)
+    cg.CGImageGetHeight.restype = ctypes.c_size_t
+    cg.CGColorSpaceCreateDeviceRGB.argtypes = ()
+    cg.CGColorSpaceCreateDeviceRGB.restype = ctypes.c_void_p
+    cg.CGColorSpaceRelease.argtypes = (ctypes.c_void_p,)
+    cg.CGColorSpaceRelease.restype = None
+    cg.CGBitmapContextCreate.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+    )
+    cg.CGBitmapContextCreate.restype = ctypes.c_void_p
+    cg.CGContextSetInterpolationQuality.argtypes = (ctypes.c_void_p, ctypes.c_int32)
+    cg.CGContextSetInterpolationQuality.restype = None
+    cg.CGContextDrawImage.argtypes = (ctypes.c_void_p, _CGRect, ctypes.c_void_p)
+    cg.CGContextDrawImage.restype = None
+    cg.CGBitmapContextCreateImage.argtypes = (ctypes.c_void_p,)
+    cg.CGBitmapContextCreateImage.restype = ctypes.c_void_p
+    cg.CGContextRelease.argtypes = (ctypes.c_void_p,)
+    cg.CGContextRelease.restype = None
+    return cg
+
+
+def _fit(image: int, size: int) -> int:
+    """A new ``CGImage`` scaled so its largest side is ``size`` pixels (caller releases it)."""
+    cg = _graphics()
+    width, height = cg.CGImageGetWidth(image), cg.CGImageGetHeight(image)
+    scale = size / max(width, height, 1)
+    new_width, new_height = max(1, round(width * scale)), max(1, round(height * scale))
+    space = cg.CGColorSpaceCreateDeviceRGB()
+    # 8 bits per component, premultiplied alpha last (kCGImageAlphaPremultipliedLast).
+    context = cg.CGBitmapContextCreate(None, new_width, new_height, 8, 0, space, 1)
+    cg.CGColorSpaceRelease(space)
+    try:
+        cg.CGContextSetInterpolationQuality(context, 3)  # kCGInterpolationHigh
+        cg.CGContextDrawImage(context, _CGRect(0, 0, new_width, new_height), image)
+        return cg.CGBitmapContextCreateImage(context)
+    finally:
+        cg.CGContextRelease(context)
+
+
+@lru_cache(maxsize=None)
+def _quicklook() -> ctypes.CDLL:
+    quicklook = framework("QuickLook")
+    quicklook.QLThumbnailImageCreate.argtypes = (ctypes.c_void_p, ctypes.c_void_p, _CGSize, ctypes.c_void_p)
+    quicklook.QLThumbnailImageCreate.restype = ctypes.c_void_p
+    return quicklook
+
+
+def _png(rep: int) -> bytes:
+    data = _objc.send(
+        rep,
+        "representationUsingType:properties:",
+        _BITMAP_PNG,
+        _objc.send(_objc.cls("NSDictionary"), "dictionary"),
+        argtypes=(NSUInteger, _objc.id),
+    )
+    return _objc.pybytes(data) or b""
+
+
+def thumbnail(path: PathLike, *, size: int = 256) -> bytes:
+    """
+    Return a preview of ``path`` as PNG bytes, like the ones Finder shows.
+
+    Documents, images, videos and PDFs get a Quick Look preview of their
+    content; anything else (apps, folders, unknown files) gets its icon.
+    ``size`` is the largest side, in pixels::
+
+        Path("preview.png").write_bytes(macos.finder.thumbnail("report.pdf"))
+    """
+    if size <= 0:
+        raise ValueError("size must be positive, not {}".format(size))
+    target = _existing(path)
+    framework("AppKit")
+    with _objc.autorelease_pool():
+        image = _quicklook().QLThumbnailImageCreate(None, _url(target), _CGSize(size, size), None)
+        if image:
+            try:
+                rep = _objc.send(_objc.cls("NSBitmapImageRep"), "alloc")
+                rep = _objc.send(rep, "initWithCGImage:", image, argtypes=(ctypes.c_void_p,))
+                _objc.send(rep, "autorelease")
+                return _png(rep)
+            finally:
+                _cf.release(image)
+
+        # No Quick Look preview: fall back to the file's icon, drawn at `size`.
+        workspace = _objc.send(_objc.cls("NSWorkspace"), "sharedWorkspace")
+        icon = _objc.send(workspace, "iconForFile:", _objc.nsstring(str(target)), argtypes=(_objc.id,))
+        cgimage = _objc.send(
+            icon,
+            "CGImageForProposedRect:context:hints:",
+            ctypes.byref(_CGRect(0, 0, size, size)),
+            None,
+            None,
+            argtypes=(ctypes.c_void_p, _objc.id, _objc.id),
+            restype=ctypes.c_void_p,
+        )
+        # On a Retina display the icon comes out at twice the size: scale it.
+        fitted = _fit(cgimage, size)
+        try:
+            rep = _objc.send(_objc.cls("NSBitmapImageRep"), "alloc")
+            rep = _objc.send(rep, "initWithCGImage:", fitted, argtypes=(ctypes.c_void_p,))
+            _objc.send(rep, "autorelease")
+            return _png(rep)
+        finally:
+            _cf.release(fitted)

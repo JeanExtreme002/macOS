@@ -73,6 +73,18 @@ unit `region` uses), its physical resolution (`pixel_width`, `pixel_height`),
 the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
 `is_main` or `is_builtin`.
 
+## Wallpaper
+
+```python
+macos.screen.wallpaper()                    # PosixPath('/System/Library/Desktop Pictures/...')
+macos.screen.set_wallpaper("mountains.jpg")                   # on every display
+macos.screen.set_wallpaper("mountains.jpg", display=display.id)  # only one
+```
+
+{func}`~macos.screen.wallpaper` returns `None` when the desktop isn't showing a
+picture file, such as a solid color. macOS keeps using the file you pass to
+{func}`~macos.screen.set_wallpaper`, so don't delete it afterwards.
+
 ## Reference
 
 - {func}`macos.screenshot`
@@ -80,3 +92,5 @@ the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
 - {func}`macos.screen.request_permission`
 - {func}`macos.screen.displays`
 - {class}`macos.screen.Display`
+- {func}`macos.screen.wallpaper`
+- {func}`macos.screen.set_wallpaper`

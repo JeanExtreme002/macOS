@@ -96,6 +96,18 @@ if macos.dialog.confirm("Continue?"):
     name = macos.dialog.prompt("Your name:")
 ```
 
+## Read text in an image
+
+```python
+macos.vision.text("receipt.png")
+```
+
+## Open a file with an app
+
+```python
+macos.open_with("report.pdf", "Preview")
+```
+
 ## Handle errors
 
 Everything the package raises derives from {class}`~macos.MacOSError`:

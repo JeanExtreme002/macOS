@@ -27,7 +27,7 @@ from . import _objc
 from ._system import framework, run
 from .errors import PermissionDeniedError
 
-__all__ = ["screenshot", "has_permission", "request_permission", "displays", "Display"]
+__all__ = ["screenshot", "has_permission", "request_permission", "displays", "Display", "wallpaper", "set_wallpaper"]
 
 _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tiff": "tiff", ".gif": "gif", ".pdf": "pdf"}
 
@@ -238,3 +238,76 @@ def displays() -> List[Display]:
             )
         )
     return sorted(found, key=lambda display: not display.is_main)
+
+
+def _screens() -> List[Tuple[int, int]]:
+    """``(display id, NSScreen)`` pairs, the main screen first. Call inside an autorelease pool."""
+    framework("AppKit")
+    pairs = []
+    for screen in _objc.nsarray(_objc.send(_objc.cls("NSScreen"), "screens")):
+        description = _objc.send(screen, "deviceDescription")
+        number = _objc.send(description, "objectForKey:", _objc.nsstring("NSScreenNumber"), argtypes=(_objc.id,))
+        if number:
+            pairs.append((_objc.send(number, "unsignedIntValue", restype=ctypes.c_uint32), screen))
+    return pairs
+
+
+def _workspace() -> int:
+    framework("AppKit")
+    return _objc.send(_objc.cls("NSWorkspace"), "sharedWorkspace")
+
+
+def _pick(pairs: List[Tuple[int, int]], display: Optional[int]) -> List[Tuple[int, int]]:
+    if display is None:
+        return pairs
+    chosen = [pair for pair in pairs if pair[0] == display]
+    if not chosen:
+        raise ValueError("no connected display has the id {} (see macos.screen.displays())".format(display))
+    return chosen
+
+
+def wallpaper(display: Optional[int] = None) -> Optional[Path]:
+    """
+    Return the desktop picture of a display (the main one by default).
+
+    ``display`` is a :attr:`Display.id` from :func:`displays`. Returns ``None``
+    when the desktop shows something other than a picture file, such as a
+    solid color or a dynamic wallpaper that isn't a file.
+    """
+    with _objc.autorelease_pool():
+        pairs = _pick(_screens(), display)
+        if not pairs:
+            return None
+        url = _objc.send(_workspace(), "desktopImageURLForScreen:", pairs[0][1], argtypes=(_objc.id,))
+        path = _objc.pystring(_objc.send(url, "path")) if url else None
+        return Path(path) if path else None
+
+
+def set_wallpaper(path: Union[str, "os.PathLike[str]"], *, display: Optional[int] = None) -> None:
+    """
+    Set the desktop picture, on every display or only on ``display``.
+
+    ``path`` is an image file (JPEG, PNG, HEIC...). macOS keeps referring to
+    that file, so don't delete it afterwards.
+    """
+    image = Path(path).expanduser().resolve()
+    if not image.is_file():
+        raise FileNotFoundError(str(image))
+    with _objc.autorelease_pool():
+        url = _objc.send(_objc.cls("NSURL"), "fileURLWithPath:", _objc.nsstring(str(image)), argtypes=(_objc.id,))
+        options = _objc.send(_objc.cls("NSDictionary"), "dictionary")
+        for _, screen in _pick(_screens(), display):
+            error = ctypes.c_void_p()
+            ok = _objc.send(
+                _workspace(),
+                "setDesktopImageURL:forScreen:options:error:",
+                url,
+                screen,
+                options,
+                ctypes.byref(error),
+                argtypes=(_objc.id, _objc.id, _objc.id, ctypes.c_void_p),
+                restype=_objc.BOOL,
+            )
+            if not ok:
+                message = _objc.pystring(_objc.send(error.value, "localizedDescription")) if error.value else None
+                raise ValueError("could not set the wallpaper: {}".format(message or "not an image macOS can show"))

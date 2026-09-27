@@ -261,6 +261,19 @@ class _ImmediateThread:
         lambda: macos.power.sleep(),
         lambda: macos.keychain.accounts("service"),
         lambda: macos.say("x", output="speech.aiff"),
+        lambda: macos.vision.text(b"image"),
+        lambda: macos.vision.languages(),
+        lambda: macos.screen.wallpaper(),
+        lambda: macos.screen.set_wallpaper(__file__),
+        lambda: macos.open("https://python.org"),
+        lambda: macos.open_with(__file__, "Preview"),
+        lambda: macos.apps.default_for("pdf"),
+        lambda: macos.apps.default_browser(),
+        lambda: macos.clipboard.copy_files([__file__]),
+        lambda: macos.clipboard.paste_files(),
+        lambda: macos.finder.thumbnail(__file__),
+        lambda: macos.system.volumes(),
+        lambda: macos.system.eject("Backup"),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -714,3 +727,65 @@ def test_clipboard_wait_for_change_never_sleeps_past_the_timeout(monkeypatch):
     with pytest.raises(TimeoutError):
         macos.clipboard.wait_for_change(timeout=0.05, interval=10)
     assert time.monotonic() - start < 1
+
+
+def test_open_passes_urls_through_and_checks_paths(fake_run, tmp_path):
+    macos.open("https://python.org", background=True)
+    assert fake_run.args == ["open", "-g", "--", "https://python.org"]
+
+    macos.open(tmp_path)
+    assert fake_run.args == ["open", "--", str(tmp_path)]
+
+    with pytest.raises(FileNotFoundError):
+        macos.open(tmp_path / "missing.pdf")
+
+
+def test_open_with_resolves_the_app(fake_run, monkeypatch, tmp_path):
+    monkeypatch.setattr(macos.launch, "_locate", lambda app: "/Applications/{}.app".format(app))
+    target = tmp_path / "photo.png"
+    target.touch()
+
+    macos.open_with(target, "Preview")
+    assert fake_run.args == ["open", "-a", "/Applications/Preview.app", "--", str(target)]
+
+
+def test_open_with_reports_failures_as_app_not_found(fake_run, monkeypatch, tmp_path):
+    monkeypatch.setattr(macos.launch, "_locate", lambda app: "/Applications/Nope.app")
+    fake_run.returncode, fake_run.stderr = 1, "LSOpenURLsWithRole() failed"
+
+    with pytest.raises(macos.AppNotFoundError, match="could not open"):
+        macos.open_with(tmp_path, "Nope")
+
+
+def test_eject(fake_run, monkeypatch):
+    backup = macos.system.Volume("Backup", Path("/Volumes/Backup"), 10, 5, False, True, True)
+    root = macos.system.Volume("Macintosh HD", Path("/"), 10, 5, True, False, False)
+    monkeypatch.setattr(macos.system, "volumes", lambda: [root, backup])
+
+    macos.system.eject("Backup")
+    assert fake_run.args == ["diskutil", "eject", "/Volumes/Backup"]
+    macos.system.eject("/Volumes/Backup/")
+    assert fake_run.args[-1] == "/Volumes/Backup"
+    macos.system.eject(backup)
+    assert fake_run.args[-1] == "/Volumes/Backup"
+
+    with pytest.raises(ValueError, match="startup disk"):
+        macos.system.eject("Macintosh HD")
+    with pytest.raises(ValueError, match="no mounted volume"):
+        macos.system.eject("Nope")
+
+
+def test_battery_health_fields_are_optional():
+    battery = macos.power.Battery(percent=50, charging=False, plugged_in=False, time_remaining=None)
+
+    assert battery.cycle_count is None and battery.health is None
+
+
+def test_thumbnail_rejects_bad_sizes():
+    with pytest.raises(ValueError):
+        macos.finder.thumbnail(__file__, size=0)
+
+
+def test_copy_files_needs_paths():
+    with pytest.raises(ValueError):
+        macos.clipboard.copy_files([])

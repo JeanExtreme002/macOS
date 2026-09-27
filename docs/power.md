@@ -13,10 +13,15 @@ battery.percent          # 87
 battery.charging         # True
 battery.plugged_in       # True
 battery.time_remaining   # datetime.timedelta(seconds=2700), or None
+battery.cycle_count      # 532
+battery.health           # 80 (percent of the original capacity)
 ```
 
 {func}`~macos.power.battery` returns `None` on a Mac without a battery, such as
 a Mac mini or an iMac.
+
+`health` is the battery's maximum capacity compared with when it was new, the
+same number as System Settings › Battery › Battery Health.
 
 `time_remaining` is the time until the battery is empty, or until it's full
 while charging. It's `None` while macOS is still estimating it, and when the

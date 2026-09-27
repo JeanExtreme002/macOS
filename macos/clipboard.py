@@ -17,14 +17,26 @@ regardless of the terminal's locale (``pbcopy``/``pbpaste`` mangle it unless
 import ctypes
 import os
 import time
-from typing import Optional, Union
+from pathlib import Path
+from typing import Iterable, List, Optional, Union
 
 from . import _objc
 from ._objc import BOOL, NSInteger, NSUInteger
 from ._system import framework
 from .errors import MacOSError
 
-__all__ = ["copy", "paste", "clear", "change_count", "wait_for_change", "copy_image", "paste_image", "has_image"]
+__all__ = [
+    "copy",
+    "paste",
+    "clear",
+    "change_count",
+    "wait_for_change",
+    "copy_image",
+    "paste_image",
+    "has_image",
+    "copy_files",
+    "paste_files",
+]
 
 _TYPE_STRING = "public.utf8-plain-text"  # NSPasteboardTypeString
 _TYPE_PNG = "public.png"  # NSPasteboardTypePNG
@@ -164,3 +176,57 @@ def has_image() -> bool:
             _objc.cls("NSArray"), "arrayWithObjects:count:", objects, 2, argtypes=(ctypes.c_void_p, NSUInteger)
         )
         return bool(_objc.send(_pasteboard(), "availableTypeFromArray:", types, argtypes=(_objc.id,)))
+
+
+def _array(objects: List[int]) -> int:
+    items = (ctypes.c_void_p * len(objects))(*objects)
+    return _objc.send(
+        _objc.cls("NSArray"), "arrayWithObjects:count:", items, len(objects), argtypes=(ctypes.c_void_p, NSUInteger)
+    )
+
+
+def copy_files(paths: Iterable[Union[str, "os.PathLike[str]"]]) -> None:
+    """
+    Put files on the clipboard, as if they were copied in Finder.
+
+    Pasting in Finder then copies the files there, and apps like Mail or Slack
+    attach them.
+    """
+    resolved = [Path(path).expanduser().absolute() for path in paths]
+    if not resolved:
+        raise ValueError("copy_files() needs at least one path")
+    for path in resolved:
+        if not os.path.lexists(path):
+            raise FileNotFoundError(str(path))
+
+    with _objc.autorelease_pool():
+        urls = [
+            _objc.send(_objc.cls("NSURL"), "fileURLWithPath:", _objc.nsstring(str(path)), argtypes=(_objc.id,))
+            for path in resolved
+        ]
+        pasteboard = _pasteboard()
+        _objc.send(pasteboard, "clearContents", restype=NSInteger)
+        if not _objc.send(pasteboard, "writeObjects:", _array(urls), argtypes=(_objc.id,), restype=BOOL):
+            raise MacOSError("the pasteboard refused the files")
+
+
+def paste_files() -> List[Path]:
+    """Return the files on the clipboard (e.g. copied in Finder), or ``[]`` if there are none."""
+    with _objc.autorelease_pool():
+        pasteboard = _pasteboard()
+        only_files = _objc.send(
+            _objc.cls("NSDictionary"),
+            "dictionaryWithObject:forKey:",
+            _objc.send(_objc.cls("NSNumber"), "numberWithBool:", True, argtypes=(BOOL,)),
+            _objc.nsstring("NSPasteboardURLReadingFileURLsOnlyKey"),
+            argtypes=(_objc.id, _objc.id),
+        )
+        urls = _objc.send(
+            pasteboard,
+            "readObjectsForClasses:options:",
+            _array([_objc.cls("NSURL")]),
+            only_files,
+            argtypes=(_objc.id, _objc.id),
+        )
+        paths = (_objc.pystring(_objc.send(url, "path")) for url in _objc.nsarray(urls))
+        return [Path(path) for path in paths if path]

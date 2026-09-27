@@ -16,13 +16,16 @@ commands that ship with macOS.
 
 import ctypes
 import json
+import os
 import platform
 import time
+from dataclasses import dataclass
 from datetime import timedelta
 from functools import lru_cache
-from typing import Optional
+from pathlib import Path
+from typing import List, Optional, Union
 
-from . import _cf
+from . import _cf, _objc
 from ._system import framework, require_macos, run
 from .errors import MacOSError
 
@@ -36,6 +39,9 @@ __all__ = [
     "computer_name",
     "uptime",
     "idle_time",
+    "volumes",
+    "eject",
+    "Volume",
 ]
 
 
@@ -157,3 +163,107 @@ def idle_time() -> timedelta:
     if value is None:
         raise MacOSError("the idle time is not available")
     return timedelta(microseconds=value / 1000)  # nanoseconds
+
+
+@dataclass(frozen=True)
+class Volume:
+    """A mounted volume: the startup disk, an external drive, a disk image..."""
+
+    name: str
+    path: Path
+    """Where it's mounted, e.g. ``/Volumes/Backup`` (``/`` for the startup disk)."""
+    total: int
+    """Capacity, in bytes."""
+    free: int
+    """Space available, in bytes, as Finder shows it (purgeable space included)."""
+    is_internal: bool
+    is_removable: bool
+    """A USB stick, SD card or other removable media."""
+    is_ejectable: bool
+    """Whether :func:`eject` (or Finder's eject button) can unmount it."""
+
+
+_SKIP_HIDDEN_VOLUMES = 1 << 1  # NSVolumeEnumerationSkipHiddenVolumes
+
+
+def _resource(url: int, key: str) -> Optional[int]:
+    """The value of an ``NSURL`` resource key (a Foundation constant), or ``None``."""
+    constant = ctypes.c_void_p.in_dll(framework("Foundation"), key).value
+    value = ctypes.c_void_p()
+    ok = _objc.send(
+        url,
+        "getResourceValue:forKey:error:",
+        ctypes.byref(value),
+        constant,
+        None,
+        argtypes=(ctypes.c_void_p, _objc.id, ctypes.c_void_p),
+        restype=_objc.BOOL,
+    )
+    return value.value if ok and value.value else None
+
+
+def _number(url: int, key: str) -> int:
+    value = _resource(url, key)
+    return int(_objc.send(value, "longLongValue", restype=ctypes.c_longlong)) if value else 0
+
+
+def _flag(url: int, key: str) -> bool:
+    value = _resource(url, key)
+    return bool(value) and bool(_objc.send(value, "boolValue", restype=_objc.BOOL))
+
+
+def volumes() -> List[Volume]:
+    """Return the mounted volumes that Finder shows, the startup disk first."""
+    framework("Foundation")
+    found = []
+    with _objc.autorelease_pool():
+        manager = _objc.send(_objc.cls("NSFileManager"), "defaultManager")
+        urls = _objc.send(
+            manager,
+            "mountedVolumeURLsIncludingResourceValuesForKeys:options:",
+            None,
+            _SKIP_HIDDEN_VOLUMES,
+            argtypes=(_objc.id, _objc.NSUInteger),
+        )
+        for url in _objc.nsarray(urls):
+            path = _objc.pystring(_objc.send(url, "path"))
+            if not path:
+                continue
+            name_ref = _resource(url, "NSURLVolumeLocalizedNameKey")
+            free = _number(url, "NSURLVolumeAvailableCapacityForImportantUsageKey") or _number(
+                url, "NSURLVolumeAvailableCapacityKey"
+            )
+            found.append(
+                Volume(
+                    name=_objc.pystring(name_ref) or os.path.basename(path) or path,
+                    path=Path(path),
+                    total=_number(url, "NSURLVolumeTotalCapacityKey"),
+                    free=free,
+                    is_internal=_flag(url, "NSURLVolumeIsInternalKey"),
+                    is_removable=_flag(url, "NSURLVolumeIsRemovableKey"),
+                    is_ejectable=_flag(url, "NSURLVolumeIsEjectableKey"),
+                )
+            )
+    return sorted(found, key=lambda volume: volume.path != Path("/"))
+
+
+def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
+    """
+    Eject a volume, like Finder's eject button. Unsaved work on it is not waited for.
+
+    ``volume`` is a :class:`Volume`, its name (``"Backup"``) or its mount path.
+    """
+    if isinstance(volume, Volume):
+        target = volume.path
+    else:
+        text = os.fspath(volume)
+        as_path = Path(text).expanduser()
+        matches = [found.path for found in volumes() if text == found.name or as_path == found.path]
+        if not matches and os.path.isdir(text):
+            matches = [Path(text)]
+        if not matches:
+            raise ValueError("no mounted volume is named {!r}".format(text))
+        target = matches[0]
+    if target == Path("/"):
+        raise ValueError("the startup disk can't be ejected")
+    run(["diskutil", "eject", str(target)])

@@ -30,6 +30,8 @@ keywords = [
     "spotlight",
     "dialogs",
     "system-info",
+    "ocr",
+    "wallpaper",
     "appkit",
     "cocoa",
     "ctypes",

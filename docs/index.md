@@ -2,7 +2,7 @@
 
 **A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps,
 Keychain, speech, screenshots, battery, volume, Shortcuts, Finder, Spotlight,
-dialogs and system info, all from one import with zero dependencies.
+dialogs, system info and OCR, all from one import with zero dependencies.
 
 <table class="badge-table">
   <tr>
@@ -79,6 +79,7 @@ volume
 spotlight
 dialog
 system
+vision
 ```
 
 ```{toctree}

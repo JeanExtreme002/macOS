@@ -20,6 +20,22 @@ macos.system.idle_time()          # datetime.timedelta(seconds=312)
 {func}`~macos.system.uptime` counts from the last restart, including the time
 the Mac spent asleep.
 
+## Volumes
+
+{func}`~macos.system.volumes` lists the mounted volumes that Finder shows (the
+startup disk first), and {func}`~macos.system.eject` ejects one:
+
+```python
+for volume in macos.system.volumes():
+    print(volume.name, volume.free // 2**30, "GB free")
+
+macos.system.eject("Backup")         # by name, by path, or a Volume
+```
+
+Each {class}`~macos.system.Volume` has its `name`, mount `path`, `total` and
+`free` space in bytes, and whether it `is_internal`, `is_removable` (USB sticks,
+SD cards) or `is_ejectable`.
+
 ## Running while the user is away
 
 {func}`~macos.system.idle_time` is the time since the last keyboard, mouse or
@@ -47,3 +63,6 @@ while True:
 - {func}`macos.system.computer_name`
 - {func}`macos.system.uptime`
 - {func}`macos.system.idle_time`
+- {func}`macos.system.volumes`
+- {func}`macos.system.eject`
+- {class}`macos.system.Volume`
