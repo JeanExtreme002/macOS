@@ -13,6 +13,8 @@ call names its ``argtypes``/``restype`` instead of relying on ctypes defaults.
 """
 
 import ctypes
+import os
+import platform
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any, Iterator, Optional, Sequence
@@ -47,10 +49,29 @@ def _libobjc() -> ctypes.CDLL:
     return lib
 
 
+def _needs_stret(restype: Any) -> bool:
+    """
+    Whether a method returning ``restype`` must go through ``objc_msgSend_stret``.
+
+    On x86_64, structs larger than 16 bytes (a CGRect, for example) come back
+    through a hidden pointer, which plain ``objc_msgSend`` doesn't handle.
+    arm64 has no such variant: ``objc_msgSend`` covers every return type.
+    """
+    return (
+        platform.machine() == "x86_64"
+        and isinstance(restype, type)
+        and issubclass(restype, ctypes.Structure)
+        and ctypes.sizeof(restype) > 16
+    )
+
+
 @lru_cache(maxsize=None)
 def _prototype(restype: Any, argtypes: Sequence[Any]) -> Any:
     signature = ctypes.CFUNCTYPE(restype, id, SEL, *argtypes)
-    address = ctypes.cast(_libobjc().objc_msgSend, ctypes.c_void_p).value
+    # Declaring the struct return type makes ctypes pass the hidden pointer
+    # itself, which is exactly the calling convention _stret expects.
+    entry = _libobjc().objc_msgSend_stret if _needs_stret(restype) else _libobjc().objc_msgSend
+    address = ctypes.cast(entry, ctypes.c_void_p).value
     assert address is not None
     return signature(address)
 
@@ -143,3 +164,43 @@ def nsarray(obj: Optional[int]) -> Iterator[int]:
         return
     for index in range(send(obj, "count", restype=NSUInteger)):
         yield send(obj, "objectAtIndex:", index, argtypes=(NSUInteger,))
+
+
+class CGPoint(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
+
+
+class CGSize(ctypes.Structure):
+    _fields_ = [("width", ctypes.c_double), ("height", ctypes.c_double)]
+
+
+class CGRect(ctypes.Structure):
+    _fields_ = [("origin", CGPoint), ("size", CGSize)]
+
+
+def nsarray_of(objects: Sequence[int]) -> int:
+    """Create an autoreleased ``NSArray`` holding ``objects``."""
+    items = (ctypes.c_void_p * len(objects))(*objects)
+    return send(cls("NSArray"), "arrayWithObjects:count:", items, len(objects), argtypes=(ctypes.c_void_p, NSUInteger))
+
+
+def file_url(path: "os.PathLike[str] | str") -> int:
+    """Create an autoreleased file ``NSURL`` for ``path``."""
+    return send(cls("NSURL"), "fileURLWithPath:", nsstring(os.fspath(path)), argtypes=(id,))
+
+
+def error_message(error: ctypes.c_void_p) -> Optional[str]:
+    """The ``localizedDescription`` of an ``NSError`` out-parameter, or ``None`` if none was set."""
+    return pystring(send(error.value, "localizedDescription")) if error.value else None
+
+
+def png(rep: int) -> bytes:
+    """Encode an ``NSBitmapImageRep`` as PNG bytes."""
+    data = send(
+        rep,
+        "representationUsingType:properties:",
+        4,  # NSBitmapImageFileTypePNG
+        send(cls("NSDictionary"), "dictionary"),
+        argtypes=(NSUInteger, id),
+    )
+    return pybytes(data) or b""

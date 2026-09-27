@@ -6,6 +6,8 @@ explain how to use each part.
 ## Top-level functions
 
 ```{eval-rst}
+.. autofunction:: macos.open
+.. autofunction:: macos.open_with
 .. autofunction:: macos.notify
 .. autofunction:: macos.say
 .. autofunction:: macos.screenshot
@@ -21,6 +23,8 @@ explain how to use each part.
 .. autofunction:: macos.clipboard.clear
 .. autofunction:: macos.clipboard.change_count
 .. autofunction:: macos.clipboard.wait_for_change
+.. autofunction:: macos.clipboard.copy_files
+.. autofunction:: macos.clipboard.paste_files
 .. autofunction:: macos.clipboard.copy_image
 .. autofunction:: macos.clipboard.paste_image
 .. autofunction:: macos.clipboard.has_image
@@ -55,6 +59,8 @@ explain how to use each part.
 .. autofunction:: macos.apps.open
 .. autoclass:: macos.apps.App
    :members: is_running, is_active, is_hidden, activate, hide, unhide, quit
+.. autofunction:: macos.apps.default_for
+.. autofunction:: macos.apps.default_browser
 ```
 
 ## macos.keychain
@@ -109,6 +115,7 @@ explain how to use each part.
 .. autofunction:: macos.finder.set_tags
 .. autofunction:: macos.finder.add_tags
 .. autofunction:: macos.finder.remove_tags
+.. autofunction:: macos.finder.thumbnail
 ```
 
 ## macos.volume
@@ -133,6 +140,17 @@ explain how to use each part.
 .. autofunction:: macos.spotlight.metadata
 ```
 
+## macos.vision
+
+```{eval-rst}
+.. module:: macos.vision
+
+.. autofunction:: macos.vision.text
+.. autofunction:: macos.vision.lines
+.. autofunction:: macos.vision.languages
+.. autoclass:: macos.vision.TextLine
+```
+
 ## macos.screen
 
 ```{eval-rst}
@@ -142,6 +160,8 @@ explain how to use each part.
 .. autofunction:: macos.screen.request_permission
 .. autofunction:: macos.screen.displays
 .. autoclass:: macos.screen.Display
+.. autofunction:: macos.screen.wallpaper
+.. autofunction:: macos.screen.set_wallpaper
 ```
 
 ## macos.dialog
@@ -172,6 +192,9 @@ explain how to use each part.
 .. autofunction:: macos.system.computer_name
 .. autofunction:: macos.system.uptime
 .. autofunction:: macos.system.idle_time
+.. autofunction:: macos.system.volumes
+.. autofunction:: macos.system.eject
+.. autoclass:: macos.system.Volume
 ```
 
 ## Exceptions

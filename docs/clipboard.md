@@ -47,6 +47,17 @@ if image is not None:
 
 {func}`~macos.clipboard.has_image` checks for an image without converting it.
 
+## Files
+
+{func}`~macos.clipboard.copy_files` puts files on the clipboard as if they were
+copied in Finder: pasting in Finder copies them there, and apps like Mail attach
+them. {func}`~macos.clipboard.paste_files` returns the files on the clipboard:
+
+```python
+macos.clipboard.copy_files(["report.pdf", "chart.png"])
+macos.clipboard.paste_files()   # [PosixPath('/Users/alice/report.pdf'), ...]
+```
+
 ## Waiting for a copy
 
 {func}`~macos.clipboard.wait_for_change` blocks until something new is copied,
@@ -87,6 +98,8 @@ while True:
 - {func}`macos.clipboard.clear`
 - {func}`macos.clipboard.change_count`
 - {func}`macos.clipboard.wait_for_change`
+- {func}`macos.clipboard.copy_files`
+- {func}`macos.clipboard.paste_files`
 - {func}`macos.clipboard.copy_image`
 - {func}`macos.clipboard.paste_image`
 - {func}`macos.clipboard.has_image`

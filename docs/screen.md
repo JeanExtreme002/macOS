@@ -26,7 +26,7 @@ path.unlink()
 ### Options
 
 ```python
-macos.screenshot("area.png", region=(0, 0, 800, 600))   # x, y, width, height
+macos.screenshot("area.png", region=(0, 0, 800, 600))    # x, y, width, height
 macos.screenshot("second.png", display=2)                # another display
 macos.screenshot("pointer.png", cursor=True)             # include the mouse pointer
 ```
@@ -73,6 +73,21 @@ unit `region` uses), its physical resolution (`pixel_width`, `pixel_height`),
 the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
 `is_main` or `is_builtin`.
 
+## Wallpaper
+
+```python
+macos.screen.wallpaper()   # PosixPath('/System/Library/Desktop Pictures/...')
+macos.screen.set_wallpaper("mountains.jpg")                         # on every display
+macos.screen.set_wallpaper("mountains.jpg", display_id=display.id)  # only one
+```
+
+`display_id` is a {class}`~macos.screen.Display` from
+{func}`~macos.screen.displays`, or its `id`. It's not the same as
+{func}`~macos.screenshot`'s `display`, which counts displays from 1.
+{func}`~macos.screen.wallpaper` returns `None` when the desktop isn't showing a
+picture file, such as a solid color. macOS keeps using the file you pass to
+{func}`~macos.screen.set_wallpaper`, so don't delete it afterwards.
+
 ## Reference
 
 - {func}`macos.screenshot`
@@ -80,3 +95,5 @@ the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
 - {func}`macos.screen.request_permission`
 - {func}`macos.screen.displays`
 - {class}`macos.screen.Display`
+- {func}`macos.screen.wallpaper`
+- {func}`macos.screen.set_wallpaper`

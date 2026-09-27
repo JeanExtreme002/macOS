@@ -39,6 +39,20 @@ default tags are named after colors (`"Red"`, `"Orange"`, `"Yellow"`,
 
 All functions raise `FileNotFoundError` when the path doesn't exist.
 
+## Thumbnails
+
+{func}`~macos.finder.thumbnail` returns a preview of a file as PNG bytes, like
+the ones Finder shows. Documents, images, videos and PDFs get a preview of their
+content (through Quick Look); apps, folders and other files get their icon:
+
+```python
+from pathlib import Path
+
+Path("preview.png").write_bytes(macos.finder.thumbnail("report.pdf", size=512))
+```
+
+`size` is the largest side, in pixels: 256 by default, up to 4096.
+
 ## Reference
 
 - {func}`macos.finder.reveal`
@@ -47,3 +61,4 @@ All functions raise `FileNotFoundError` when the path doesn't exist.
 - {func}`macos.finder.set_tags`
 - {func}`macos.finder.add_tags`
 - {func}`macos.finder.remove_tags`
+- {func}`macos.finder.thumbnail`

@@ -355,3 +355,103 @@ def test_dialogs_close_after_their_timeout():
         macos.dialog.alert("pymacos test: this closes by itself", timeout=1)
     except macos.CommandError as error:  # e.g. no window server on a CI runner
         pytest.skip("dialogs can't be shown here: {}".format(error))
+
+
+def test_ocr_reads_a_quick_look_preview(tmp_path):
+    note = tmp_path / "note.txt"
+    note.write_text("PYMACOS OCR TEST 12345\nsecond line here\n")
+
+    image = macos.finder.thumbnail(note, size=800)
+    assert image.startswith(b"\x89PNG")
+
+    lines = macos.vision.lines(image, languages=["en-US"])
+    texts = [line.text for line in lines]
+    assert "PYMACOS OCR TEST 12345" in texts
+    assert texts.index("PYMACOS OCR TEST 12345") < texts.index("second line here")  # top to bottom
+    assert all(0 <= line.confidence <= 1 for line in lines)
+    assert all(0 <= value <= 1 for line in lines for value in line.box)
+
+
+def test_ocr_languages_and_errors(tmp_path):
+    assert "en-US" in macos.vision.languages()
+    with pytest.raises(FileNotFoundError):
+        macos.vision.text(tmp_path / "missing.png")
+    with pytest.raises(macos.MacOSError):
+        macos.vision.text(b"not an image")
+
+
+def test_thumbnail_rejects_huge_sizes():
+    with pytest.raises(ValueError):
+        macos.finder.thumbnail("/System/Library/CoreServices/Finder.app", size=100000)
+
+
+def test_thumbnail_of_an_app_is_its_icon_at_the_requested_size():
+    import struct
+
+    image = macos.finder.thumbnail("/System/Library/CoreServices/Finder.app", size=64)
+    width, height = struct.unpack(">II", image[16:24])  # the PNG header
+    assert max(width, height) == 64
+
+
+def test_wallpaper_round_trip():
+    current = macos.screen.wallpaper()
+    if current is None or not current.exists():
+        pytest.skip("the desktop picture isn't a file")
+    macos.screen.set_wallpaper(current)
+    assert macos.screen.wallpaper() == current
+
+
+def test_default_apps():
+    text_editor = macos.apps.default_for("txt")
+    if text_editor is None:
+        pytest.skip("no app opens text files here")
+    assert text_editor.endswith(".app")
+    assert macos.apps.default_for(".txt") == text_editor
+    assert macos.apps.default_for("public.plain-text") == text_editor
+    assert macos.apps.default_for("definitely-not-an-extension") is None
+    assert macos.apps.default_for("backup.txt") == text_editor  # a dotted extension, not a type
+    browser = macos.apps.default_browser()
+    assert browser is None or browser.endswith(".app")
+
+
+@pytest.mark.usefixtures("restore_clipboard")
+def test_clipboard_files_round_trip(tmp_path):
+    first, second = tmp_path / "a.txt", tmp_path / "b.txt"
+    first.touch()
+    second.touch()
+
+    macos.clipboard.copy_files([first, second])
+    assert [path.resolve() for path in macos.clipboard.paste_files()] == [first.resolve(), second.resolve()]
+
+    macos.clipboard.copy("text")
+    assert macos.clipboard.paste_files() == []
+
+
+def test_battery_health():
+    battery = macos.power.battery()
+    if battery is None:
+        pytest.skip("no battery")
+    assert battery.cycle_count is None or battery.cycle_count >= 0
+    assert battery.health is None or 0 < battery.health <= 100
+
+
+def test_volumes_and_eject(tmp_path):
+    import subprocess
+
+    volumes = macos.system.volumes()
+    assert volumes[0].path == Path("/") and volumes[0].total > 0
+
+    name = "PymacosTest{}".format(uuid.uuid4().hex[:6])
+    image = tmp_path / "test.dmg"
+    created = subprocess.run(
+        ["hdiutil", "create", "-size", "2m", "-fs", "HFS+", "-volname", name, "-o", str(image), "-quiet"]
+    )
+    if created.returncode != 0 or subprocess.run(["hdiutil", "attach", str(image), "-quiet"]).returncode != 0:
+        pytest.skip("hdiutil can't create or attach disk images here")
+    try:
+        mounted = [volume for volume in macos.system.volumes() if volume.name == name]
+        assert mounted and mounted[0].is_ejectable
+        macos.system.eject(name)
+        assert name not in [volume.name for volume in macos.system.volumes()]
+    finally:
+        subprocess.run(["hdiutil", "detach", "/Volumes/{}".format(name), "-quiet"], capture_output=True)

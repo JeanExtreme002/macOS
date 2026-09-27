@@ -19,14 +19,14 @@ import ctypes
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, List, Union
+from typing import Iterable, List, Optional, Union
 
-from . import _objc
+from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
 from ._system import framework, run
 from .errors import MacOSError
 
-__all__ = ["reveal", "trash", "tags", "set_tags", "add_tags", "remove_tags"]
+__all__ = ["reveal", "trash", "tags", "set_tags", "add_tags", "remove_tags", "thumbnail"]
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -38,13 +38,8 @@ def _existing(path: PathLike) -> Path:
     return resolved
 
 
-def _url(path: Path) -> int:
-    return _objc.send(_objc.cls("NSURL"), "fileURLWithPath:", _objc.nsstring(str(path)), argtypes=(_objc.id,))
-
-
 def _raise(error: ctypes.c_void_p, what: str) -> None:
-    message = _objc.pystring(_objc.send(error.value, "localizedDescription")) if error.value else None
-    raise MacOSError("{}: {}".format(what, message or "unknown error"))
+    raise MacOSError("{}: {}".format(what, _objc.error_message(error) or "unknown error"))
 
 
 @lru_cache(maxsize=None)
@@ -74,7 +69,7 @@ def trash(path: PathLike) -> Path:
         ok = _objc.send(
             manager,
             "trashItemAtURL:resultingItemURL:error:",
-            _url(source),
+            _objc.file_url(source),
             ctypes.byref(resulting),
             ctypes.byref(error),
             argtypes=(_objc.id, ctypes.c_void_p, ctypes.c_void_p),
@@ -92,7 +87,7 @@ def tags(path: PathLike) -> List[str]:
         value = ctypes.c_void_p()
         error = ctypes.c_void_p()
         ok = _objc.send(
-            _url(target),
+            _objc.file_url(target),
             "getResourceValue:forKey:error:",
             ctypes.byref(value),
             _tag_names_key(),
@@ -120,7 +115,7 @@ def set_tags(path: PathLike, names: Iterable[str]) -> None:
         )
         error = ctypes.c_void_p()
         ok = _objc.send(
-            _url(target),
+            _objc.file_url(target),
             "setResourceValue:forKey:error:",
             array,
             _tag_names_key(),
@@ -144,3 +139,118 @@ def remove_tags(path: PathLike, *names: str) -> List[str]:
     updated = [name for name in tags(path) if name not in names]
     set_tags(path, updated)
     return updated
+
+
+_MAX_THUMBNAIL = 4096
+
+
+@lru_cache(maxsize=None)
+def _graphics() -> ctypes.CDLL:
+    cg = framework("CoreGraphics")
+    cg.CGImageGetWidth.argtypes = (ctypes.c_void_p,)
+    cg.CGImageGetWidth.restype = ctypes.c_size_t
+    cg.CGImageGetHeight.argtypes = (ctypes.c_void_p,)
+    cg.CGImageGetHeight.restype = ctypes.c_size_t
+    cg.CGColorSpaceCreateDeviceRGB.argtypes = ()
+    cg.CGColorSpaceCreateDeviceRGB.restype = ctypes.c_void_p
+    cg.CGColorSpaceRelease.argtypes = (ctypes.c_void_p,)
+    cg.CGColorSpaceRelease.restype = None
+    cg.CGBitmapContextCreate.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+    )
+    cg.CGBitmapContextCreate.restype = ctypes.c_void_p
+    cg.CGContextSetInterpolationQuality.argtypes = (ctypes.c_void_p, ctypes.c_int32)
+    cg.CGContextSetInterpolationQuality.restype = None
+    cg.CGContextDrawImage.argtypes = (ctypes.c_void_p, _objc.CGRect, ctypes.c_void_p)
+    cg.CGContextDrawImage.restype = None
+    cg.CGBitmapContextCreateImage.argtypes = (ctypes.c_void_p,)
+    cg.CGBitmapContextCreateImage.restype = ctypes.c_void_p
+    cg.CGContextRelease.argtypes = (ctypes.c_void_p,)
+    cg.CGContextRelease.restype = None
+    return cg
+
+
+def _fit(image: int, size: int) -> Optional[int]:
+    """A new ``CGImage`` scaled so its largest side is ``size`` pixels (caller releases it), or ``None``."""
+    cg = _graphics()
+    width, height = cg.CGImageGetWidth(image), cg.CGImageGetHeight(image)
+    scale = size / max(width, height, 1)
+    new_width, new_height = max(1, round(width * scale)), max(1, round(height * scale))
+    space = cg.CGColorSpaceCreateDeviceRGB()
+    # 8 bits per component, premultiplied alpha last (kCGImageAlphaPremultipliedLast).
+    context = cg.CGBitmapContextCreate(None, new_width, new_height, 8, 0, space, 1)
+    cg.CGColorSpaceRelease(space)
+    if not context:
+        return None
+    try:
+        cg.CGContextSetInterpolationQuality(context, 3)  # kCGInterpolationHigh
+        rect = _objc.CGRect(_objc.CGPoint(0, 0), _objc.CGSize(new_width, new_height))
+        cg.CGContextDrawImage(context, rect, image)
+        return cg.CGBitmapContextCreateImage(context) or None
+    finally:
+        cg.CGContextRelease(context)
+
+
+@lru_cache(maxsize=None)
+def _quicklook() -> ctypes.CDLL:
+    quicklook = framework("QuickLook")
+    quicklook.QLThumbnailImageCreate.argtypes = (ctypes.c_void_p, ctypes.c_void_p, _objc.CGSize, ctypes.c_void_p)
+    quicklook.QLThumbnailImageCreate.restype = ctypes.c_void_p
+    return quicklook
+
+
+def _encode(image: Optional[int]) -> bytes:
+    """Encode an owned ``CGImage`` as PNG bytes and release it."""
+    if not image:
+        raise MacOSError("the preview could not be drawn")
+    try:
+        rep = _objc.send(_objc.cls("NSBitmapImageRep"), "alloc")
+        rep = _objc.send(rep, "initWithCGImage:", image, argtypes=(ctypes.c_void_p,))
+        _objc.send(rep, "autorelease")
+        return _objc.png(rep)
+    finally:
+        _cf.release(image)
+
+
+def thumbnail(path: PathLike, *, size: int = 256) -> bytes:
+    """
+    Return a preview of ``path`` as PNG bytes, like the ones Finder shows.
+
+    Documents, images, videos and PDFs get a Quick Look preview of their
+    content; anything else (apps, folders, unknown files) gets its icon.
+    ``size`` is the largest side, in pixels (up to 4096)::
+
+        Path("preview.png").write_bytes(macos.finder.thumbnail("report.pdf"))
+    """
+    if not 0 < size <= _MAX_THUMBNAIL:
+        raise ValueError("size must be from 1 to {}, not {}".format(_MAX_THUMBNAIL, size))
+    target = _existing(path)
+    framework("AppKit")
+    with _objc.autorelease_pool():
+        image = _quicklook().QLThumbnailImageCreate(None, _objc.file_url(target), _objc.CGSize(size, size), None)
+        if image:
+            return _encode(image)
+
+        # No Quick Look preview: fall back to the file's icon, drawn at `size`.
+        workspace = _objc.send(_objc.cls("NSWorkspace"), "sharedWorkspace")
+        icon = _objc.send(workspace, "iconForFile:", _objc.nsstring(str(target)), argtypes=(_objc.id,))
+        rect = _objc.CGRect(_objc.CGPoint(0, 0), _objc.CGSize(size, size))
+        cgimage = _objc.send(
+            icon,
+            "CGImageForProposedRect:context:hints:",
+            ctypes.byref(rect),
+            None,
+            None,
+            argtypes=(ctypes.c_void_p, _objc.id, _objc.id),
+            restype=ctypes.c_void_p,
+        )
+        if not cgimage:
+            raise MacOSError("the icon of {} could not be drawn".format(target))
+        # On a Retina display the icon comes out at twice the size: scale it.
+        return _encode(_fit(cgimage, size))

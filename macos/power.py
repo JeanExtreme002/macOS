@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import lru_cache
-from typing import Iterator, Optional
+from typing import Dict, Iterator, Optional, Tuple
 
 from . import _cf
 from ._system import framework, run
@@ -53,7 +53,47 @@ def _iokit() -> ctypes.CDLL:
     io.IOPMAssertionCreateWithName.restype = ctypes.c_int
     io.IOPMAssertionRelease.argtypes = (ctypes.c_uint32,)
     io.IOPMAssertionRelease.restype = ctypes.c_int
+
+    io.IOServiceMatching.argtypes = (ctypes.c_char_p,)
+    io.IOServiceMatching.restype = _cf.CFTypeRef
+    io.IOServiceGetMatchingService.argtypes = (ctypes.c_uint32, _cf.CFTypeRef)
+    io.IOServiceGetMatchingService.restype = ctypes.c_uint32
+    io.IORegistryEntryCreateCFProperty.argtypes = (ctypes.c_uint32, _cf.CFTypeRef, _cf.CFTypeRef, ctypes.c_uint32)
+    io.IORegistryEntryCreateCFProperty.restype = _cf.CFTypeRef
+    io.IOObjectRelease.argtypes = (ctypes.c_uint32,)
+    io.IOObjectRelease.restype = ctypes.c_int
     return io
+
+
+def _battery_registry(*names: str) -> Dict[str, Optional[int]]:
+    """Integer properties of the AppleSmartBattery service (``None`` when missing)."""
+    io = _iokit()
+    service = io.IOServiceGetMatchingService(0, io.IOServiceMatching(b"AppleSmartBattery"))
+    values: Dict[str, Optional[int]] = {name: None for name in names}
+    if not service:
+        return values
+    try:
+        for name in names:
+            with _cf.owned(_cf.string(name)) as key:
+                with _cf.owned(io.IORegistryEntryCreateCFProperty(service, key, None, 0)) as ref:
+                    values[name] = _cf.to_int(ref)
+    finally:
+        io.IOObjectRelease(service)
+    return values
+
+
+def _health() -> Tuple[Optional[int], Optional[int]]:
+    data = _battery_registry("CycleCount", "DesignCapacity", "NominalChargeCapacity", "AppleRawMaxCapacity", "MaxCapacity")
+    design = data["DesignCapacity"]
+    # System Settings uses the nominal charge capacity; older Macs only have
+    # the raw maximum (Apple Silicon) or report MaxCapacity in mAh (Intel).
+    full = data["NominalChargeCapacity"] or data["AppleRawMaxCapacity"]
+    if full is None and (data["MaxCapacity"] or 0) > 100:
+        full = data["MaxCapacity"]
+    # A new battery can hold slightly more than its design capacity; System
+    # Settings shows that as 100%.
+    health = min(100, round(full * 100 / design)) if full and design else None
+    return data["CycleCount"], health
 
 
 @dataclass(frozen=True)
@@ -69,6 +109,11 @@ class Battery:
     time_remaining: Optional[timedelta]
     """Time until empty on battery, or until full while charging.
     ``None`` while macOS is still estimating, or when fully charged."""
+    cycle_count: Optional[int] = None
+    """How many full charge cycles the battery has gone through."""
+    health: Optional[int] = None
+    """Maximum capacity compared with when it was new, in percent, as shown in
+    System Settings › Battery › Battery Health."""
 
 
 def _minutes(value: Optional[int]) -> Optional[timedelta]:
@@ -94,11 +139,14 @@ def battery() -> Optional[Battery]:
             key = "Time to Full Charge" if charging else "Time to Empty"
             remaining = _minutes(_cf.to_int(_cf.lookup(description, key)))
 
+            cycle_count, health = _health()
             return Battery(
                 percent=round(current * 100 / maximum) if maximum else 0,
                 charging=charging,
                 plugged_in=plugged_in,
                 time_remaining=remaining if charging or not plugged_in else None,
+                cycle_count=cycle_count,
+                health=health,
             )
     return None
 
