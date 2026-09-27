@@ -1,0 +1,95 @@
+[project]
+name = "macos"
+dynamic = ["version"]
+description = "A Pythonic interface to macOS — notifications, clipboard, dark mode, apps, keychain, speech and screenshots in one dependency-free import."
+authors = [
+    { name = "Jean Loui Bernard Silva de Jesus", email = "contact@jeanloui.dev" },
+]
+maintainers = [
+    { name = "Jean Loui Bernard Silva de Jesus", email = "contact@jeanloui.dev" },
+]
+license = "MIT"
+license-files = ["LICENSE*"]
+readme = "README.md"
+keywords = [
+    "macos",
+    "mac",
+    "osx",
+    "automation",
+    "notifications",
+    "clipboard",
+    "dark-mode",
+    "keychain",
+    "text-to-speech",
+    "screenshot",
+    "appkit",
+    "cocoa",
+    "ctypes",
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Desktop Environment",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+requires-python = ">=3.9"
+# Dependency-free on purpose: native features talk to the system frameworks
+# through ctypes (no PyObjC), the rest wraps commands that ship with macOS.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "flake8",
+    "mypy",
+    "build",
+    "twine",
+]
+
+[project.urls]
+Homepage = "https://github.com/JeanExtreme002/macos"
+Repository = "https://github.com/JeanExtreme002/macos"
+Issues = "https://github.com/JeanExtreme002/macos/issues"
+Changelog = "https://github.com/JeanExtreme002/macos/releases"
+Funding = "https://github.com/sponsors/JeanExtreme002"
+
+[tool.mypy]
+ignore_missing_imports = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+markers = [
+    "live: talks to the real system (macOS only); may touch the clipboard, Keychain and running apps",
+]
+
+[tool.coverage.run]
+source = ["macos"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.hatch.version]
+path = "macos/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["macos"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/.github"]
+
+# hatchling>=1.27 is required for the PEP 639 ``license``/``license-files`` metadata.
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"

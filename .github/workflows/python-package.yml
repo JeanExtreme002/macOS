@@ -1,0 +1,67 @@
+name: Python Package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install dev deps
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    - name: Lint
+      run: flake8 macos tests
+    - name: Type-check
+      run: mypy macos
+
+  # The live tests talk to the real system (NSWorkspace, the Keychain, the
+  # pasteboard, screencapture), so the Python-version sweep runs on macOS.
+  test-macos:
+    needs: lint
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    - name: Test with pytest
+      run: pytest tests -v --cov=macos --cov-report=term
+
+  # The package must import anywhere and fail with NotSupportedError, so the
+  # unit tests also run on Linux (the live ones skip themselves there).
+  test-linux:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    - name: Test with pytest
+      run: pytest tests -v
