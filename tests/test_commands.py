@@ -648,6 +648,14 @@ def test_dialog_choose_files(fake_run, tmp_path):
     assert macos.dialog.choose_folder() is None
 
 
+@pytest.mark.parametrize("timeout, seconds", [(0.1, 1), (0.5, 1), (1, 1), (1.4, 2), (2.5, 3)])
+def test_dialog_timeouts_round_up_to_whole_seconds(fake_run, timeout, seconds):
+    fake_run.stdout = "timeout\n"
+
+    macos.dialog.confirm("x", timeout=timeout)
+    assert "giving up after {}".format(seconds) in _script(fake_run.args)
+
+
 def test_dialog_rejects_bad_timeout():
     with pytest.raises(ValueError):
         macos.dialog.confirm("x", timeout=0)
@@ -695,3 +703,14 @@ def test_clipboard_wait_for_change_times_out(monkeypatch):
 
     with pytest.raises(TimeoutError):
         macos.clipboard.wait_for_change(timeout=0.01, interval=0.001)
+
+
+def test_clipboard_wait_for_change_never_sleeps_past_the_timeout(monkeypatch):
+    import time
+
+    monkeypatch.setattr(macos.clipboard, "change_count", lambda: 1)
+    start = time.monotonic()
+
+    with pytest.raises(TimeoutError):
+        macos.clipboard.wait_for_change(timeout=0.05, interval=10)
+    assert time.monotonic() - start < 1

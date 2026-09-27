@@ -90,9 +90,14 @@ def wait_for_change(*, timeout: Optional[float] = None, interval: float = 0.2) -
     start = change_count()
     deadline = None if timeout is None else time.monotonic() + timeout
     while change_count() == start:
-        if deadline is not None and time.monotonic() >= deadline:
+        if deadline is None:
+            time.sleep(interval)
+            continue
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             raise TimeoutError("the clipboard didn't change within {}s".format(timeout))
-        time.sleep(interval)
+        # Never sleep past the deadline, even with a long interval.
+        time.sleep(min(interval, remaining))
     return paste()
 
 

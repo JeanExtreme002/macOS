@@ -14,9 +14,10 @@ Native dialogs: alerts, confirmations, text input and file pickers.
 Dialogs are shown through AppleScript (Standard Additions), so they need no
 permission and look like any other macOS dialog. They block until the user
 answers; most take a ``timeout`` in seconds, after which they close as if
-cancelled.
+cancelled. Timeouts are whole seconds: a fraction is rounded up.
 """
 
+import math
 import os
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
@@ -60,7 +61,10 @@ def _giving_up(timeout: Optional[float]) -> str:
         return ""
     if timeout <= 0:
         raise ValueError("timeout must be positive, not {}".format(timeout))
-    return " giving up after {}".format(max(1, round(timeout)))
+    # AppleScript only counts whole seconds, and rounds a fraction to the
+    # nearest one: 0.5 would become 0, which means "never give up". Round up
+    # instead, so the dialog never closes before the requested time.
+    return " giving up after {}".format(math.ceil(timeout))
 
 
 def _gave_up_check(timeout: Optional[float]) -> List[str]:

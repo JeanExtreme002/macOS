@@ -72,7 +72,8 @@ cancelled.
 
 {func}`~macos.dialog.alert`, {func}`~macos.dialog.confirm` and
 {func}`~macos.dialog.prompt` accept a `timeout` in seconds. When it runs out,
-the dialog closes as if the user had cancelled:
+the dialog closes as if the user had cancelled. macOS counts whole seconds, so
+a fraction is rounded up (`timeout=1.5` waits 2 seconds):
 
 ```python
 if macos.dialog.confirm("Restart now?", timeout=30):   # False after 30 s
