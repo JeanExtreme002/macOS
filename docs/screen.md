@@ -26,7 +26,7 @@ path.unlink()
 ### Options
 
 ```python
-macos.screenshot("area.png", region=(0, 0, 800, 600))   # x, y, width, height
+macos.screenshot("area.png", region=(0, 0, 800, 600))    # x, y, width, height
 macos.screenshot("second.png", display=2)                # another display
 macos.screenshot("pointer.png", cursor=True)             # include the mouse pointer
 ```
@@ -76,8 +76,8 @@ the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
 ## Wallpaper
 
 ```python
-macos.screen.wallpaper()                    # PosixPath('/System/Library/Desktop Pictures/...')
-macos.screen.set_wallpaper("mountains.jpg")                   # on every display
+macos.screen.wallpaper()   # PosixPath('/System/Library/Desktop Pictures/...')
+macos.screen.set_wallpaper("mountains.jpg")                      # on every display
 macos.screen.set_wallpaper("mountains.jpg", display=display.id)  # only one
 ```
 

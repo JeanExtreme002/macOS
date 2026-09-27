@@ -22,8 +22,7 @@ the Mac spent asleep.
 
 ## Volumes
 
-{func}`~macos.system.volumes` lists the mounted volumes that Finder shows (the
-startup disk first), and {func}`~macos.system.eject` ejects one:
+{func}`~macos.system.volumes` lists the mounted volumes that Finder shows, and {func}`~macos.system.eject` ejects one:
 
 ```python
 for volume in macos.system.volumes():
