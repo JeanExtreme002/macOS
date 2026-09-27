@@ -23,7 +23,7 @@ from typing import List, Set, Union
 
 from . import _objc
 from ._objc import BOOL
-from ._system import framework
+from ._system import framework, require_macos
 
 __all__ = ["play", "beep", "names"]
 
@@ -40,6 +40,7 @@ def _appkit() -> ctypes.CDLL:
 
 def names() -> List[str]:
     """Return the names of the alert sounds that :func:`play` accepts, as in System Settings › Sound."""
+    require_macos()
     found: Set[str] = set()
     for folder in _SOUND_FOLDERS:
         if folder.is_dir():

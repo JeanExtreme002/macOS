@@ -295,6 +295,7 @@ class _ImmediateThread:
         lambda: macos.language.keywords("battery life"),
         lambda: macos.sound.play("Glass"),
         lambda: macos.sound.beep(),
+        lambda: macos.sound.names(),
         lambda: macos.network.is_online(),
         lambda: macos.network.ip(),
         lambda: macos.network.wifi_power(),

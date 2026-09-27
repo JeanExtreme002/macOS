@@ -117,7 +117,10 @@ def _string(target: int, selector: str) -> str:
     raw = _property(target, selector)
     if not raw:
         return ""
-    with _cf.owned(ctypes.c_void_p.from_buffer_copy(raw).value) as ref:  # the property is a +1 CFString
+    # AudioHardwareBase.h, for kAudioObjectPropertyName and
+    # kAudioDevicePropertyDeviceUID: "The caller is responsible for releasing
+    # the returned CFObject", so the string is released once read.
+    with _cf.owned(ctypes.c_void_p.from_buffer_copy(raw).value) as ref:
         return _cf.to_str(ref) or ""
 
 
