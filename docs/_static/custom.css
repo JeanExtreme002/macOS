@@ -66,3 +66,29 @@
 .repo-link button.toctree-expand {
   display: none;
 }
+
+/* --- Badge table on the home page (docs/index.md) ----------------------- */
+/* The same labelled table as the README. The RTD theme only styles Markdown
+   tables (`table.docutils`), so this raw HTML one gets its borders here. */
+.badge-table {
+  margin-bottom: 1.5rem;
+  border-collapse: collapse;
+}
+
+.badge-table th,
+.badge-table td {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #e1e4e5;
+  vertical-align: middle;
+}
+
+.badge-table th {
+  background: #f3f6f6;
+  text-align: center;
+}
+
+.badge-table td a {
+  display: inline-block;
+  margin: 0.1rem 0.15rem;
+  line-height: 0;
+}
