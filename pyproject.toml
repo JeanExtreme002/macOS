@@ -1,7 +1,7 @@
 [project]
 name = "pymacos"
 dynamic = ["version"]
-description = "A Pythonic interface to macOS — notifications, clipboard, dark mode, apps, Keychain, speech, screenshots, battery, Shortcuts and Finder in one dependency-free import."
+description = "Control your Mac from Python: notifications, clipboard, apps, Keychain, speech and more."
 authors = [
     { name = "Jean Loui Bernard Silva de Jesus", email = "contact@jeanloui.dev" },
 ]
