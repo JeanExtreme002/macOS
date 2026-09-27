@@ -84,10 +84,10 @@ Only vectors from the same language can be compared.
 ## Names of people, places and organizations
 
 ```python
-macos.language.entities("Tim Cook visitou São Paulo com a Apple ontem.")
+macos.language.entities("Tim Cook, the CEO of Apple, visited São Paulo yesterday.")
 # [Entity(text='Tim Cook', kind='person', start=0),
-#  Entity(text='São Paulo', kind='place', start=17),
-#  Entity(text='Apple', kind='organization', start=33)]
+#  Entity(text='Apple', kind='organization', start=21),
+#  Entity(text='São Paulo', kind='place', start=36)]
 ```
 
 `start` is where the name begins in the text. It's a statistical model: common
@@ -99,8 +99,9 @@ macOS keeps language models only for the languages it uses, and downloads the
 others on demand. {func}`~macos.language.similarity`,
 {func}`~macos.language.embedding` and {func}`~macos.language.entities` raise
 {class}`~macos.NotSupportedError` for a language whose model isn't on the Mac,
-instead of returning a misleading result. Adding the language in System
-Settings › General › Language & Region makes macOS download it. Detecting the
+instead of returning a misleading result. 
+
+Adding the language in System Settings › General › Language & Region makes macOS download it. Detecting the
 language works for every language, always.
 
 ## Reference

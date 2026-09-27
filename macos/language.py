@@ -219,10 +219,10 @@ def entities(text: str, *, language: Optional[str] = None) -> List[Entity]:
     """
     Find the names of people, places and organizations in a text::
 
-        macos.language.entities("Tim Cook visitou São Paulo com a Apple")
+        macos.language.entities("Tim Cook, the CEO of Apple, visited São Paulo yesterday.")
         # [Entity(text='Tim Cook', kind='person', start=0),
-        #  Entity(text='São Paulo', kind='place', start=17),
-        #  Entity(text='Apple', kind='organization', start=33)]
+        #  Entity(text='Apple', kind='organization', start=21),
+        #  Entity(text='São Paulo', kind='place', start=36)]
 
     It's a statistical model: common names are found reliably, unusual ones
     can be missed or mislabelled. ``language`` is detected when omitted.
