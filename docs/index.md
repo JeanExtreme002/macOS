@@ -63,27 +63,45 @@ permissions
 ```
 
 ```{toctree}
-:caption: Features
+:caption: Apps & Automation
 :hidden:
 
-notifications
-clipboard
-appearance
 apps
-keychain
-speech
-screen
-power
-shortcuts
-finder
-volume
-spotlight
 dialog
-system
-vision
+notifications
+shortcuts
+speech
+```
+
+```{toctree}
+:caption: Files & Documents
+:hidden:
+
+clipboard
+finder
 image
 pdf
+spotlight
+```
+
+```{toctree}
+:caption: System & Hardware
+:hidden:
+
+appearance
+keychain
+power
+screen
+system
+volume
+```
+
+```{toctree}
+:caption: Intelligence
+:hidden:
+
 language
+vision
 ```
 
 ```{toctree}
