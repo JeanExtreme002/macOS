@@ -33,7 +33,9 @@ macos.system.eject("Backup")         # by name, by path, or a Volume
 
 Each {class}`~macos.system.Volume` has its `name`, mount `path`, `total` and
 `free` space in bytes, and whether it `is_internal`, `is_removable` (USB sticks,
-SD cards) or `is_ejectable`. {func}`~macos.system.eject` only accepts ejectable
+SD cards) or `is_ejectable`.
+
+{func}`~macos.system.eject` only accepts ejectable
 volumes; when two share a name, pass the path.
 
 ## Running while the user is away

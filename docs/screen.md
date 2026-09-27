@@ -77,7 +77,7 @@ the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
 
 ```python
 macos.screen.wallpaper()   # PosixPath('/System/Library/Desktop Pictures/...')
-macos.screen.set_wallpaper("mountains.jpg")                      # on every display
+macos.screen.set_wallpaper("mountains.jpg")                         # on every display
 macos.screen.set_wallpaper("mountains.jpg", display_id=display.id)  # only one
 ```
 
