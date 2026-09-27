@@ -698,9 +698,12 @@ def test_similarity_and_embeddings():
     assert macos.language.similarity("car", "automobile", language="en") > macos.language.similarity(
         "car", "banana", language="en"
     )
-    assert macos.language.similarity("carro", "automóvel", language="pt") > macos.language.similarity(
-        "carro", "banana", language="pt"
-    )
+    try:  # macOS only has the models for the languages it uses (CI runners: English)
+        assert macos.language.similarity("carro", "automóvel", language="pt") > macos.language.similarity(
+            "carro", "banana", language="pt"
+        )
+    except macos.NotSupportedError:
+        pass
     question = "How do I change my password?"
     assert macos.language.similarity(question, "I forgot the password of my account") > macos.language.similarity(
         question, "What time does the store open?"
@@ -710,10 +713,21 @@ def test_similarity_and_embeddings():
 
 
 def test_entities():
-    found = macos.language.entities("Tim Cook visitou São Paulo com a Apple ontem.")
-    assert ("Tim Cook", "person", 0) in [(entity.text, entity.kind, entity.start) for entity in found]
-    assert "São Paulo" in [entity.text for entity in found if entity.kind == "place"]
+    found = macos.language.entities("Yesterday Tim Cook visited New York with engineers from Apple.")
+    assert ("Tim Cook", "person", 10) in [(entity.text, entity.kind, entity.start) for entity in found]
+    assert "New York" in [entity.text for entity in found if entity.kind == "place"]
     assert macos.language.entities("   ") == []
+
+    try:  # accents and positions in a non-English text, where the model is installed
+        found = macos.language.entities("Tim Cook visitou São Paulo com a Apple ontem 🙂.", language="pt")
+    except macos.NotSupportedError:
+        return
+    assert ("São Paulo", "place", 17) in [(entity.text, entity.kind, entity.start) for entity in found]
+
+
+def test_entities_without_the_language_model():
+    with pytest.raises(macos.NotSupportedError):
+        macos.language.entities("東京でティム・クックに会いました", language="ja")
 
 
 def test_sound():

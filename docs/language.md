@@ -75,6 +75,7 @@ def cosine(a, b):
 notes = ["Buy milk and eggs", "Call the dentist", "Renew the passport"]
 vectors = [macos.language.embedding(note, language="en") for note in notes]
 query = macos.language.embedding("groceries", language="en")
+
 print(max(zip(notes, vectors), key=lambda pair: cosine(query, pair[1]))[0])
 ```
 
@@ -91,6 +92,16 @@ macos.language.entities("Tim Cook visitou São Paulo com a Apple ontem.")
 
 `start` is where the name begins in the text. It's a statistical model: common
 names are found reliably, unusual ones can be missed.
+
+## Languages on this Mac
+
+macOS keeps language models only for the languages it uses, and downloads the
+others on demand. {func}`~macos.language.similarity`,
+{func}`~macos.language.embedding` and {func}`~macos.language.entities` raise
+{class}`~macos.NotSupportedError` for a language whose model isn't on the Mac,
+instead of returning a misleading result. Adding the language in System
+Settings › General › Language & Region makes macOS download it. Detecting the
+language works for every language, always.
 
 ## Reference
 

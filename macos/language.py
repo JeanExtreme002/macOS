@@ -137,7 +137,9 @@ def similarity(first: str, second: str, *, language: Optional[str] = None) -> fl
     sentence model. ``language`` (``'pt'``, ``'en'``...) is detected when
     omitted, but detection needs a few words: for single words or very short
     texts, pass it (``similarity("car", "automobile", language="en")``), or
-    they may be read as another language. The scores are for comparing: ``similarity(q, a)`` against
+    they may be read as another language. Like :func:`entities`, it raises
+    :class:`~macos.errors.NotSupportedError` for a language whose model this
+    Mac doesn't have. The scores are for comparing: ``similarity(q, a)`` against
     ``similarity(q, b)`` says which of ``a`` and ``b`` is closer to ``q``,
     while a value alone means little. Opposites (``'happy'``/``'sad'``) often
     score as related, since they appear in similar contexts.
@@ -200,7 +202,20 @@ class _NSRange(ctypes.Structure):
     _fields_ = [("location", NSUInteger), ("length", NSUInteger)]
 
 
-def entities(text: str) -> List[Entity]:
+def _has_names(language: str) -> bool:
+    """Whether this Mac has the name-recognition model for ``language``."""
+    with _objc.autorelease_pool():
+        schemes = _objc.send(
+            _objc.cls("NLTagger"),
+            "availableTagSchemesForUnit:language:",
+            _WORD,
+            _objc.nsstring(language),
+            argtypes=(NSInteger, _objc.id),
+        )
+        return "NameType" in {_objc.pystring(scheme) for scheme in _objc.nsarray(schemes)}
+
+
+def entities(text: str, *, language: Optional[str] = None) -> List[Entity]:
     """
     Find the names of people, places and organizations in a text::
 
@@ -210,11 +225,19 @@ def entities(text: str) -> List[Entity]:
         #  Entity(text='Apple', kind='organization', start=33)]
 
     It's a statistical model: common names are found reliably, unusual ones
-    can be missed or mislabelled.
+    can be missed or mislabelled. ``language`` is detected when omitted.
+
+    The model is per language, and macOS only has the ones for the languages
+    it uses: for others it raises :class:`~macos.errors.NotSupportedError`
+    rather than silently finding nothing. Adding the language in System
+    Settings › General › Language & Region makes macOS download it.
     """
     library = _load()
     if not text.strip():
         return []
+    code = _language_of(text, language)
+    if not _has_names(code):
+        raise NotSupportedError("this Mac has no name recognition for the language {!r}".format(code))
     scheme = ctypes.c_void_p.in_dll(library, "NLTagSchemeNameType").value
     if scheme is None:
         raise NotSupportedError("name recognition is not available on this Mac")
@@ -233,6 +256,8 @@ def entities(text: str) -> List[Entity]:
         tagger = _objc.send(tagger, "initWithTagSchemes:", _objc.nsarray_of([scheme]), argtypes=(_objc.id,))
         _objc.send(tagger, "autorelease")
         _objc.send(tagger, "setString:", _objc.nsstring(text), argtypes=(_objc.id,), restype=None)
+        whole = _NSRange(0, len(units) // 2)
+        _objc.send(tagger, "setLanguage:range:", _objc.nsstring(code), whole, argtypes=(_objc.id, _NSRange), restype=None)
         index, total = 0, len(units) // 2
         while index < total:
             found = _NSRange()
