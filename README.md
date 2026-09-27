@@ -17,8 +17,10 @@ macos.screenshot("screen.png")
 ## Install
 
 ```bash
-pip install macos
+pip install pymacos
 ```
+
+The package is installed as `pymacos` and imported as `macos`.
 
 Requires macOS and Python 3.9+.
 
@@ -37,6 +39,6 @@ The full guide and API reference are at **[macos.readthedocs.io](https://macos.r
 
 ## License
 
-Released under the [MIT License](https://github.com/JeanExtreme002/macOS/blob/main/LICENSE) — free for personal and commercial use.
+Released under the [MIT License](https://github.com/JeanExtreme002/pymacos/blob/main/LICENSE) — free for personal and commercial use.
 
 <sub>Not affiliated with or endorsed by Apple Inc. macOS is a trademark of Apple Inc.</sub>

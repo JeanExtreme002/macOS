@@ -3,7 +3,14 @@
 Install from PyPI:
 
 ```bash
-pip install macos
+pip install pymacos
+```
+
+The distribution is named `pymacos` on PyPI, but the package you import is
+`macos`:
+
+```python
+import macos
 ```
 
 The library has no dependencies and needs no compiler: it's pure Python.

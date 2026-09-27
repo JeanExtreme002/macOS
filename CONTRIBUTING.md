@@ -1,13 +1,13 @@
 # Contributing
 
 Bug reports, ideas and pull requests are welcome on
-[GitHub](https://github.com/JeanExtreme002/macOS).
+[GitHub](https://github.com/JeanExtreme002/pymacos).
 
 ## Setup
 
 ```bash
-git clone https://github.com/JeanExtreme002/macOS.git
-cd macOS
+git clone https://github.com/JeanExtreme002/pymacos.git
+cd pymacos
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
