@@ -1,4 +1,4 @@
-# MacOS
+# macOS
 
 **A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps, Keychain, speech and screenshots, all from one import with zero dependencies.
 
@@ -37,4 +37,6 @@ The full guide and API reference are at **[macos.readthedocs.io](https://macos.r
 
 ## License
 
-[MIT](LICENSE). Not affiliated with or endorsed by Apple Inc. macOS is a trademark of Apple Inc.
+Released under the [MIT License](https://github.com/JeanExtreme002/macOS/blob/main/LICENSE) — free for personal and commercial use.
+
+<sub>Not affiliated with or endorsed by Apple Inc. macOS is a trademark of Apple Inc.</sub>
