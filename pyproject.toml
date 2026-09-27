@@ -59,6 +59,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/JeanExtreme002/macOS"
+Documentation = "https://macos.readthedocs.io"
 Repository = "https://github.com/JeanExtreme002/macOS"
 Issues = "https://github.com/JeanExtreme002/macOS/issues"
 Changelog = "https://github.com/JeanExtreme002/macOS/releases"

@@ -1,0 +1,42 @@
+/* macos docs: tweaks on top of the Read the Docs theme. */
+
+/* --- Persistent "Star on GitHub" CTA (injected in _templates/layout.html) --- */
+/* Sits at the top of the dark navigation menu, above the toctree.
+   Scoped under `.wy-menu-vertical a` so it beats the RTD theme's own
+   `.wy-menu-vertical a { display: block; color: ... }` rule on specificity —
+   otherwise `display: flex` (and the centering/gap it enables) is ignored. */
+.wy-menu-vertical a.github-star-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0.75rem 1rem 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 0.4rem;
+  color: #fcfcfc;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.wy-menu-vertical a.github-star-cta:hover,
+.wy-menu-vertical a.github-star-cta:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.55);
+  color: #fff;
+}
+
+.github-star-cta svg {
+  flex-shrink: 0;
+}
+
+/* The RTD theme's JavaScript injects a `<button class="toctree-expand">` as the
+   first child of every link inside `.wy-menu-vertical` (the expand/collapse caret
+   for nav items with children). Our CTA isn't a nav item, so that button renders
+   as a stray white pill before the icon — hide it. */
+.github-star-cta button.toctree-expand {
+  display: none;
+}
