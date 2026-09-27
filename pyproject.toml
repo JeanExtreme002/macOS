@@ -58,11 +58,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/JeanExtreme002/macOS"
+Homepage = "https://github.com/JeanExtreme002/pymacos"
 Documentation = "https://macos.readthedocs.io"
-Repository = "https://github.com/JeanExtreme002/macOS"
-Issues = "https://github.com/JeanExtreme002/macOS/issues"
-Changelog = "https://github.com/JeanExtreme002/macOS/releases"
+Repository = "https://github.com/JeanExtreme002/pymacos"
+Issues = "https://github.com/JeanExtreme002/pymacos/issues"
+Changelog = "https://github.com/JeanExtreme002/pymacos/releases"
 Funding = "https://github.com/sponsors/JeanExtreme002"
 
 [tool.mypy]

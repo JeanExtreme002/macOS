@@ -61,7 +61,7 @@ html_theme_options = {
 html_context = {
     "display_github": True,
     "github_user": "JeanExtreme002",
-    "github_repo": "macOS",
+    "github_repo": "pymacos",
     "github_version": "main",
     "conf_py_path": "/docs/",
 }
