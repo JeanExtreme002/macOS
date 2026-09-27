@@ -2,7 +2,8 @@
 
 **A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps,
 Keychain, speech, screenshots, battery, volume, Shortcuts, Finder, Spotlight,
-dialogs, system info and OCR, all from one import with zero dependencies.
+dialogs, system info, OCR, images, PDFs and language detection, all from one
+import with zero dependencies.
 
 <table class="badge-table">
   <tr>
@@ -62,24 +63,57 @@ permissions
 ```
 
 ```{toctree}
-:caption: Features
+:caption: Apps & Automation
 :hidden:
 
-notifications
-clipboard
-appearance
 apps
-keychain
-speech
-screen
-power
+clipboard
 shortcuts
-finder
-volume
-spotlight
+```
+
+```{toctree}
+:caption: User Interaction
+:hidden:
+
 dialog
-system
+notifications
+speech
+```
+
+```{toctree}
+:caption: Files & Documents
+:hidden:
+
+finder
+image
+pdf
+spotlight
+```
+
+```{toctree}
+:caption: Intelligence
+:hidden:
+
+language
 vision
+```
+
+```{toctree}
+:caption: Security
+:hidden:
+
+keychain
+```
+
+```{toctree}
+:caption: System & Hardware
+:hidden:
+
+appearance
+power
+screen
+system
+volume
 ```
 
 ```{toctree}

@@ -26,7 +26,7 @@ from ._objc import BOOL, NSInteger, NSUInteger
 from ._system import framework
 from .errors import MacOSError
 
-__all__ = ["text", "lines", "languages", "TextLine"]
+__all__ = ["text", "lines", "languages", "barcodes", "classify", "faces", "TextLine", "Barcode"]
 
 Image = Union[bytes, str, "os.PathLike[str]"]
 
@@ -42,6 +42,18 @@ class TextLine:
     text: str
     confidence: float
     """From 0.0 to 1.0."""
+    box: Tuple[float, float, float, float]
+    """``(x, y, width, height)`` as fractions of the image size, from its top-left corner."""
+
+
+@dataclass(frozen=True)
+class Barcode:
+    """A barcode or QR code found in an image."""
+
+    payload: Optional[str]
+    """What it encodes, e.g. a URL (``None`` for binary content)."""
+    kind: str
+    """The symbology, e.g. ``'QR'``, ``'EAN13'``, ``'Code128'``, ``'PDF417'``."""
     box: Tuple[float, float, float, float]
     """``(x, y, width, height)`` as fractions of the image size, from its top-left corner."""
 
@@ -81,6 +93,33 @@ def _request(languages: Optional[Sequence[str]], fast: bool) -> int:
     return request
 
 
+def _perform(image: Image, request: int) -> List[int]:
+    """Run a Vision request on an image and return its result observations (autoreleased)."""
+    handler = _handler(image)
+    error = ctypes.c_void_p()
+    ok = _objc.send(
+        handler,
+        "performRequests:error:",
+        _objc.nsarray_of([request]),
+        ctypes.byref(error),
+        argtypes=(_objc.id, ctypes.c_void_p),
+        restype=BOOL,
+    )
+    if not ok:
+        raise _error(error, "the image could not be read", prefix="the image could not be read: ")
+    return list(_objc.nsarray(_objc.send(request, "results")))
+
+
+def _box(observation: int) -> Tuple[float, float, float, float]:
+    box = _objc.send(observation, "boundingBox", restype=_objc.CGRect)
+    # Vision measures from the bottom-left corner.
+    return (box.origin.x, 1.0 - box.origin.y - box.size.height, box.size.width, box.size.height)
+
+
+def _confidence(observation: int) -> float:
+    return round(float(_objc.send(observation, "confidence", restype=ctypes.c_float)), 3)
+
+
 def _error(error: ctypes.c_void_p, fallback: str, prefix: str = "") -> MacOSError:
     message = _objc.error_message(error)
     return MacOSError(prefix + message if message else fallback)
@@ -99,35 +138,14 @@ def lines(image: Image, *, languages: Optional[Sequence[str]] = None, fast: bool
     _load()
     found: List[Any] = []
     with _objc.autorelease_pool():
-        handler = _handler(image)
-        request = _request(languages, fast)
-        error = ctypes.c_void_p()
-        ok = _objc.send(
-            handler,
-            "performRequests:error:",
-            _objc.nsarray_of([request]),
-            ctypes.byref(error),
-            argtypes=(_objc.id, ctypes.c_void_p),
-            restype=BOOL,
-        )
-        if not ok:
-            raise _error(error, "the image could not be read", prefix="the image could not be read: ")
-
-        for observation in _objc.nsarray(_objc.send(request, "results")):
+        for observation in _perform(image, _request(languages, fast)):
             candidates = _objc.send(observation, "topCandidates:", 1, argtypes=(NSUInteger,))
             for candidate in _objc.nsarray(candidates):
-                box = _objc.send(observation, "boundingBox", restype=_objc.CGRect)
                 found.append(
                     TextLine(
                         text=_objc.pystring(_objc.send(candidate, "string")) or "",
-                        confidence=round(float(_objc.send(candidate, "confidence", restype=ctypes.c_float)), 3),
-                        # Vision measures from the bottom-left corner.
-                        box=(
-                            box.origin.x,
-                            1.0 - box.origin.y - box.size.height,
-                            box.size.width,
-                            box.size.height,
-                        ),
+                        confidence=_confidence(candidate),
+                        box=_box(observation),
                     )
                 )
     # Vision returns lines in detection order: sort them top to bottom (then
@@ -152,3 +170,61 @@ def languages(*, fast: bool = False) -> List[str]:
         if not codes:
             raise _error(error, "the supported languages could not be read")
         return [code for code in (_objc.pystring(item) for item in _objc.nsarray(codes)) if code]
+
+
+def barcodes(image: Image) -> List[Barcode]:
+    """
+    Find QR codes and barcodes (EAN, UPC, Code 128, PDF417, Aztec, Data Matrix...) in an image.
+
+    ::
+
+        [code.payload for code in macos.vision.barcodes("poster.jpg")]   # ['https://...']
+    """
+    _load()
+    found = []
+    with _objc.autorelease_pool():
+        for observation in _perform(image, _objc.new("VNDetectBarcodesRequest")):
+            kind = _objc.pystring(_objc.send(observation, "symbology")) or ""
+            found.append(
+                Barcode(
+                    payload=_objc.pystring(_objc.send(observation, "payloadStringValue")),
+                    kind=kind.replace("VNBarcodeSymbology", ""),
+                    box=_box(observation),
+                )
+            )
+    return found
+
+
+def classify(image: Image, *, limit: int = 5, min_confidence: float = 0.1) -> List[Tuple[str, float]]:
+    """
+    Say what an image shows, as ``(label, confidence)`` pairs, most likely first.
+
+    ::
+
+        macos.vision.classify("holiday.jpg")   # [('beach', 0.91), ('sky', 0.87), ('ocean', 0.74)]
+
+    Labels are English words from Vision's own taxonomy (over a thousand
+    categories, such as ``'dog'``, ``'food'`` or ``'document'``).
+    """
+    if limit <= 0:
+        raise ValueError("limit must be positive, not {}".format(limit))
+    _load()
+    with _objc.autorelease_pool():
+        observations = _perform(image, _objc.new("VNClassifyImageRequest"))
+        labels = [
+            (_objc.pystring(_objc.send(observation, "identifier")) or "", _confidence(observation))
+            for observation in observations
+        ]
+    ranked = sorted((pair for pair in labels if pair[1] >= min_confidence), key=lambda pair: -pair[1])
+    return ranked[:limit]
+
+
+def faces(image: Image) -> List[Tuple[float, float, float, float]]:
+    """
+    Find faces in an image, as ``(x, y, width, height)`` boxes (fractions of the image, from the top-left).
+
+    It locates faces; it doesn't tell who they are.
+    """
+    _load()
+    with _objc.autorelease_pool():
+        return [_box(observation) for observation in _perform(image, _objc.new("VNDetectFaceRectanglesRequest"))]

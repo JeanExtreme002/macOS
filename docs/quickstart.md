@@ -102,6 +102,18 @@ if macos.dialog.confirm("Continue?"):
 macos.vision.text("receipt.png")
 ```
 
+## Convert an iPhone photo
+
+```python
+macos.image.convert("IMG_0042.heic", "IMG_0042.jpg")
+```
+
+## Read a PDF
+
+```python
+macos.pdf.text("report.pdf")
+```
+
 ## Open a file with an app
 
 ```python

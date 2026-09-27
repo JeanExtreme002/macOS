@@ -79,6 +79,16 @@ def lib() -> ctypes.CDLL:
     cf.CFNumberGetTypeID.restype = ctypes.c_ulong
     cf.CFNumberGetValue.argtypes = (CFTypeRef, ctypes.c_long, ctypes.c_void_p)
     cf.CFNumberGetValue.restype = ctypes.c_bool
+    cf.CFNumberCreate.argtypes = (CFTypeRef, ctypes.c_long, ctypes.c_void_p)
+    cf.CFNumberCreate.restype = CFTypeRef
+
+    cf.CFURLCreateFromFileSystemRepresentation.argtypes = (CFTypeRef, ctypes.c_char_p, CFIndex, ctypes.c_bool)
+    cf.CFURLCreateFromFileSystemRepresentation.restype = CFTypeRef
+
+    cf.CFDictionaryCreateMutableCopy.argtypes = (CFTypeRef, CFIndex, CFTypeRef)
+    cf.CFDictionaryCreateMutableCopy.restype = CFTypeRef
+    cf.CFDictionarySetValue.argtypes = (CFTypeRef, CFTypeRef, CFTypeRef)
+    cf.CFDictionarySetValue.restype = None
     return cf
 
 
@@ -138,6 +148,22 @@ def to_bool(ref: Optional[int]) -> bool:
 
 
 kCFNumberLongLongType = 11
+kCFNumberDoubleType = 13
+
+
+def number(value: float) -> int:
+    """Create a ``CFNumber`` (caller owns it): an integer stays an integer."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        integer = ctypes.c_longlong(value)
+        return lib().CFNumberCreate(None, kCFNumberLongLongType, ctypes.byref(integer))
+    real = ctypes.c_double(value)
+    return lib().CFNumberCreate(None, kCFNumberDoubleType, ctypes.byref(real))
+
+
+def file_url(path: str) -> int:
+    """Create a file ``CFURL`` for ``path`` (caller owns it)."""
+    raw = path.encode("utf-8")
+    return lib().CFURLCreateFromFileSystemRepresentation(None, raw, len(raw), False)
 
 
 def to_int(ref: Optional[int]) -> Optional[int]:

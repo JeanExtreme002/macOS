@@ -204,3 +204,29 @@ def png(rep: int) -> bytes:
         argtypes=(NSUInteger, id),
     )
     return pybytes(data) or b""
+
+
+def new(class_name: str) -> int:
+    """``[[class_name alloc] init]``, autoreleased."""
+    return send(send(send(cls(class_name), "alloc"), "init"), "autorelease")
+
+
+def cgimage_png(image: Optional[int]) -> bytes:
+    """Encode an owned ``CGImage`` as PNG bytes, then release it. Needs AppKit loaded."""
+    if not image:
+        raise ValueError("no image to encode")
+    try:
+        rep = send(cls("NSBitmapImageRep"), "alloc")
+        rep = send(rep, "initWithCGImage:", image, argtypes=(ctypes.c_void_p,))
+        send(rep, "autorelease")
+        return png(rep)
+    finally:
+        _core_foundation().CFRelease(image)
+
+
+@lru_cache(maxsize=None)
+def _core_foundation() -> ctypes.CDLL:
+    cf = framework("CoreFoundation")
+    cf.CFRelease.argtypes = (ctypes.c_void_p,)
+    cf.CFRelease.restype = None
+    return cf
