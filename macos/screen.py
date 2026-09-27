@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from . import _objc
 from ._system import framework, run
-from .errors import PermissionDeniedError
+from .errors import MacOSError, PermissionDeniedError
 
 __all__ = ["screenshot", "has_permission", "request_permission", "displays", "Display", "wallpaper", "set_wallpaper"]
 
@@ -121,18 +121,6 @@ def screenshot(
     return target
 
 
-class _CGPoint(ctypes.Structure):
-    _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
-
-
-class _CGSize(ctypes.Structure):
-    _fields_ = [("width", ctypes.c_double), ("height", ctypes.c_double)]
-
-
-class _CGRect(ctypes.Structure):
-    _fields_ = [("origin", _CGPoint), ("size", _CGSize)]
-
-
 @lru_cache(maxsize=None)
 def _display_api() -> ctypes.CDLL:
     cg = framework("CoreGraphics")
@@ -141,7 +129,7 @@ def _display_api() -> ctypes.CDLL:
     cg.CGMainDisplayID.argtypes = ()
     cg.CGMainDisplayID.restype = ctypes.c_uint32
     cg.CGDisplayBounds.argtypes = (ctypes.c_uint32,)
-    cg.CGDisplayBounds.restype = _CGRect
+    cg.CGDisplayBounds.restype = _objc.CGRect
     cg.CGDisplayIsBuiltin.argtypes = (ctypes.c_uint32,)
     cg.CGDisplayIsBuiltin.restype = ctypes.c_bool
     cg.CGDisplayCopyDisplayMode.argtypes = (ctypes.c_uint32,)
@@ -183,20 +171,29 @@ class Display:
     """A laptop's own screen."""
 
 
+def _screens() -> List[Tuple[int, int]]:
+    """``(display id, NSScreen)`` pairs, the main screen first. Call inside an autorelease pool."""
+    framework("AppKit")
+    pairs = []
+    for screen in _objc.nsarray(_objc.send(_objc.cls("NSScreen"), "screens")):
+        description = _objc.send(screen, "deviceDescription")
+        number = _objc.send(description, "objectForKey:", _objc.nsstring("NSScreenNumber"), argtypes=(_objc.id,))
+        if number:
+            pairs.append((_objc.send(number, "unsignedIntValue", restype=ctypes.c_uint32), screen))
+    return pairs
+
+
 def _screen_names() -> Dict[int, str]:
     """Display names by CoreGraphics ID, from NSScreen (macOS 10.15+)."""
-    framework("AppKit")
     names = {}
     with _objc.autorelease_pool():
-        for screen in _objc.nsarray(_objc.send(_objc.cls("NSScreen"), "screens")):
-            description = _objc.send(screen, "deviceDescription")
-            number = _objc.send(description, "objectForKey:", _objc.nsstring("NSScreenNumber"), argtypes=(_objc.id,))
+        for display_id, screen in _screens():
             has_name = _objc.send(
                 screen, "respondsToSelector:", _objc.sel("localizedName"), argtypes=(_objc.SEL,), restype=_objc.BOOL
             )
             name = _objc.pystring(_objc.send(screen, "localizedName")) if has_name else None
-            if number and name:
-                names[_objc.send(number, "unsignedIntValue", restype=ctypes.c_uint32)] = name
+            if name:
+                names[display_id] = name
     return names
 
 
@@ -240,42 +237,34 @@ def displays() -> List[Display]:
     return sorted(found, key=lambda display: not display.is_main)
 
 
-def _screens() -> List[Tuple[int, int]]:
-    """``(display id, NSScreen)`` pairs, the main screen first. Call inside an autorelease pool."""
-    framework("AppKit")
-    pairs = []
-    for screen in _objc.nsarray(_objc.send(_objc.cls("NSScreen"), "screens")):
-        description = _objc.send(screen, "deviceDescription")
-        number = _objc.send(description, "objectForKey:", _objc.nsstring("NSScreenNumber"), argtypes=(_objc.id,))
-        if number:
-            pairs.append((_objc.send(number, "unsignedIntValue", restype=ctypes.c_uint32), screen))
-    return pairs
-
-
+@lru_cache(maxsize=None)
 def _workspace() -> int:
     framework("AppKit")
     return _objc.send(_objc.cls("NSWorkspace"), "sharedWorkspace")
 
 
-def _pick(pairs: List[Tuple[int, int]], display: Optional[int]) -> List[Tuple[int, int]]:
-    if display is None:
+def _pick(pairs: List[Tuple[int, int]], display_id: Union[int, Display, None]) -> List[Tuple[int, int]]:
+    if display_id is None:
         return pairs
-    chosen = [pair for pair in pairs if pair[0] == display]
+    wanted = display_id.id if isinstance(display_id, Display) else display_id
+    chosen = [pair for pair in pairs if pair[0] == wanted]
     if not chosen:
-        raise ValueError("no connected display has the id {} (see macos.screen.displays())".format(display))
+        raise ValueError("no connected display has the id {} (see macos.screen.displays())".format(wanted))
     return chosen
 
 
-def wallpaper(display: Optional[int] = None) -> Optional[Path]:
+def wallpaper(display_id: Union[int, Display, None] = None) -> Optional[Path]:
     """
     Return the desktop picture of a display (the main one by default).
 
-    ``display`` is a :attr:`Display.id` from :func:`displays`. Returns ``None``
+    ``display_id`` is a :class:`Display` from :func:`displays`, or its
+    :attr:`~Display.id`. (It's not the position that :func:`screenshot`'s
+    ``display`` takes.) Returns ``None``
     when the desktop shows something other than a picture file, such as a
     solid color or a dynamic wallpaper that isn't a file.
     """
     with _objc.autorelease_pool():
-        pairs = _pick(_screens(), display)
+        pairs = _pick(_screens(), display_id)
         if not pairs:
             return None
         url = _objc.send(_workspace(), "desktopImageURLForScreen:", pairs[0][1], argtypes=(_objc.id,))
@@ -283,20 +272,23 @@ def wallpaper(display: Optional[int] = None) -> Optional[Path]:
         return Path(path) if path else None
 
 
-def set_wallpaper(path: Union[str, "os.PathLike[str]"], *, display: Optional[int] = None) -> None:
+def set_wallpaper(path: Union[str, "os.PathLike[str]"], *, display_id: Union[int, Display, None] = None) -> None:
     """
-    Set the desktop picture, on every display or only on ``display``.
+    Set the desktop picture, on every display or only on ``display_id``.
 
     ``path`` is an image file (JPEG, PNG, HEIC...). macOS keeps referring to
-    that file, so don't delete it afterwards.
+    that file, so don't delete it afterwards. ``display_id`` works as in
+    :func:`wallpaper`. If macOS refuses the picture for one display, the ones
+    before it keep the new picture and :class:`~macos.errors.MacOSError` is
+    raised.
     """
     image = Path(path).expanduser().resolve()
     if not image.is_file():
         raise FileNotFoundError(str(image))
     with _objc.autorelease_pool():
-        url = _objc.send(_objc.cls("NSURL"), "fileURLWithPath:", _objc.nsstring(str(image)), argtypes=(_objc.id,))
+        url = _objc.file_url(image)
         options = _objc.send(_objc.cls("NSDictionary"), "dictionary")
-        for _, screen in _pick(_screens(), display):
+        for _, screen in _pick(_screens(), display_id):
             error = ctypes.c_void_p()
             ok = _objc.send(
                 _workspace(),
@@ -309,5 +301,5 @@ def set_wallpaper(path: Union[str, "os.PathLike[str]"], *, display: Optional[int
                 restype=_objc.BOOL,
             )
             if not ok:
-                message = _objc.pystring(_objc.send(error.value, "localizedDescription")) if error.value else None
-                raise ValueError("could not set the wallpaper: {}".format(message or "not an image macOS can show"))
+                message = _objc.error_message(error) or "not an image macOS can show"
+                raise MacOSError("could not set the wallpaper: {}".format(message))

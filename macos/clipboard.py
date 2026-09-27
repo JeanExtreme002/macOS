@@ -14,14 +14,13 @@ regardless of the terminal's locale (``pbcopy``/``pbpaste`` mangle it unless
 ``LANG`` is a UTF-8 locale).
 """
 
-import ctypes
 import os
 import time
 from pathlib import Path
 from typing import Iterable, List, Optional, Union
 
 from . import _objc
-from ._objc import BOOL, NSInteger, NSUInteger
+from ._objc import BOOL, NSInteger
 from ._system import framework
 from .errors import MacOSError
 
@@ -41,7 +40,6 @@ __all__ = [
 _TYPE_STRING = "public.utf8-plain-text"  # NSPasteboardTypeString
 _TYPE_PNG = "public.png"  # NSPasteboardTypePNG
 _TYPE_TIFF = "public.tiff"  # NSPasteboardTypeTIFF
-_BITMAP_PNG = 4  # NSBitmapImageFileTypePNG
 
 
 def _pasteboard() -> int:
@@ -129,10 +127,7 @@ def copy_image(image: Union[bytes, str, "os.PathLike[str]"]) -> None:
             raise ValueError("not an image format macOS can read")
         _objc.send(picture, "autorelease")
 
-        objects = (ctypes.c_void_p * 1)(picture)
-        array = _objc.send(
-            _objc.cls("NSArray"), "arrayWithObjects:count:", objects, 1, argtypes=(ctypes.c_void_p, NSUInteger)
-        )
+        array = _objc.nsarray_of([picture])
         pasteboard = _pasteboard()
         _objc.send(pasteboard, "clearContents", restype=NSInteger)
         if not _objc.send(pasteboard, "writeObjects:", array, argtypes=(_objc.id,), restype=BOOL):
@@ -156,33 +151,14 @@ def paste_image() -> Optional[bytes]:
         if not tiff:
             return None
         rep = _objc.send(_objc.cls("NSBitmapImageRep"), "imageRepWithData:", tiff, argtypes=(_objc.id,))
-        if not rep:
-            return None
-        png = _objc.send(
-            rep,
-            "representationUsingType:properties:",
-            _BITMAP_PNG,
-            _objc.send(_objc.cls("NSDictionary"), "dictionary"),
-            argtypes=(NSUInteger, _objc.id),
-        )
-        return _objc.pybytes(png)
+        return _objc.png(rep) if rep else None
 
 
 def has_image() -> bool:
     """Whether the clipboard holds an image, without converting it."""
     with _objc.autorelease_pool():
-        objects = (ctypes.c_void_p * 2)(_objc.nsstring(_TYPE_PNG), _objc.nsstring(_TYPE_TIFF))
-        types = _objc.send(
-            _objc.cls("NSArray"), "arrayWithObjects:count:", objects, 2, argtypes=(ctypes.c_void_p, NSUInteger)
-        )
+        types = _objc.nsarray_of([_objc.nsstring(_TYPE_PNG), _objc.nsstring(_TYPE_TIFF)])
         return bool(_objc.send(_pasteboard(), "availableTypeFromArray:", types, argtypes=(_objc.id,)))
-
-
-def _array(objects: List[int]) -> int:
-    items = (ctypes.c_void_p * len(objects))(*objects)
-    return _objc.send(
-        _objc.cls("NSArray"), "arrayWithObjects:count:", items, len(objects), argtypes=(ctypes.c_void_p, NSUInteger)
-    )
 
 
 def copy_files(paths: Iterable[Union[str, "os.PathLike[str]"]]) -> None:
@@ -200,13 +176,10 @@ def copy_files(paths: Iterable[Union[str, "os.PathLike[str]"]]) -> None:
             raise FileNotFoundError(str(path))
 
     with _objc.autorelease_pool():
-        urls = [
-            _objc.send(_objc.cls("NSURL"), "fileURLWithPath:", _objc.nsstring(str(path)), argtypes=(_objc.id,))
-            for path in resolved
-        ]
+        urls = [_objc.file_url(path) for path in resolved]
         pasteboard = _pasteboard()
         _objc.send(pasteboard, "clearContents", restype=NSInteger)
-        if not _objc.send(pasteboard, "writeObjects:", _array(urls), argtypes=(_objc.id,), restype=BOOL):
+        if not _objc.send(pasteboard, "writeObjects:", _objc.nsarray_of(urls), argtypes=(_objc.id,), restype=BOOL):
             raise MacOSError("the pasteboard refused the files")
 
 
@@ -224,7 +197,7 @@ def paste_files() -> List[Path]:
         urls = _objc.send(
             pasteboard,
             "readObjectsForClasses:options:",
-            _array([_objc.cls("NSURL")]),
+            _objc.nsarray_of([_objc.cls("NSURL")]),
             only_files,
             argtypes=(_objc.id, _objc.id),
         )

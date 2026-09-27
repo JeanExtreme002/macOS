@@ -775,12 +775,28 @@ def test_eject(fake_run, monkeypatch):
         macos.system.eject("Nope")
 
 
-def test_eject_refuses_folders_that_are_not_mount_points(fake_run, monkeypatch, tmp_path):
+def test_eject_refuses_folders_and_hidden_system_volumes(fake_run, monkeypatch, tmp_path):
     monkeypatch.setattr(macos.system, "volumes", lambda: [])
 
-    with pytest.raises(ValueError, match="no mounted volume"):
-        macos.system.eject(tmp_path)
+    for target in (tmp_path, "/System/Volumes/Data"):
+        with pytest.raises(ValueError, match="no mounted volume"):
+            macos.system.eject(target)
     assert fake_run.calls == []
+
+
+def test_eject_refuses_ambiguous_names_and_fixed_volumes(fake_run, monkeypatch):
+    first = macos.system.Volume("Untitled", Path("/Volumes/Untitled"), 10, 5, False, True, True)
+    second = macos.system.Volume("Untitled", Path("/Volumes/Untitled 1"), 10, 5, False, True, True)
+    fixed = macos.system.Volume("Data", Path("/Volumes/Data"), 10, 5, True, False, False)
+    monkeypatch.setattr(macos.system, "volumes", lambda: [first, second, fixed])
+
+    with pytest.raises(ValueError, match="more than one volume"):
+        macos.system.eject("Untitled")
+    macos.system.eject("/Volumes/Untitled 1")
+    assert fake_run.args == ["diskutil", "eject", "/Volumes/Untitled 1"]
+
+    with pytest.raises(ValueError, match="can't be ejected"):
+        macos.system.eject("Data")
 
 
 def test_battery_health_fields_are_optional():

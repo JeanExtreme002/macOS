@@ -132,8 +132,9 @@ macos.apps.default_for("public.plain-text")   # '/System/Applications/TextEdit.a
 macos.apps.default_browser()                  # '/Applications/Safari.app'
 ```
 
-{func}`~macos.apps.default_for` takes an extension (`"pdf"`, `".png"`) or a
-type identifier (`"public.image"`), and returns `None` when no app opens it.
+{func}`~macos.apps.default_for` takes an extension (`"pdf"`, `".png"`,
+`"tar.gz"`) or a type identifier (`"public.image"`), and returns `None` when no
+app opens it.
 
 ## Threads
 

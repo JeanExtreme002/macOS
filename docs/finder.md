@@ -51,7 +51,7 @@ from pathlib import Path
 Path("preview.png").write_bytes(macos.finder.thumbnail("report.pdf", size=512))
 ```
 
-`size` is the largest side, in pixels (256 by default).
+`size` is the largest side, in pixels: 256 by default, up to 4096.
 
 ## Reference
 

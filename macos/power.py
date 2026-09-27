@@ -90,7 +90,9 @@ def _health() -> Tuple[Optional[int], Optional[int]]:
     full = data["NominalChargeCapacity"] or data["AppleRawMaxCapacity"]
     if full is None and (data["MaxCapacity"] or 0) > 100:
         full = data["MaxCapacity"]
-    health = round(full * 100 / design) if full and design else None
+    # A new battery can hold slightly more than its design capacity; System
+    # Settings shows that as 100%.
+    health = min(100, round(full * 100 / design)) if full and design else None
     return data["CycleCount"], health
 
 

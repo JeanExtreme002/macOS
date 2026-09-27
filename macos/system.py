@@ -251,21 +251,28 @@ def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
     """
     Eject a volume, like Finder's eject button. Unsaved work on it is not waited for.
 
-    ``volume`` is a :class:`Volume`, its name (``"Backup"``) or its mount path.
+    ``volume`` is a :class:`Volume`, its name (``"Backup"``) or its mount
+    path. When several volumes share a name, pass the path.
     """
     if isinstance(volume, Volume):
-        target = volume.path
+        chosen = volume
     else:
         text = os.fspath(volume)
         as_path = Path(text).expanduser()
-        matches = [found.path for found in volumes() if text == found.name or as_path == found.path]
-        # A volume Finder hides still counts, but only if the path really is
-        # where a volume is mounted: an ordinary folder must never reach diskutil.
-        if not matches and os.path.ismount(as_path):
-            matches = [as_path.resolve()]
+        mounted = volumes()
+        # Only the volumes Finder shows can be ejected: that leaves out the
+        # startup disk's hidden system volumes (/System/Volumes/Data...).
+        by_path = [found for found in mounted if found.path == as_path]
+        by_name = [found for found in mounted if found.name == text]
+        if not by_path and len(by_name) > 1:
+            paths = ", ".join(str(found.path) for found in by_name)
+            raise ValueError("more than one volume is named {!r} ({}); pass its path instead".format(text, paths))
+        matches = by_path or by_name
         if not matches:
             raise ValueError("no mounted volume is named {!r}".format(text))
-        target = matches[0]
-    if target == Path("/"):
+        chosen = matches[0]
+    if chosen.path == Path("/"):
         raise ValueError("the startup disk can't be ejected")
-    run(["diskutil", "eject", str(target)])
+    if not chosen.is_ejectable:
+        raise ValueError("{} can't be ejected".format(chosen.name))
+    run(["diskutil", "eject", str(chosen.path)])

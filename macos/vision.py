@@ -35,18 +35,6 @@ _ACCURATE = 0
 _FAST = 1
 
 
-class _CGPoint(ctypes.Structure):
-    _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
-
-
-class _CGSize(ctypes.Structure):
-    _fields_ = [("width", ctypes.c_double), ("height", ctypes.c_double)]
-
-
-class _CGRect(ctypes.Structure):
-    _fields_ = [("origin", _CGPoint), ("size", _CGSize)]
-
-
 @dataclass(frozen=True)
 class TextLine:
     """A line of text found in an image."""
@@ -64,13 +52,6 @@ def _load() -> None:
     framework("Vision")
 
 
-def _array(objects: Sequence[int]) -> int:
-    items = (ctypes.c_void_p * len(objects))(*objects)
-    return _objc.send(
-        _objc.cls("NSArray"), "arrayWithObjects:count:", items, len(objects), argtypes=(ctypes.c_void_p, NSUInteger)
-    )
-
-
 def _handler(image: Image) -> int:
     """An autoreleased ``VNImageRequestHandler`` for a path or image bytes."""
     options = _objc.send(_objc.cls("NSDictionary"), "dictionary")
@@ -83,8 +64,9 @@ def _handler(image: Image) -> int:
         path = Path(image).expanduser().absolute()
         if not path.exists():
             raise FileNotFoundError(str(path))
-        url = _objc.send(_objc.cls("NSURL"), "fileURLWithPath:", _objc.nsstring(str(path)), argtypes=(_objc.id,))
-        handler = _objc.send(handler, "initWithURL:options:", url, options, argtypes=(_objc.id, _objc.id))
+        handler = _objc.send(
+            handler, "initWithURL:options:", _objc.file_url(path), options, argtypes=(_objc.id, _objc.id)
+        )
     return _objc.send(handler, "autorelease")
 
 
@@ -94,13 +76,13 @@ def _request(languages: Optional[Sequence[str]], fast: bool) -> int:
     _objc.send(request, "setRecognitionLevel:", _FAST if fast else _ACCURATE, argtypes=(NSInteger,), restype=None)
     _objc.send(request, "setUsesLanguageCorrection:", not fast, argtypes=(BOOL,), restype=None)
     if languages:
-        codes = _array([_objc.nsstring(code) for code in languages])
+        codes = _objc.nsarray_of([_objc.nsstring(code) for code in languages])
         _objc.send(request, "setRecognitionLanguages:", codes, argtypes=(_objc.id,), restype=None)
     return request
 
 
 def _error(error: ctypes.c_void_p, fallback: str, prefix: str = "") -> MacOSError:
-    message = _objc.pystring(_objc.send(error.value, "localizedDescription")) if error.value else None
+    message = _objc.error_message(error)
     return MacOSError(prefix + message if message else fallback)
 
 
@@ -123,7 +105,7 @@ def lines(image: Image, *, languages: Optional[Sequence[str]] = None, fast: bool
         ok = _objc.send(
             handler,
             "performRequests:error:",
-            _array([request]),
+            _objc.nsarray_of([request]),
             ctypes.byref(error),
             argtypes=(_objc.id, ctypes.c_void_p),
             restype=BOOL,
@@ -134,7 +116,7 @@ def lines(image: Image, *, languages: Optional[Sequence[str]] = None, fast: bool
         for observation in _objc.nsarray(_objc.send(request, "results")):
             candidates = _objc.send(observation, "topCandidates:", 1, argtypes=(NSUInteger,))
             for candidate in _objc.nsarray(candidates):
-                box = _objc.send(observation, "boundingBox", restype=_CGRect)
+                box = _objc.send(observation, "boundingBox", restype=_objc.CGRect)
                 found.append(
                     TextLine(
                         text=_objc.pystring(_objc.send(candidate, "string")) or "",
@@ -148,7 +130,9 @@ def lines(image: Image, *, languages: Optional[Sequence[str]] = None, fast: bool
                         ),
                     )
                 )
-    return found
+    # Vision returns lines in detection order: sort them top to bottom (then
+    # left to right), as the docs promise.
+    return sorted(found, key=lambda line: (round(line.box[1], 2), line.box[0]))
 
 
 def text(image: Image, *, languages: Optional[Sequence[str]] = None, fast: bool = False) -> str:

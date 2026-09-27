@@ -365,7 +365,9 @@ def test_ocr_reads_a_quick_look_preview(tmp_path):
     assert image.startswith(b"\x89PNG")
 
     lines = macos.vision.lines(image, languages=["en-US"])
-    assert "PYMACOS OCR TEST 12345" in [line.text for line in lines]
+    texts = [line.text for line in lines]
+    assert "PYMACOS OCR TEST 12345" in texts
+    assert texts.index("PYMACOS OCR TEST 12345") < texts.index("second line here")  # top to bottom
     assert all(0 <= line.confidence <= 1 for line in lines)
     assert all(0 <= value <= 1 for line in lines for value in line.box)
 
@@ -376,6 +378,11 @@ def test_ocr_languages_and_errors(tmp_path):
         macos.vision.text(tmp_path / "missing.png")
     with pytest.raises(macos.MacOSError):
         macos.vision.text(b"not an image")
+
+
+def test_thumbnail_rejects_huge_sizes():
+    with pytest.raises(ValueError):
+        macos.finder.thumbnail("/System/Library/CoreServices/Finder.app", size=100000)
 
 
 def test_thumbnail_of_an_app_is_its_icon_at_the_requested_size():
@@ -402,6 +409,7 @@ def test_default_apps():
     assert macos.apps.default_for(".txt") == text_editor
     assert macos.apps.default_for("public.plain-text") == text_editor
     assert macos.apps.default_for("definitely-not-an-extension") is None
+    assert macos.apps.default_for("backup.txt") == text_editor  # a dotted extension, not a type
     browser = macos.apps.default_browser()
     assert browser is None or browser.endswith(".app")
 
@@ -424,7 +432,7 @@ def test_battery_health():
     if battery is None:
         pytest.skip("no battery")
     assert battery.cycle_count is None or battery.cycle_count >= 0
-    assert battery.health is None or 0 < battery.health <= 120
+    assert battery.health is None or 0 < battery.health <= 100
 
 
 def test_volumes_and_eject(tmp_path):

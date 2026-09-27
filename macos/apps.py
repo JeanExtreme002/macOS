@@ -378,13 +378,16 @@ def default_for(kind: str) -> Optional[str]:
         macos.apps.default_for("pdf")    # '/System/Applications/Preview.app'
     """
     services = _launch_services()
-    # ".png" and "png" are extensions; anything else with a dot is a type
-    # identifier, which is reverse-DNS ("com.adobe.pdf").
+    # A dotted name that doesn't start with a dot is tried as a type
+    # identifier first ("com.adobe.pdf"). If no app handles it, it's a
+    # multi-part extension ("tar.gz"), and its last part decides the type.
     if "." in kind and not kind.startswith("."):
         with _cf.owned(_cf.string(kind)) as identifier:
-            return _app_path(services.LSCopyDefaultApplicationURLForContentType(identifier, _ALL_ROLES, None))
+            app = _app_path(services.LSCopyDefaultApplicationURLForContentType(identifier, _ALL_ROLES, None))
+        if app is not None:
+            return app
 
-    extension = kind.lstrip(".")
+    extension = kind.rsplit(".", 1)[-1]
     with _cf.owned(_cf.string("public.filename-extension")) as tag_class, _cf.owned(_cf.string(extension)) as tag:
         with _cf.owned(services.UTTypeCreatePreferredIdentifierForTag(tag_class, tag, None)) as identifier:
             return _app_path(services.LSCopyDefaultApplicationURLForContentType(identifier, _ALL_ROLES, None))
