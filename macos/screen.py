@@ -258,7 +258,7 @@ def wallpaper(display_id: Union[int, Display, None] = None) -> Optional[Path]:
     Return the desktop picture of a display (the main one by default).
 
     ``display_id`` is a :class:`Display` from :func:`displays`, or its
-    :attr:`~Display.id`. (It's not the position that :func:`screenshot`'s
+    :attr:`~Display.id`. (It's not the position that :func:`macos.screenshot`'s
     ``display`` takes.) Returns ``None``
     when the desktop shows something other than a picture file, such as a
     solid color or a dynamic wallpaper that isn't a file.
