@@ -2,19 +2,64 @@
 
 **A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps, Keychain, speech, screenshots, battery, Shortcuts and Finder, all from one import with zero dependencies.
 
+<table>
+    <tr>
+        <th>docs</th>
+        <td>
+            <a href="https://macos.readthedocs.io/?badge=latest"><img
+                alt="Documentation Status"
+                src="https://readthedocs.org/projects/macos/badge/?version=latest"></a>
+        </td>
+    </tr>
+    <tr>
+        <th>tests</th>
+        <td>
+            <a href="https://github.com/JeanExtreme002/pymacos/actions/workflows/python-package.yml"><img
+                alt="GitHub Actions build status (lint, tests on macOS and Linux, docs)"
+                src="https://github.com/JeanExtreme002/pymacos/actions/workflows/python-package.yml/badge.svg"></a>
+            <a href="https://app.codecov.io/gh/JeanExtreme002/pymacos"><img
+                alt="Code coverage"
+                src="https://codecov.io/gh/JeanExtreme002/pymacos/branch/main/graph/badge.svg"></a>
+        </td>
+    </tr>
+    <tr>
+        <th>package</th>
+        <td>
+            <a href="https://pypi.org/project/pymacos/"><img
+                alt="Newest PyPI version"
+                src="https://img.shields.io/pypi/v/pymacos.svg"></a>
+            <a href="https://pypi.org/project/pymacos/"><img
+                alt="Supported Python versions"
+                src="https://img.shields.io/pypi/pyversions/pymacos.svg?color=8A2BE2"></a>
+            <a href="https://pypi.org/project/pymacos/"><img
+                alt="Platform"
+                src="https://img.shields.io/badge/platform-macOS-lightgrey.svg"></a>
+            <a href="https://pypi.org/project/pymacos/"><img
+                alt="Typed"
+                src="https://img.shields.io/pypi/types/pymacos.svg"></a>
+            <a href="https://github.com/JeanExtreme002/pymacos/blob/main/LICENSE"><img
+                alt="License"
+                src="https://img.shields.io/pypi/l/pymacos.svg"></a>
+        </td>
+    </tr>
+</table>
+
 ```python
 import macos
 
 macos.notify("Build finished", title="CI")
-macos.clipboard.copy("hello")
-macos.appearance.is_dark()                 # True
-macos.apps.open("Safari")                  # App(name='Safari', ...)
-macos.keychain.get("my-app", "alice")      # 's3cret'
 macos.say("Done!")
+
+macos.clipboard.copy("hello")
+macos.appearance.is_dark()                      # True
 macos.screenshot("screen.png")
-macos.power.battery()                      # Battery(percent=87, charging=True, ...)
-macos.shortcuts.run("Translate", input="Olá")
-macos.finder.trash("old.log")
+
+macos.apps.open("Safari")                       # App(name='Safari', ...)
+macos.keychain.get("my-app", "alice")           # 's3cret'
+
+macos.power.battery()                           # Battery(percent=87, charging=True, ...)
+macos.shortcuts.run("Translate", input="Olá")   # 'Hello'
+macos.finder.trash("old.log")                   # moved to the Trash
 ```
 
 ## Install
@@ -29,12 +74,26 @@ Requires macOS and Python 3.9+.
 
 ## Why
 
-Doing any of this from Python usually means shelling out to `osascript`, remembering `defaults` keys, or pulling in PyObjC and learning Cocoa. `pymacos` gives you one small, typed API instead:
+A notification from plain Python means AppleScript inside a string, which breaks as soon as the message contains a quote:
 
-- **No dependencies.** Native features call the system frameworks through `ctypes`; the rest wraps tools that ship with every Mac.
-- **Pythonic.** Plain functions, dataclasses and real exceptions, not Objective-C selectors or exit codes.
-- **Safe by default.** Your text is never spliced into shell or AppleScript source, and passwords never show up in the process list.
-- **Helpful errors.** A missing privacy permission raises an error that says where to enable it, instead of failing silently.
+```python
+subprocess.run(["osascript", "-e", 'display notification "Build finished" with title "CI"'])
+```
+
+With pymacos:
+
+```python
+macos.notify("Build finished", title="CI")
+```
+
+Across the whole package:
+
+- No dependencies: no PyObjC, nothing to compile.
+- Plain, typed functions that return Python objects.
+- Any text is safe: nothing is pasted into shell or AppleScript source.
+- Clear errors when macOS is missing a permission, instead of silent failures.
+
+See [Why pymacos?](https://macos.readthedocs.io/en/latest/why.html) for a longer comparison.
 
 ## Documentation
 

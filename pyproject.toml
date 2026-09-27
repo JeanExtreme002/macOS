@@ -93,7 +93,7 @@ path = "macos/__init__.py"
 packages = ["macos"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["/.github"]
+exclude = ["/.github", "/codecov.yml"]
 
 # hatchling>=1.27 is required for the PEP 639 ``license``/``license-files`` metadata.
 [build-system]
