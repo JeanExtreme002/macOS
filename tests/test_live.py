@@ -558,3 +558,98 @@ def test_language():
     assert macos.language.sentiment("I love this, it is wonderful!") > 0.5
     assert macos.language.sentiment("This is terrible and I hate it.") < -0.5
     assert macos.language.sentiment("") is None
+
+
+def test_convert_keeps_every_frame_where_the_format_can(tmp_path):
+    from macos import _cf
+
+    source = tmp_path / "frame.png"
+    source.write_bytes(_png(8, 8))
+    io = macos.image._io()
+    with _cf.owned(macos.image._source(source)) as image_source:
+        macos.image._write(
+            tmp_path / "anim.gif",
+            "com.compuserve.gif",
+            lambda d: [io.CGImageDestinationAddImageFromSource(d, image_source, 0, None) for _ in range(3)],
+            3,
+        )
+
+    def frames(path):
+        with _cf.owned(macos.image._source(path)) as opened:
+            return io.CGImageSourceGetCount(opened)
+
+    assert frames(macos.image.convert(tmp_path / "anim.gif", tmp_path / "anim.tiff")) == 3
+    assert frames(macos.image.convert(tmp_path / "anim.gif", tmp_path / "first.png")) == 1
+
+
+def test_resize_keeps_metadata(tmp_path):
+    from macos import _cf
+
+    source = tmp_path / "plain.png"
+    source.write_bytes(_png(40, 20))
+    photo = tmp_path / "photo.jpg"
+    io = macos.image._io()
+    with _cf.owned(macos.image._source(source)) as image_source:
+        options = macos.image._options({"kCGImagePropertyDPIWidth": 300, "kCGImagePropertyDPIHeight": 300})
+        with _cf.owned(options):
+            macos.image._write(
+                photo, "public.jpeg", lambda d: io.CGImageDestinationAddImageFromSource(d, image_source, 0, options)
+            )
+
+    small = macos.image.info(macos.image.resize(photo, tmp_path / "small.jpg", width=10))
+    assert (small.width, small.dpi, small.orientation) == (10, 300.0, 1)
+
+
+def test_pdf_render_is_exact_and_follows_rotation(tmp_path):
+    import ctypes
+    import struct
+
+    from macos import _objc
+
+    document = _text_pdf(tmp_path, ["A portrait page"])
+    for size in (1024, 2048):
+        width, height = struct.unpack(">II", macos.pdf.render(document, size=size)[16:24])
+        assert max(width, height) == size and height > width
+
+    rotated = tmp_path / "rotated.pdf"
+    with macos.pdf._open(document) as opened:
+        _objc.send(macos.pdf._page(opened, 1), "setRotation:", 90, argtypes=(ctypes.c_long,), restype=None)
+        macos.pdf._save(opened, rotated)
+    width, height = struct.unpack(">II", macos.pdf.render(rotated, size=1024)[16:24])
+    assert (max(width, height), width > height) == (1024, True)
+
+
+def test_pdf_passwords(tmp_path):
+    from macos import _objc
+
+    document = _text_pdf(tmp_path, ["Secret page"])
+    locked = tmp_path / "locked.pdf"
+    with macos.pdf._open(document) as opened:
+        # PDFKit only encrypts when both a user and an owner password are set.
+        options = _objc.send(
+            _objc.cls("NSDictionary"),
+            "dictionaryWithObjects:forKeys:",
+            _objc.nsarray_of([_objc.nsstring("1234"), _objc.nsstring("owner")]),
+            _objc.nsarray_of(
+                [_objc.nsstring("PDFDocumentUserPasswordOption"), _objc.nsstring("PDFDocumentOwnerPasswordOption")]
+            ),
+            argtypes=(_objc.id, _objc.id),
+        )
+        _objc.send(
+            opened,
+            "writeToFile:withOptions:",
+            _objc.nsstring(str(locked)),
+            options,
+            argtypes=(_objc.id, _objc.id),
+            restype=_objc.BOOL,
+        )
+
+    with pytest.raises(macos.PermissionDeniedError):
+        macos.pdf.text(locked)
+    with pytest.raises(macos.PermissionDeniedError, match="wrong password"):
+        macos.pdf.text(locked, password="nope")
+    assert macos.pdf.text(locked, password="1234") == "Secret page"
+
+    merged = macos.pdf.merge([locked, document], tmp_path / "merged.pdf", password="1234")
+    assert macos.pdf.page_count(merged) == 2
+    assert macos.pdf.text(merged).startswith("Secret page")  # the result isn't encrypted

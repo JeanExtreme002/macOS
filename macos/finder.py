@@ -21,7 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, List, Optional, Union
 
-from . import _cf, _objc
+from . import _objc
 from ._objc import BOOL, NSUInteger
 from ._system import framework, run
 from .errors import MacOSError
@@ -209,13 +209,7 @@ def _encode(image: Optional[int]) -> bytes:
     """Encode an owned ``CGImage`` as PNG bytes and release it."""
     if not image:
         raise MacOSError("the preview could not be drawn")
-    try:
-        rep = _objc.send(_objc.cls("NSBitmapImageRep"), "alloc")
-        rep = _objc.send(rep, "initWithCGImage:", image, argtypes=(ctypes.c_void_p,))
-        _objc.send(rep, "autorelease")
-        return _objc.png(rep)
-    finally:
-        _cf.release(image)
+    return _objc.cgimage_png(image)
 
 
 def thumbnail(path: PathLike, *, size: int = 256) -> bytes:

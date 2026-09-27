@@ -33,7 +33,7 @@ def _load() -> ctypes.CDLL:
 
 
 def _recognizer(text: str) -> int:
-    recognizer = _objc.send(_objc.send(_objc.send(_objc.cls("NLLanguageRecognizer"), "alloc"), "init"), "autorelease")
+    recognizer = _objc.new("NLLanguageRecognizer")
     _objc.send(recognizer, "processString:", _objc.nsstring(text), argtypes=(_objc.id,), restype=None)
     return recognizer
 
@@ -83,8 +83,11 @@ def sentiment(text: str) -> Optional[float]:
     flat = " ".join(text.split())
     if not flat:
         return None
-    scheme = ctypes.c_void_p.in_dll(library, "NLTagSchemeSentimentScore").value
-    if scheme is None:  # NaturalLanguage without sentiment support (before macOS 10.15)
+    try:
+        scheme = ctypes.c_void_p.in_dll(library, "NLTagSchemeSentimentScore").value
+    except ValueError:  # NaturalLanguage without sentiment support (before macOS 10.15)
+        return None
+    if scheme is None:
         return None
     with _objc.autorelease_pool():
         tagger = _objc.send(_objc.cls("NLTagger"), "alloc")

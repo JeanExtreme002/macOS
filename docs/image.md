@@ -25,7 +25,9 @@ macos.image.convert("photo.heic", "photo.jpg", quality=0.8)   # quality: 0.0 to 
 macos.image.convert("scan.tiff", "scan.png")
 ```
 
-Metadata such as the date, camera and orientation is kept. To convert a whole
+Metadata such as the date, camera and orientation is kept. Animated GIFs and
+multi-page TIFFs keep all their frames when converted to GIF or TIFF; the other
+formats hold a single image, so they get the first frame. To convert a whole
 folder of iPhone photos:
 
 ```python
@@ -46,8 +48,8 @@ macos.image.resize("photo.jpg", "fit.png", width=1024, height=1024)
 ```
 
 Photos taken in portrait are turned upright first, following their EXIF
-orientation. Images are only scaled down: a size larger than the original keeps
-the original size.
+orientation. The metadata (date, camera, location, DPI) is kept. Images are
+only scaled down: a size larger than the original keeps the original size.
 
 ## Image details
 
@@ -62,7 +64,8 @@ whether it `has_alpha` (transparency), the EXIF `orientation` and the `dpi`.
 ```python
 from pathlib import Path
 
-Path("site.png").write_bytes(macos.image.qr_code("https://python.org", size=512))
+image = macos.image.qr_code("https://python.org", size=512)
+Path("site.png").write_bytes(image)
 ```
 
 `correction` sets how much damage the code survives: `"L"`, `"M"` (the

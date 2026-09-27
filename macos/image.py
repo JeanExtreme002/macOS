@@ -42,6 +42,9 @@ _WRITE_TYPES = {
     ".bmp": "com.microsoft.bmp",
 }
 
+# The output formats that hold several images (animation frames, pages).
+_MULTI_FRAME = {"com.compuserve.gif", "public.tiff"}
+
 # Short names for the type identifiers ImageIO reports.
 _FORMAT_NAMES = {
     "public.jpeg": "jpeg",
@@ -140,11 +143,11 @@ def _options(values: Dict[str, Union[bool, float]]) -> int:
             _cf.release(ref)
 
 
-def _write(target: Path, kind: str, add: Callable[[int], None]) -> Path:
+def _write(target: Path, kind: str, add: Callable[[int], None], frames: int = 1) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     io = _io()
     with _cf.owned(_cf.file_url(str(target))) as url, _cf.owned(_cf.string(kind)) as type_ref:
-        destination = io.CGImageDestinationCreateWithURL(url, type_ref, 1, None)
+        destination = io.CGImageDestinationCreateWithURL(url, type_ref, frames, None)
     if not destination:
         raise MacOSError("could not create {}".format(target))
     try:
@@ -169,20 +172,44 @@ def _number(properties: Optional[int], key: str) -> Optional[float]:
     return real.value
 
 
+def _metadata(source: Optional[int], quality: Optional[float]) -> Optional[int]:
+    """
+    The source's metadata (date, camera, GPS, DPI...) for the resized copy, owned.
+
+    Its pixels are already upright, so the orientation becomes 1 (upright).
+    """
+    io = _io()
+    cf = _cf.lib()
+    with _cf.owned(io.CGImageSourceCopyPropertiesAtIndex(source, 0, None)) as properties:
+        if not properties:
+            return _options({"kCGImageDestinationLossyCompressionQuality": quality}) if quality is not None else None
+        copy = cf.CFDictionaryCreateMutableCopy(None, 0, properties)
+    with _cf.owned(_cf.number(1)) as upright:
+        cf.CFDictionarySetValue(copy, _cf.constant(io, "kCGImagePropertyOrientation"), upright)
+    if quality is not None:
+        with _cf.owned(_cf.number(float(quality))) as value:
+            cf.CFDictionarySetValue(copy, _cf.constant(io, "kCGImageDestinationLossyCompressionQuality"), value)
+    return copy
+
+
+def _describe(source: Optional[int]) -> ImageInfo:
+    io = _io()
+    with _cf.owned(io.CGImageSourceCopyPropertiesAtIndex(source, 0, None)) as properties:
+        kind = _cf.to_str(io.CGImageSourceGetType(source)) or ""
+        return ImageInfo(
+            width=int(_number(properties, "PixelWidth") or 0),
+            height=int(_number(properties, "PixelHeight") or 0),
+            format=_FORMAT_NAMES.get(kind, kind),
+            has_alpha=_cf.to_bool(_cf.lookup(properties, "HasAlpha")),
+            orientation=int(_number(properties, "Orientation") or 1),
+            dpi=_number(properties, "DPIWidth"),
+        )
+
+
 def info(path: PathLike) -> ImageInfo:
     """Return the size, format, transparency, orientation and DPI of an image file."""
-    io = _io()
     with _cf.owned(_source(path)) as source:
-        with _cf.owned(io.CGImageSourceCopyPropertiesAtIndex(source, 0, None)) as properties:
-            kind = _cf.to_str(io.CGImageSourceGetType(source)) or ""
-            return ImageInfo(
-                width=int(_number(properties, "PixelWidth") or 0),
-                height=int(_number(properties, "PixelHeight") or 0),
-                format=_FORMAT_NAMES.get(kind, kind),
-                has_alpha=_cf.to_bool(_cf.lookup(properties, "HasAlpha")),
-                orientation=int(_number(properties, "Orientation") or 1),
-                dpi=_number(properties, "DPIWidth"),
-            )
+        return _describe(source)
 
 
 def convert(source: PathLike, output: PathLike, *, quality: Optional[float] = None) -> Path:
@@ -192,17 +219,24 @@ def convert(source: PathLike, output: PathLike, *, quality: Optional[float] = No
     Writes ``.jpg``, ``.png``, ``.heic``, ``.tiff``, ``.gif`` and ``.bmp``;
     reads anything macOS opens. Metadata such as the orientation, camera and
     date is kept. ``quality`` (0.0 to 1.0) applies to JPEG and HEIC.
+
+    Animated GIFs and multi-page TIFFs keep every frame when converted to GIF
+    or TIFF; the other formats hold a single image and get the first one.
     """
     target, kind = _output(output)
     if quality is not None and not 0.0 <= quality <= 1.0:
         raise ValueError("quality must be from 0.0 to 1.0, not {}".format(quality))
     io = _io()
     with _cf.owned(_source(source)) as image_source:
+        frames = io.CGImageSourceGetCount(image_source) if kind in _MULTI_FRAME else 1
         options = _options({"kCGImageDestinationLossyCompressionQuality": quality}) if quality is not None else None
+
+        def add(destination: int) -> None:
+            for index in range(frames):
+                io.CGImageDestinationAddImageFromSource(destination, image_source, index, options)
+
         with _cf.owned(options):
-            return _write(
-                target, kind, lambda destination: io.CGImageDestinationAddImageFromSource(destination, image_source, 0, options)
-            )
+            return _write(target, kind, add, frames)
 
 
 def resize(
@@ -218,8 +252,8 @@ def resize(
 
     The result is saved to ``output`` (its extension sets the format) and
     ``output`` is returned. Photos are turned upright first, following their
-    EXIF orientation. Images are only scaled down: a larger size keeps the
-    original size.
+    EXIF orientation, and their metadata (date, camera, location...) is kept.
+    Images are only scaled down: a larger size keeps the original size.
     """
     for label, value in (("width", width), ("height", height)):
         if value is not None and value <= 0:
@@ -227,20 +261,24 @@ def resize(
     if width is None and height is None:
         raise ValueError("resize() needs a width, a height or both")
     target, kind = _output(output)
-
-    current = info(source)
-    upright_width, upright_height = current.width, current.height
-    if current.orientation in (5, 6, 7, 8):  # rotated a quarter turn
-        upright_width, upright_height = upright_height, upright_width
-    scale = min(
-        (width / upright_width) if width else 1.0,
-        (height / upright_height) if height else 1.0,
-        1.0,
-    )
-    longest = max(1, round(max(upright_width, upright_height) * scale))
+    if quality is not None and not 0.0 <= quality <= 1.0:
+        raise ValueError("quality must be from 0.0 to 1.0, not {}".format(quality))
 
     io = _io()
     with _cf.owned(_source(source)) as image_source:
+        current = _describe(image_source)
+        if not current.width or not current.height:
+            raise ValueError("{} doesn't report its size".format(source))
+        upright_width, upright_height = current.width, current.height
+        if current.orientation in (5, 6, 7, 8):  # rotated a quarter turn
+            upright_width, upright_height = upright_height, upright_width
+        scale = min(
+            (width / upright_width) if width else 1.0,
+            (height / upright_height) if height else 1.0,
+            1.0,
+        )
+        longest = max(1, round(max(upright_width, upright_height) * scale))
+
         options = _options(
             {
                 "kCGImageSourceCreateThumbnailFromImageAlways": True,
@@ -252,12 +290,8 @@ def resize(
             scaled = io.CGImageSourceCreateThumbnailAtIndex(image_source, 0, options)
         if not scaled:
             raise MacOSError("could not scale {}".format(source))
-        with _cf.owned(scaled):
-            save = _options({"kCGImageDestinationLossyCompressionQuality": quality}) if quality is not None else None
-            with _cf.owned(save):
-                return _write(
-                    target, kind, lambda destination: io.CGImageDestinationAddImage(destination, scaled, save)
-                )
+        with _cf.owned(scaled), _cf.owned(_metadata(image_source, quality)) as save:
+            return _write(target, kind, lambda destination: io.CGImageDestinationAddImage(destination, scaled, save))
 
 
 class _CGAffineTransform(ctypes.Structure):
@@ -316,10 +350,4 @@ def qr_code(content: str, *, size: int = 512, correction: str = "M") -> bytes:
         )
         if not rendered:
             raise MacOSError("the QR code could not be drawn")
-        try:
-            rep = _objc.send(_objc.cls("NSBitmapImageRep"), "alloc")
-            rep = _objc.send(rep, "initWithCGImage:", rendered, argtypes=(ctypes.c_void_p,))
-            _objc.send(rep, "autorelease")
-            return _objc.png(rep)
-        finally:
-            _cf.release(rendered)
+        return _objc.cgimage_png(rendered)

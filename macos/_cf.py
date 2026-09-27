@@ -84,6 +84,11 @@ def lib() -> ctypes.CDLL:
 
     cf.CFURLCreateFromFileSystemRepresentation.argtypes = (CFTypeRef, ctypes.c_char_p, CFIndex, ctypes.c_bool)
     cf.CFURLCreateFromFileSystemRepresentation.restype = CFTypeRef
+
+    cf.CFDictionaryCreateMutableCopy.argtypes = (CFTypeRef, CFIndex, CFTypeRef)
+    cf.CFDictionaryCreateMutableCopy.restype = CFTypeRef
+    cf.CFDictionarySetValue.argtypes = (CFTypeRef, CFTypeRef, CFTypeRef)
+    cf.CFDictionarySetValue.restype = None
     return cf
 
 

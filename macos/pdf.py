@@ -97,7 +97,7 @@ def _save(document: int, output: PathLike) -> Path:
 
 
 def _new_document() -> int:
-    return _objc.send(_objc.send(_objc.send(_objc.cls("PDFDocument"), "alloc"), "init"), "autorelease")
+    return _objc.new("PDFDocument")
 
 
 def _append(target: int, page: int) -> None:
@@ -106,15 +106,20 @@ def _append(target: int, page: int) -> None:
     _objc.send(target, "insertPage:atIndex:", copy, _count(target), argtypes=(_objc.id, NSUInteger), restype=None)
 
 
-def merge(inputs: Sequence[PathLike], output: PathLike) -> Path:
-    """Join PDFs, one after another, into ``output``, and return its path."""
+def merge(inputs: Sequence[PathLike], output: PathLike, *, password: Optional[str] = None) -> Path:
+    """
+    Join PDFs, one after another, into ``output``, and return its path.
+
+    ``password`` unlocks any encrypted input (they must share it); the
+    merged PDF itself is not encrypted.
+    """
     if not inputs:
         raise ValueError("merge() needs at least one PDF")
     framework("PDFKit")
     with _objc.autorelease_pool():
         merged = _new_document()
         for path in inputs:
-            with _open(path) as document:
+            with _open(path, password) as document:
                 for number in range(1, _count(document) + 1):
                     _append(merged, _page(document, number))
         return _save(merged, output)
@@ -150,8 +155,14 @@ def render(path: PathLike, page: int = 1, *, size: int = 1024, password: Optiona
     with _open(path, password) as document:
         target = _page(document, page)
         bounds = _objc.send(target, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
-        longest = max(bounds.size.width, bounds.size.height) or 1.0
-        box = _objc.CGSize(bounds.size.width * size / longest, bounds.size.height * size / longest)
+        width, height = bounds.size.width, bounds.size.height
+        # A page with /Rotate 90 or 270 is drawn turned: fit the turned shape.
+        if _objc.send(target, "rotation", restype=ctypes.c_long) % 180:
+            width, height = height, width
+        scale = size / (max(width, height) or 1.0)
+        # PDFKit rounds the image size down: the extra half pixel makes the
+        # longest side come out at exactly `size`.
+        box = _objc.CGSize(width * scale + 0.5, height * scale + 0.5)
         image = _objc.send(
             target, "thumbnailOfSize:forBox:", box, _MEDIA_BOX, argtypes=(_objc.CGSize, ctypes.c_long)
         )

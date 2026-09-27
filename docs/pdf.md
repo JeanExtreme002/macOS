@@ -15,7 +15,7 @@ macos.pdf.text("report.pdf", pages=[1, 2])    # only some pages
 
 ```python
 macos.pdf.merge(["january.pdf", "february.pdf"], "q1.pdf")
-macos.pdf.extract("report.pdf", [1], "cover.pdf")        # one page
+macos.pdf.extract("report.pdf", [1], "cover.pdf")            # one page
 macos.pdf.extract("report.pdf", [3, 1, 2], "reordered.pdf")
 ```
 
@@ -30,7 +30,8 @@ in pixels (up to 4096):
 ```python
 from pathlib import Path
 
-Path("cover.png").write_bytes(macos.pdf.render("report.pdf", page=1, size=1600))
+image = macos.pdf.render("report.pdf", page=1, size=1600)
+Path("cover.png").write_bytes(image)
 ```
 
 ## Scanned PDFs
@@ -52,7 +53,11 @@ the functions raise {class}`~macos.PermissionDeniedError`:
 
 ```python
 macos.pdf.text("statement.pdf", password="1234")
+macos.pdf.merge(["statement.pdf", "cover.pdf"], "all.pdf", password="1234")
 ```
+
+{func}`~macos.pdf.merge` uses the password for every encrypted input, so they
+must share it. The files it writes are not encrypted.
 
 ## Reference
 

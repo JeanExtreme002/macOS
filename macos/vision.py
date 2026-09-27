@@ -110,10 +110,6 @@ def _perform(image: Image, request: int) -> List[int]:
     return list(_objc.nsarray(_objc.send(request, "results")))
 
 
-def _new(class_name: str) -> int:
-    return _objc.send(_objc.send(_objc.send(_objc.cls(class_name), "alloc"), "init"), "autorelease")
-
-
 def _box(observation: int) -> Tuple[float, float, float, float]:
     box = _objc.send(observation, "boundingBox", restype=_objc.CGRect)
     # Vision measures from the bottom-left corner.
@@ -187,7 +183,7 @@ def barcodes(image: Image) -> List[Barcode]:
     _load()
     found = []
     with _objc.autorelease_pool():
-        for observation in _perform(image, _new("VNDetectBarcodesRequest")):
+        for observation in _perform(image, _objc.new("VNDetectBarcodesRequest")):
             kind = _objc.pystring(_objc.send(observation, "symbology")) or ""
             found.append(
                 Barcode(
@@ -214,7 +210,7 @@ def classify(image: Image, *, limit: int = 5, min_confidence: float = 0.1) -> Li
         raise ValueError("limit must be positive, not {}".format(limit))
     _load()
     with _objc.autorelease_pool():
-        observations = _perform(image, _new("VNClassifyImageRequest"))
+        observations = _perform(image, _objc.new("VNClassifyImageRequest"))
         labels = [
             (_objc.pystring(_objc.send(observation, "identifier")) or "", _confidence(observation))
             for observation in observations
@@ -231,4 +227,4 @@ def faces(image: Image) -> List[Tuple[float, float, float, float]]:
     """
     _load()
     with _objc.autorelease_pool():
-        return [_box(observation) for observation in _perform(image, _new("VNDetectFaceRectanglesRequest"))]
+        return [_box(observation) for observation in _perform(image, _objc.new("VNDetectFaceRectanglesRequest"))]
