@@ -66,3 +66,17 @@
 .repo-link button.toctree-expand {
   display: none;
 }
+
+/* --- Badges on the home page (docs/index.md) ---------------------------- */
+/* Keep the shields on one wrapping row with even gaps, instead of the
+   theme's default inline images separated by whitespace. */
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 1.5rem;
+}
+
+.badges a {
+  line-height: 0;
+}
