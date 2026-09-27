@@ -44,7 +44,7 @@ keys that {func}`~macos.spotlight.metadata` returns:
 ```python
 macos.spotlight.search("kMDItemPixelHeight > 2000")                  # large images
 macos.spotlight.search('kMDItemContentType == "com.adobe.pdf"')
-macos.spotlight.search("kMDItemFSSize > 1000000000", folder="~")    # files over 1 GB
+macos.spotlight.search("kMDItemFSSize > 1000000000", folder="~")     # files over 1 GB
 ```
 
 A malformed query raises `ValueError`.
@@ -56,9 +56,9 @@ file, as a dict:
 
 ```python
 data = macos.spotlight.metadata("photo.jpg")
-data["kMDItemPixelWidth"]      # 4032
-data["kMDItemContentType"]     # 'public.jpeg'
-data["kMDItemContentCreationDate"]   # datetime.datetime(2026, 9, 1, 14, 3, 12)
+data["kMDItemPixelWidth"]                     # 4032
+data["kMDItemContentType"]                    # 'public.jpeg'
+data["kMDItemContentCreationDate"]            # datetime.datetime(2026, 9, 1, 14, 3, 12)
 ```
 
 Dates are {class}`datetime.datetime` objects. Files that Spotlight hasn't

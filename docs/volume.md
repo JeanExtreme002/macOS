@@ -7,6 +7,7 @@ import macos
 
 macos.volume.get()        # 50
 macos.volume.set(30)      # from 0 (silent) to 100
+
 macos.volume.mute()
 macos.volume.is_muted()   # True
 macos.volume.unmute()
@@ -29,6 +30,7 @@ have no volume control of their own. For them, {func}`~macos.volume.get` and
 ```python
 level = macos.volume.get()
 macos.volume.set(10)
+
 try:
     macos.say("Quiet announcement")
 finally:
