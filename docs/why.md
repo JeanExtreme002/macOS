@@ -46,7 +46,7 @@ is_dark = macos.appearance.is_dark()
 
 ### No dependencies
 
-`pip install macos` installs nothing else and compiles nothing. Native features
+`pip install pymacos` installs nothing else and compiles nothing. Native features
 call the system frameworks through
 [ctypes](https://docs.python.org/3/library/ctypes.html); the rest wraps tools
 that ship with every Mac.

@@ -17,8 +17,10 @@ macos.screenshot("screen.png")
 ## Install
 
 ```bash
-pip install macos
+pip install pymacos
 ```
+
+The package is installed as `pymacos` and imported as `macos`.
 
 Requires macOS and Python 3.9+.
 

@@ -56,5 +56,5 @@ errors
 contributing
 license
 GitHub <https://github.com/JeanExtreme002/macOS>
-PyPI <https://pypi.org/project/macos/>
+PyPI <https://pypi.org/project/pymacos/>
 ```

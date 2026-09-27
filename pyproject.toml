@@ -1,5 +1,5 @@
 [project]
-name = "macos"
+name = "pymacos"
 dynamic = ["version"]
 description = "A Pythonic interface to macOS — notifications, clipboard, dark mode, apps, Keychain, speech and screenshots in one dependency-free import."
 authors = [
