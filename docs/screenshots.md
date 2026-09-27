@@ -49,8 +49,29 @@ If a capture without other apps' windows is fine, pass
 `check_permission=False` to skip the check. See
 [Permissions](permissions.md#screen-recording).
 
+## Displays
+
+{func}`~macos.screen.displays` lists the connected displays, the main one (with
+the menu bar) first:
+
+```python
+for display in macos.screen.displays():
+    print(display.name, display.width, display.height, display.scale)
+```
+
+```text
+Built-in Retina Display 1512 982 2.0
+```
+
+Each {class}`~macos.screen.Display` has its size and position in points (the
+unit `region` uses), its physical resolution (`pixel_width`, `pixel_height`),
+the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
+`is_main` or `is_builtin`.
+
 ## Reference
 
 - {func}`macos.screenshot`
 - {func}`macos.screen.has_permission`
 - {func}`macos.screen.request_permission`
+- {func}`macos.screen.displays`
+- {class}`macos.screen.Display`

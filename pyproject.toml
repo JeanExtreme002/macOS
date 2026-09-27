@@ -28,6 +28,8 @@ keywords = [
     "finder",
     "volume",
     "spotlight",
+    "dialogs",
+    "system-info",
     "appkit",
     "cocoa",
     "ctypes",

@@ -24,10 +24,10 @@ from functools import lru_cache
 from typing import Iterator, Optional
 
 from . import _cf
-from ._system import framework
+from ._system import framework, run
 from .errors import MacOSError
 
-__all__ = ["Battery", "battery", "keep_awake"]
+__all__ = ["Battery", "battery", "keep_awake", "sleep", "sleep_display"]
 
 kIOPMAssertionLevelOn = 255
 kIOReturnSuccess = 0
@@ -130,3 +130,18 @@ def keep_awake(*, display: bool = False, reason: str = "pymacos keep_awake") -> 
         yield
     finally:
         io.IOPMAssertionRelease(assertion.value)
+
+
+def sleep() -> None:
+    """Put the Mac to sleep right away, like  › Sleep."""
+    run(["pmset", "sleepnow"])
+
+
+def sleep_display() -> None:
+    """
+    Turn the display off right away; the Mac keeps running.
+
+    With *Require password after screen saver begins or display is turned off*
+    set to *Immediately* (the default), this also locks the screen.
+    """
+    run(["pmset", "displaysleepnow"])

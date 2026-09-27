@@ -1,8 +1,8 @@
 # pymacos
 
 **A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps,
-Keychain, speech, screenshots, battery, volume, Shortcuts, Finder and
-Spotlight, all from one import with zero dependencies.
+Keychain, speech, screenshots, battery, volume, Shortcuts, Finder, Spotlight,
+dialogs and system info, all from one import with zero dependencies.
 
 <table class="badge-table">
   <tr>
@@ -77,6 +77,8 @@ shortcuts
 finder
 volume
 spotlight
+dialog
+system
 ```
 
 ```{toctree}

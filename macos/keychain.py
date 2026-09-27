@@ -17,13 +17,13 @@ every user through the process list.
 
 import ctypes
 from functools import lru_cache
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from . import _cf
 from ._system import framework
 from .errors import KeychainError, PermissionDeniedError
 
-__all__ = ["get", "set", "delete"]
+__all__ = ["get", "set", "delete", "accounts"]
 
 errSecSuccess = 0
 errSecUserCanceled = -128
@@ -138,3 +138,38 @@ def delete(service: str, account: str) -> bool:
         return False
     _check(status)
     return True
+
+
+def accounts(service: str) -> List[str]:
+    """
+    Return the accounts that have a password stored for ``service``.
+
+    Only the account names are read, never the passwords, so this doesn't
+    prompt even for items that other apps created.
+    """
+    if "\0" in service:
+        raise ValueError("the keychain service must not contain NUL characters")
+    sec = _security()
+    cf = _cf.lib()
+    true = _cf.constant(cf, "kCFBooleanTrue")
+    service_ref = _cf.string(service)
+    with _cf.owned(service_ref):
+        query = _cf.dictionary(
+            {
+                _cf.constant(sec, "kSecClass"): _cf.constant(sec, "kSecClassGenericPassword"),
+                _cf.constant(sec, "kSecAttrService"): service_ref,
+                _cf.constant(sec, "kSecReturnAttributes"): true,
+                _cf.constant(sec, "kSecMatchLimit"): _cf.constant(sec, "kSecMatchLimitAll"),
+            }
+        )
+    result = _cf.CFTypeRef()
+    with _cf.owned(query):
+        status = sec.SecItemCopyMatching(query, ctypes.byref(result))
+    if status == errSecItemNotFound:
+        return []
+    _check(status)
+
+    account_key = _cf.constant(sec, "kSecAttrAccount")
+    with _cf.owned(result.value) as items:
+        names = [_cf.to_str(cf.CFDictionaryGetValue(item, account_key)) for item in _cf.items(items)]
+    return sorted(name for name in names if name is not None)

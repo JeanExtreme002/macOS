@@ -51,8 +51,20 @@ with macos.power.keep_awake(display=True):
 The `reason` argument names the request in `pmset -g assertions` and in
 Activity Monitor. Closing a laptop's lid still puts it to sleep.
 
+## Sleeping
+
+```python
+macos.power.sleep()           # put the Mac to sleep now
+macos.power.sleep_display()   # turn the display off; the Mac keeps running
+```
+
+With the default setting (a password is required right after the display turns
+off), {func}`~macos.power.sleep_display` also locks the screen.
+
 ## Reference
 
 - {func}`macos.power.battery`
 - {class}`macos.power.Battery`
 - {func}`macos.power.keep_awake`
+- {func}`macos.power.sleep`
+- {func}`macos.power.sleep_display`

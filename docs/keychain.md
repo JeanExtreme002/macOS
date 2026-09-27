@@ -18,6 +18,15 @@ Each item is identified by a **service** (usually your app's name) and an **acco
 password if the item already exists. {func}`~macos.keychain.delete` returns
 `False` if there was nothing to delete.
 
+## Listing accounts
+
+{func}`~macos.keychain.accounts` returns the accounts that have a password for
+a service. It reads only the names, never the passwords:
+
+```python
+macos.keychain.accounts("my-app")   # ['alice', 'bob']
+```
+
 ## Keeping secrets out of your code
 
 Store an API token once:
@@ -67,3 +76,4 @@ command line, where every user on the Mac could see it in the process list.
 - {func}`macos.keychain.set`
 - {func}`macos.keychain.get`
 - {func}`macos.keychain.delete`
+- {func}`macos.keychain.accounts`
