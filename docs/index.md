@@ -71,7 +71,7 @@ appearance
 apps
 keychain
 speech
-screenshots
+screen
 power
 shortcuts
 finder

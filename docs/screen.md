@@ -1,4 +1,9 @@
-# Screenshots
+# Screen
+
+{mod}`macos.screen` takes screenshots and tells you about the connected
+displays.
+
+## Screenshots
 
 {func}`macos.screenshot` captures the screen to an image file and returns its
 path as a {class}`pathlib.Path`.
@@ -18,7 +23,7 @@ path = macos.screenshot()
 path.unlink()
 ```
 
-## Options
+### Options
 
 ```python
 macos.screenshot("area.png", region=(0, 0, 800, 600))   # x, y, width, height
@@ -32,7 +37,7 @@ macos.screenshot("pointer.png", cursor=True)             # include the mouse poi
 The format follows the file extension: `.png`, `.jpg` (or `.jpeg`), `.heic`,
 `.tiff`, `.gif` or `.pdf`. Anything else raises `ValueError`.
 
-## Permission
+### Permission
 
 Capturing other apps' windows requires the *Screen Recording* permission.
 
