@@ -149,6 +149,44 @@ explain how to use each part.
 .. autofunction:: macos.vision.lines
 .. autofunction:: macos.vision.languages
 .. autoclass:: macos.vision.TextLine
+.. autofunction:: macos.vision.barcodes
+.. autoclass:: macos.vision.Barcode
+.. autofunction:: macos.vision.classify
+.. autofunction:: macos.vision.faces
+```
+
+## macos.image
+
+```{eval-rst}
+.. module:: macos.image
+
+.. autofunction:: macos.image.info
+.. autofunction:: macos.image.convert
+.. autofunction:: macos.image.resize
+.. autofunction:: macos.image.qr_code
+.. autoclass:: macos.image.ImageInfo
+```
+
+## macos.pdf
+
+```{eval-rst}
+.. module:: macos.pdf
+
+.. autofunction:: macos.pdf.page_count
+.. autofunction:: macos.pdf.text
+.. autofunction:: macos.pdf.merge
+.. autofunction:: macos.pdf.extract
+.. autofunction:: macos.pdf.render
+```
+
+## macos.language
+
+```{eval-rst}
+.. module:: macos.language
+
+.. autofunction:: macos.language.detect
+.. autofunction:: macos.language.guess
+.. autofunction:: macos.language.sentiment
 ```
 
 ## macos.screen

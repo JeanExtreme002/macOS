@@ -274,6 +274,16 @@ class _ImmediateThread:
         lambda: macos.finder.thumbnail(__file__),
         lambda: macos.system.volumes(),
         lambda: macos.system.eject("Backup"),
+        lambda: macos.image.info(__file__),
+        lambda: macos.image.convert(__file__, "out.png"),
+        lambda: macos.image.qr_code("x"),
+        lambda: macos.pdf.page_count(__file__),
+        lambda: macos.pdf.text(__file__),
+        lambda: macos.vision.barcodes(b"image"),
+        lambda: macos.vision.classify(b"image"),
+        lambda: macos.vision.faces(b"image"),
+        lambda: macos.language.detect("Olá"),
+        lambda: macos.language.sentiment("Olá"),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -813,3 +823,29 @@ def test_thumbnail_rejects_bad_sizes():
 def test_copy_files_needs_paths():
     with pytest.raises(ValueError):
         macos.clipboard.copy_files([])
+
+
+@pytest.mark.parametrize("name", ["out.webp", "out.avif", "out.txt"])
+def test_image_rejects_formats_it_cannot_write(name, tmp_path):
+    with pytest.raises(ValueError, match="can't write"):
+        macos.image.convert(__file__, tmp_path / name)
+
+
+def test_image_argument_checks(tmp_path):
+    with pytest.raises(ValueError, match="needs a width"):
+        macos.image.resize(__file__, tmp_path / "out.png")
+    with pytest.raises(ValueError, match="positive"):
+        macos.image.resize(__file__, tmp_path / "out.png", width=0)
+    with pytest.raises(ValueError, match="quality"):
+        macos.image.convert(__file__, tmp_path / "out.jpg", quality=2)
+    with pytest.raises(ValueError, match="correction"):
+        macos.image.qr_code("x", correction="Z")
+    with pytest.raises(ValueError, match="size"):
+        macos.image.qr_code("x", size=0)
+
+
+def test_vision_and_language_argument_checks():
+    with pytest.raises(ValueError):
+        macos.vision.classify(b"image", limit=0)
+    with pytest.raises(ValueError):
+        macos.language.guess("x", limit=0)

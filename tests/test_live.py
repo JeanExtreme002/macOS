@@ -455,3 +455,106 @@ def test_volumes_and_eject(tmp_path):
         assert name not in [volume.name for volume in macos.system.volumes()]
     finally:
         subprocess.run(["hdiutil", "detach", "/Volumes/{}".format(name), "-quiet"], capture_output=True)
+
+
+def _text_pdf(folder, pages):
+    """A PDF with real text on each page, made by CUPS (every Mac has it)."""
+    import subprocess
+
+    source = folder / "pages.txt"
+    source.write_text("\f".join(pages) + "\n")
+    target = folder / "doc.pdf"
+    with open(target, "wb") as output:
+        result = subprocess.run(["cupsfilter", str(source)], stdout=output, stderr=subprocess.DEVNULL)
+    if result.returncode != 0 or not target.stat().st_size:
+        pytest.skip("cupsfilter can't make PDFs here")
+    return target
+
+
+def test_image_convert_resize_and_info(tmp_path):
+    source = tmp_path / "original.png"
+    source.write_bytes(_png(40, 20))
+
+    heic = macos.image.convert(source, tmp_path / "photo.heic")
+    assert macos.image.info(heic).format == "heic"
+    jpeg = macos.image.convert(heic, tmp_path / "photo.jpg", quality=0.7)
+    info = macos.image.info(jpeg)
+    assert (info.width, info.height, info.format) == (40, 20, "jpeg")
+
+    small = macos.image.resize(jpeg, tmp_path / "small.png", width=10)
+    assert (macos.image.info(small).width, macos.image.info(small).height) == (10, 5)
+    same = macos.image.resize(jpeg, tmp_path / "same.png", width=400)  # never scaled up
+    assert macos.image.info(same).width == 40
+
+    junk = tmp_path / "junk.jpg"
+    junk.write_text("not an image")
+    with pytest.raises(ValueError):
+        macos.image.info(junk)
+
+
+def test_resize_turns_photos_upright(tmp_path):
+    # A 40x20 image marked as rotated a quarter turn (EXIF orientation 6),
+    # like a portrait photo from a phone.
+    from macos import _cf
+
+    source = tmp_path / "wide.png"
+    source.write_bytes(_png(40, 20))
+    rotated = tmp_path / "rotated.jpg"
+    io = macos.image._io()
+    with _cf.owned(macos.image._source(source)) as image_source:
+        options = macos.image._options({"kCGImagePropertyOrientation": 6})
+        with _cf.owned(options):
+            macos.image._write(
+                rotated, "public.jpeg", lambda d: io.CGImageDestinationAddImageFromSource(d, image_source, 0, options)
+            )
+    assert macos.image.info(rotated).orientation == 6
+
+    upright = macos.image.resize(rotated, tmp_path / "upright.png", height=40)
+    assert (macos.image.info(upright).width, macos.image.info(upright).height) == (20, 40)
+
+
+def test_qr_code_round_trip():
+    url = "https://github.com/JeanExtreme002/pymacos"
+    image = macos.image.qr_code(url, size=300)
+
+    found = macos.vision.barcodes(image)
+    assert [(code.payload, code.kind) for code in found] == [(url, "QR")]
+    assert macos.vision.faces(image) == []
+
+
+def test_classify_returns_ranked_labels():
+    labels = macos.vision.classify(macos.image.qr_code("pymacos"), min_confidence=0.0, limit=3)
+
+    assert len(labels) <= 3
+    assert [confidence for _, confidence in labels] == sorted((c for _, c in labels), reverse=True)
+
+
+def test_pdf_read_merge_extract_and_render(tmp_path):
+    document = _text_pdf(tmp_path, ["Page one says hello", "Page two says ola"])
+
+    assert macos.pdf.page_count(document) == 2
+    assert macos.pdf.text(document, pages=[2]) == "Page two says ola"
+    assert "Page one says hello" in macos.pdf.text(document)
+
+    merged = macos.pdf.merge([document, document], tmp_path / "merged.pdf")
+    assert macos.pdf.page_count(merged) == 4
+    reordered = macos.pdf.extract(document, [2, 1], tmp_path / "reordered.pdf")
+    assert macos.pdf.text(reordered).startswith("Page two")
+
+    with pytest.raises(ValueError, match="out of range"):
+        macos.pdf.text(document, pages=[3])
+
+    page = macos.pdf.render(document, 1, size=2048)
+    assert page.startswith(b"\x89PNG")
+    assert "Page one says hello" in macos.vision.text(page)
+
+
+def test_language():
+    assert macos.language.detect("Olá, tudo bem com você? Hoje o dia está lindo.") == "pt"
+    assert macos.language.detect("   ") is None
+    top, probability = macos.language.guess("Bonjour tout le monde, comment allez-vous ?")[0]
+    assert top == "fr" and 0 < probability <= 1
+
+    assert macos.language.sentiment("I love this, it is wonderful!") > 0.5
+    assert macos.language.sentiment("This is terrible and I hate it.") < -0.5
+    assert macos.language.sentiment("") is None
