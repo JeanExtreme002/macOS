@@ -1,7 +1,7 @@
 [project]
 name = "macos"
 dynamic = ["version"]
-description = "A Pythonic interface to macOS — notifications, clipboard, dark mode, apps, keychain, speech and screenshots in one dependency-free import."
+description = "A Pythonic interface to macOS — notifications, clipboard, dark mode, apps, Keychain, speech and screenshots in one dependency-free import."
 authors = [
     { name = "Jean Loui Bernard Silva de Jesus", email = "contact@jeanloui.dev" },
 ]
@@ -59,6 +59,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/JeanExtreme002/macOS"
+Documentation = "https://macos.readthedocs.io"
 Repository = "https://github.com/JeanExtreme002/macOS"
 Issues = "https://github.com/JeanExtreme002/macOS/issues"
 Changelog = "https://github.com/JeanExtreme002/macOS/releases"

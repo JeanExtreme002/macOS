@@ -34,7 +34,7 @@ def say(text: str, *, voice: Optional[str] = None, rate: Optional[int] = None, w
     """
     Speak ``text`` out loud.
 
-    ``voice`` is a voice name from :func:`voices` (the system default when
+    ``voice`` is a voice name from :func:`~macos.speech.voices` (the system default when
     omitted) and ``rate`` is the speed in words per minute (about 175–200 is
     normal). With ``wait=False`` this returns immediately while speech plays.
 
