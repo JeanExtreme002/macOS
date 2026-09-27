@@ -22,8 +22,22 @@ import macos
 plt.style.use("dark_background" if macos.appearance.is_dark() else "default")
 ```
 
+## Waiting for a switch
+
+{func}`~macos.appearance.wait_for_change` blocks until the system switches
+between Light and Dark mode, and returns the new mode:
+
+```python
+while True:
+    theme = macos.appearance.wait_for_change()   # 'dark' or 'light'
+    restyle(theme)
+```
+
+With `timeout`, it raises `TimeoutError` if nothing changes in time.
+
 ## Reference
 
 - {func}`macos.appearance.is_dark`
 - {func}`macos.appearance.mode`
 - {func}`macos.appearance.is_auto`
+- {func}`macos.appearance.wait_for_change`

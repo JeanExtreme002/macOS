@@ -27,6 +27,8 @@ power, Shortcuts, Finder, volume, Spotlight, dialogs, system info, OCR, images, 
     macos.image.convert("IMG_0042.heic", "IMG_0042.jpg")
     macos.pdf.text("report.pdf")
     macos.language.detect("Olá, tudo bem?")
+    macos.vision.remove_background("photo.jpg")
+    macos.audio.set_output("AirPods")
 
 The package imports on any platform (so it can sit in cross-platform code and
 docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
@@ -37,17 +39,20 @@ __version__ = "1.5.0"
 from . import (
     appearance,
     apps,
+    audio,
     clipboard,
     dialog,
     finder,
     image,
     keychain,
     language,
+    network,
     notifications,
     pdf,
     power,
     screen,
     shortcuts,
+    sound,
     speech,
     spotlight,
     system,
@@ -71,17 +76,20 @@ from .speech import say
 __all__ = [
     "appearance",
     "apps",
+    "audio",
     "clipboard",
     "dialog",
     "finder",
     "image",
     "keychain",
     "language",
+    "network",
     "notifications",
     "pdf",
     "power",
     "screen",
     "shortcuts",
+    "sound",
     "speech",
     "spotlight",
     "system",

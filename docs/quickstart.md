@@ -114,6 +114,20 @@ macos.image.convert("IMG_0042.heic", "IMG_0042.jpg")
 macos.pdf.text("report.pdf")
 ```
 
+## Remove a photo's background
+
+```python
+from pathlib import Path
+
+Path("cutout.png").write_bytes(macos.vision.remove_background("dog.jpg"))
+```
+
+## Switch the audio output
+
+```python
+macos.audio.set_output("AirPods")
+```
+
 ## Open a file with an app
 
 ```python

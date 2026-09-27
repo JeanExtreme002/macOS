@@ -46,6 +46,7 @@ explain how to use each part.
 .. autofunction:: macos.appearance.is_dark
 .. autofunction:: macos.appearance.mode
 .. autofunction:: macos.appearance.is_auto
+.. autofunction:: macos.appearance.wait_for_change
 ```
 
 ## macos.apps
@@ -153,6 +154,9 @@ explain how to use each part.
 .. autoclass:: macos.vision.Barcode
 .. autofunction:: macos.vision.classify
 .. autofunction:: macos.vision.faces
+.. autofunction:: macos.vision.remove_background
+.. autofunction:: macos.vision.animals
+.. autoclass:: macos.vision.Animal
 ```
 
 ## macos.image
@@ -187,6 +191,47 @@ explain how to use each part.
 .. autofunction:: macos.language.detect
 .. autofunction:: macos.language.guess
 .. autofunction:: macos.language.sentiment
+.. autofunction:: macos.language.similarity
+.. autofunction:: macos.language.embedding
+.. autofunction:: macos.language.entities
+.. autoclass:: macos.language.Entity
+```
+
+## macos.audio
+
+```{eval-rst}
+.. module:: macos.audio
+
+.. autofunction:: macos.audio.devices
+.. autofunction:: macos.audio.outputs
+.. autofunction:: macos.audio.inputs
+.. autofunction:: macos.audio.default_output
+.. autofunction:: macos.audio.default_input
+.. autofunction:: macos.audio.set_output
+.. autofunction:: macos.audio.set_input
+.. autoclass:: macos.audio.Device
+```
+
+## macos.sound
+
+```{eval-rst}
+.. module:: macos.sound
+
+.. autofunction:: macos.sound.play
+.. autofunction:: macos.sound.beep
+.. autofunction:: macos.sound.names
+```
+
+## macos.network
+
+```{eval-rst}
+.. module:: macos.network
+
+.. autofunction:: macos.network.is_online
+.. autofunction:: macos.network.ip
+.. autofunction:: macos.network.interface
+.. autofunction:: macos.network.wifi_power
+.. autofunction:: macos.network.set_wifi_power
 ```
 
 ## macos.screen

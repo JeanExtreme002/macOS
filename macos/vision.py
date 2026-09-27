@@ -24,9 +24,21 @@ from typing import Any, List, Optional, Sequence, Tuple, Union
 from . import _objc
 from ._objc import BOOL, NSInteger, NSUInteger
 from ._system import framework
-from .errors import MacOSError
+from .errors import MacOSError, NotSupportedError
 
-__all__ = ["text", "lines", "languages", "barcodes", "classify", "faces", "TextLine", "Barcode"]
+__all__ = [
+    "text",
+    "lines",
+    "languages",
+    "barcodes",
+    "classify",
+    "faces",
+    "animals",
+    "remove_background",
+    "TextLine",
+    "Barcode",
+    "Animal",
+]
 
 Image = Union[bytes, str, "os.PathLike[str]"]
 
@@ -54,6 +66,17 @@ class Barcode:
     """What it encodes, e.g. a URL (``None`` for binary content)."""
     kind: str
     """The symbology, e.g. ``'QR'``, ``'EAN13'``, ``'Code128'``, ``'PDF417'``."""
+    box: Tuple[float, float, float, float]
+    """``(x, y, width, height)`` as fractions of the image size, from its top-left corner."""
+
+
+@dataclass(frozen=True)
+class Animal:
+    """A cat or dog found in an image."""
+
+    kind: str
+    """``'cat'`` or ``'dog'``."""
+    confidence: float
     box: Tuple[float, float, float, float]
     """``(x, y, width, height)`` as fractions of the image size, from its top-left corner."""
 
@@ -228,3 +251,88 @@ def faces(image: Image) -> List[Tuple[float, float, float, float]]:
     _load()
     with _objc.autorelease_pool():
         return [_box(observation) for observation in _perform(image, _objc.new("VNDetectFaceRectanglesRequest"))]
+
+
+def animals(image: Image) -> List[Animal]:
+    """Find cats and dogs in an image. (Those are the only animals Vision recognizes.)"""
+    _load()
+    found = []
+    with _objc.autorelease_pool():
+        for observation in _perform(image, _objc.new("VNRecognizeAnimalsRequest")):
+            for label in _objc.nsarray(_objc.send(observation, "labels")):
+                found.append(
+                    Animal(
+                        kind=(_objc.pystring(_objc.send(label, "identifier")) or "").lower(),
+                        confidence=_confidence(label),
+                        box=_box(observation),
+                    )
+                )
+    return found
+
+
+def remove_background(image: Image, *, crop: bool = False) -> Optional[bytes]:
+    """
+    Cut out the subject of a photo (a person, an animal, an object) and return it as a PNG with a transparent background.
+
+    It's the "lift subject from background" of Photos and Preview. ``crop=True``
+    trims the result to the subject; by default it keeps the image's size.
+    Returns ``None`` when no subject stands out. Needs macOS 14 or later::
+
+        Path("cutout.png").write_bytes(macos.vision.remove_background("dog.jpg"))
+    """
+    _load()
+    framework("AppKit")
+    framework("CoreImage")
+    with _objc.autorelease_pool():
+        handler = _handler(image)
+        try:
+            request = _objc.new("VNGenerateForegroundInstanceMaskRequest")
+        except LookupError:
+            raise NotSupportedError("removing backgrounds needs macOS 14 or later") from None
+        error = ctypes.c_void_p()
+        ok = _objc.send(
+            handler,
+            "performRequests:error:",
+            _objc.nsarray_of([request]),
+            ctypes.byref(error),
+            argtypes=(_objc.id, ctypes.c_void_p),
+            restype=BOOL,
+        )
+        if not ok:
+            raise _error(error, "the image could not be read", prefix="the image could not be read: ")
+        results = list(_objc.nsarray(_objc.send(request, "results")))
+        if not results:
+            return None
+        observation = results[0]
+        instances = _objc.send(observation, "allInstances")
+        if not instances or not _objc.send(instances, "count", restype=NSUInteger):
+            return None
+
+        buffer = _objc.send(
+            observation,
+            "generateMaskedImageOfInstances:fromRequestHandler:croppedToInstancesExtent:error:",
+            instances,
+            handler,
+            crop,
+            ctypes.byref(error),
+            argtypes=(_objc.id, _objc.id, BOOL, ctypes.c_void_p),
+            restype=ctypes.c_void_p,
+        )
+        if not buffer:
+            raise _error(error, "the background could not be removed")
+
+        # Pixel buffer -> Core Image -> CGImage -> PNG.
+        picture = _objc.send(_objc.cls("CIImage"), "imageWithCVPixelBuffer:", buffer, argtypes=(ctypes.c_void_p,))
+        context = _objc.send(_objc.cls("CIContext"), "contextWithOptions:", None, argtypes=(_objc.id,))
+        extent = _objc.send(picture, "extent", restype=_objc.CGRect)
+        rendered = _objc.send(
+            context,
+            "createCGImage:fromRect:",
+            picture,
+            extent,
+            argtypes=(_objc.id, _objc.CGRect),
+            restype=ctypes.c_void_p,
+        )
+        if not rendered:
+            raise MacOSError("the cut-out could not be drawn")
+        return _objc.cgimage_png(rendered)

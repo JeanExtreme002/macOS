@@ -2,8 +2,8 @@
 
 **A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps,
 Keychain, speech, screenshots, battery, volume, Shortcuts, Finder, Spotlight,
-dialogs, system info, OCR, images, PDFs and language detection, all from one
-import with zero dependencies.
+dialogs, system info, OCR, background removal, images, PDFs, audio devices and
+language tools, all from one import with zero dependencies.
 
 <table class="badge-table">
   <tr>
@@ -77,6 +77,7 @@ shortcuts
 
 dialog
 notifications
+sound
 speech
 ```
 
@@ -110,6 +111,8 @@ keychain
 :hidden:
 
 appearance
+audio
+network
 power
 screen
 system

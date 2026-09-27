@@ -653,3 +653,92 @@ def test_pdf_passwords(tmp_path):
     merged = macos.pdf.merge([locked, document], tmp_path / "merged.pdf", password="1234")
     assert macos.pdf.page_count(merged) == 2
     assert macos.pdf.text(merged).startswith("Secret page")  # the result isn't encrypted
+
+
+_PARROT = Path("/Library/User Pictures/Animals/Parrot.heic")
+
+
+def test_remove_background():
+    import struct
+
+    if not _PARROT.exists():
+        pytest.skip("the sample user pictures aren't installed")
+    try:
+        cutout = macos.vision.remove_background(_PARROT)
+    except macos.NotSupportedError:
+        pytest.skip("needs macOS 14")
+
+    width, height, _, color_type = struct.unpack(">IIBB", cutout[16:26])
+    assert color_type == 6  # RGBA: the background is transparent
+    cropped = macos.vision.remove_background(_PARROT, crop=True)
+    cropped_width, cropped_height = struct.unpack(">II", cropped[16:24])
+    assert cropped_width <= width and cropped_height <= height
+    assert macos.vision.remove_background(macos.image.qr_code("no subject here")) is None
+
+
+def test_animals_without_any():
+    assert macos.vision.animals(macos.image.qr_code("no pets")) == []
+
+
+def test_audio_devices():
+    outputs = macos.audio.outputs()
+    if not outputs:
+        pytest.skip("no audio output device")
+    assert all(device.is_output and device.name and device.uid for device in outputs)
+    assert all(device.is_input for device in macos.audio.inputs())
+
+    current = macos.audio.default_output()
+    assert current in outputs
+    assert macos.audio.set_output(current) == current  # switching to the same device changes nothing
+    assert macos.audio.default_output() == current
+
+
+def test_similarity_and_embeddings():
+    # Two words are too short to detect their language: say it.
+    assert macos.language.similarity("car", "automobile", language="en") > macos.language.similarity(
+        "car", "banana", language="en"
+    )
+    assert macos.language.similarity("carro", "automóvel", language="pt") > macos.language.similarity(
+        "carro", "banana", language="pt"
+    )
+    question = "How do I change my password?"
+    assert macos.language.similarity(question, "I forgot the password of my account") > macos.language.similarity(
+        question, "What time does the store open?"
+    )
+    vector = macos.language.embedding("I like dogs", language="en")
+    assert len(vector) > 100 and vector == macos.language.embedding("I like dogs", language="en")
+
+
+def test_entities():
+    found = macos.language.entities("Tim Cook visitou São Paulo com a Apple ontem.")
+    assert ("Tim Cook", "person", 0) in [(entity.text, entity.kind, entity.start) for entity in found]
+    assert "São Paulo" in [entity.text for entity in found if entity.kind == "place"]
+    assert macos.language.entities("   ") == []
+
+
+def test_sound():
+    import time
+
+    assert "Glass" in macos.sound.names()
+    start = time.monotonic()
+    macos.sound.play("Tink", volume=0.0)  # silent
+    assert time.monotonic() - start > 0.1  # waited for the sound to end
+    with pytest.raises(ValueError):
+        macos.sound.play("Definitely Not A Sound")
+
+
+def test_network():
+    import re
+
+    assert isinstance(macos.network.is_online(), bool)
+    address = macos.network.ip()
+    assert address is None or re.fullmatch(r"\d+\.\d+\.\d+\.\d+", address)
+    try:
+        assert isinstance(macos.network.wifi_power(), bool)
+    except macos.NotSupportedError:
+        pass  # no Wi-Fi, as on some CI runners
+
+
+def test_appearance_wait_for_change_times_out():
+    with pytest.raises(TimeoutError):
+        macos.appearance.wait_for_change(timeout=0.3, interval=0.1)
