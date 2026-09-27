@@ -57,6 +57,7 @@ path = macos.screenshot("screen.png")
 
 ```python
 battery = macos.power.battery()   # None on a Mac without a battery
+
 if battery is not None:
     print(battery.percent)
 
@@ -119,7 +120,8 @@ macos.pdf.text("report.pdf")
 ```python
 from pathlib import Path
 
-Path("cutout.png").write_bytes(macos.vision.remove_background("dog.jpg"))
+image = macos.vision.remove_background("dog.jpg")
+Path("cutout.png").write_bytes(image)
 ```
 
 ## Switch the audio output

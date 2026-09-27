@@ -23,7 +23,7 @@ from ._objc import NSInteger, NSUInteger
 from ._system import framework
 from .errors import NotSupportedError
 
-__all__ = ["detect", "guess", "sentiment", "similarity", "embedding", "entities", "Entity"]
+__all__ = ["detect", "guess", "sentiment", "similarity", "embedding", "entities", "keywords", "Entity"]
 
 _PARAGRAPH = 2  # NLTokenUnitParagraph
 
@@ -202,8 +202,8 @@ class _NSRange(ctypes.Structure):
     _fields_ = [("location", NSUInteger), ("length", NSUInteger)]
 
 
-def _has_names(language: str) -> bool:
-    """Whether this Mac has the name-recognition model for ``language``."""
+def _has_scheme(language: str, scheme: str) -> bool:
+    """Whether this Mac has the model behind a tag scheme (``"NameType"``, ``"LexicalClass"``...) for ``language``."""
     with _objc.autorelease_pool():
         schemes = _objc.send(
             _objc.cls("NLTagger"),
@@ -212,7 +212,11 @@ def _has_names(language: str) -> bool:
             _objc.nsstring(language),
             argtypes=(NSInteger, _objc.id),
         )
-        return "NameType" in {_objc.pystring(scheme) for scheme in _objc.nsarray(schemes)}
+        return scheme in {_objc.pystring(found) for found in _objc.nsarray(schemes)}
+
+
+def _has_names(language: str) -> bool:
+    return _has_scheme(language, "NameType")
 
 
 def entities(text: str, *, language: Optional[str] = None) -> List[Entity]:
@@ -225,7 +229,9 @@ def entities(text: str, *, language: Optional[str] = None) -> List[Entity]:
         #  Entity(text='São Paulo', kind='place', start=36)]
 
     It's a statistical model: common names are found reliably, unusual ones
-    can be missed or mislabelled. ``language`` is detected when omitted.
+    can be missed or mislabelled. It relies on capital letters, so names typed
+    in lowercase ("rob", as in chat messages) are usually missed.
+    ``language`` is detected when omitted.
 
     The model is per language, and macOS only has the ones for the languages
     it uses: for others it raises :class:`~macos.errors.NotSupportedError`
@@ -287,3 +293,75 @@ def entities(text: str, *, language: Optional[str] = None) -> List[Entity]:
     return [
         Entity(text=text[offsets[start] : offsets[end]], kind=kind, start=offsets[start]) for start, end, kind in merged
     ]
+
+
+def keywords(text: str, *, language: Optional[str] = None, verbs: bool = False, lemmas: bool = False) -> List[str]:
+    """
+    Return the main words of a text: its nouns (names included), in order, without repeats.
+
+    ::
+
+        macos.language.keywords("The new MacBook Pro has amazing battery life and gorgeous displays.")
+        # ['MacBook', 'Pro', 'battery', 'life', 'displays']
+
+    ``verbs=True`` adds the verbs. ``lemmas=True`` gives each word's base form
+    (``'displays'`` becomes ``'display'``, ``'comeu'`` becomes ``'comer'``),
+    which groups the variations of a word together. It's a statistical model:
+    now and then a common word is taken for a noun. ``language`` is detected
+    when omitted, and :class:`~macos.errors.NotSupportedError` is raised for a
+    language whose model this Mac doesn't have.
+    """
+    library = _load()
+    if not text.strip():
+        return []
+    code = _language_of(text, language)
+    if not _has_scheme(code, "LexicalClass"):
+        raise NotSupportedError("this Mac has no word classes for the language {!r}".format(code))
+    lexical = ctypes.c_void_p.in_dll(library, "NLTagSchemeLexicalClass").value
+    lemma = ctypes.c_void_p.in_dll(library, "NLTagSchemeLemma").value
+    if lexical is None or lemma is None:
+        raise NotSupportedError("word classes are not available on this Mac")
+    wanted = {"Noun", "Verb"} if verbs else {"Noun"}
+
+    units = text.encode("utf-16-le")
+    found: List[str] = []
+    seen = set()
+    with _objc.autorelease_pool():
+        tagger = _objc.send(_objc.cls("NLTagger"), "alloc")
+        tagger = _objc.send(tagger, "initWithTagSchemes:", _objc.nsarray_of([lexical, lemma]), argtypes=(_objc.id,))
+        _objc.send(tagger, "autorelease")
+        _objc.send(tagger, "setString:", _objc.nsstring(text), argtypes=(_objc.id,), restype=None)
+        total = len(units) // 2
+        _objc.send(
+            tagger, "setLanguage:range:", _objc.nsstring(code), _NSRange(0, total), argtypes=(_objc.id, _NSRange), restype=None
+        )
+        index = 0
+        while index < total:
+            token = _NSRange()
+            kind = _objc.send(
+                tagger,
+                "tagAtIndex:unit:scheme:tokenRange:",
+                index,
+                _WORD,
+                lexical,
+                ctypes.byref(token),
+                argtypes=(NSUInteger, NSInteger, _objc.id, ctypes.c_void_p),
+            )
+            if token.length and _objc.pystring(kind) in wanted:
+                word = units[token.location * 2 : (token.location + token.length) * 2].decode("utf-16-le")
+                if lemmas:
+                    base = _objc.send(
+                        tagger,
+                        "tagAtIndex:unit:scheme:tokenRange:",
+                        index,
+                        _WORD,
+                        lemma,
+                        None,
+                        argtypes=(NSUInteger, NSInteger, _objc.id, ctypes.c_void_p),
+                    )
+                    word = _objc.pystring(base) or word
+                if word.casefold() not in seen:
+                    seen.add(word.casefold())
+                    found.append(word)
+            index = max(token.location + token.length, index + 1)
+    return found

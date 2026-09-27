@@ -91,13 +91,43 @@ macos.language.entities("Tim Cook, the CEO of Apple, visited São Paulo yesterda
 ```
 
 `start` is where the name begins in the text. It's a statistical model: common
-names are found reliably, unusual ones can be missed.
+names are found reliably, unusual ones can be missed. It relies on capital
+letters, so names typed in lowercase ("rob", as in chat messages) are usually
+missed.
+
+Only proper names count: in "we had dinner at the restaurant", neither
+"dinner" nor "restaurant" is an entity. For the main words of a text, see
+keywords below.
+
+## Keywords
+
+{func}`~macos.language.keywords` returns the nouns of a text (names included),
+in order and without repeats:
+
+```python
+macos.language.keywords("The new MacBook Pro has amazing battery life and gorgeous displays.")
+# ['MacBook', 'Pro', 'battery', 'life', 'displays']
+```
+
+`lemmas=True` gives each word's base form, so variations of a word count once,
+and `verbs=True` adds the verbs:
+
+```python
+text = "The cats ate and then the cat slept on the sofas"
+macos.language.keywords(text)                           # ['cats', 'cat', 'sofas']
+macos.language.keywords(text, lemmas=True)              # ['cat', 'sofa']
+macos.language.keywords(text, lemmas=True, verbs=True)  # ['cat', 'eat', 'sleep', 'sofa']
+```
+
+It's a statistical model: now and then a common word, such as a pronoun, is
+taken for a noun.
 
 ## Languages on this Mac
 
 macOS keeps language models only for the languages it uses, and downloads the
 others on demand. {func}`~macos.language.similarity`,
-{func}`~macos.language.embedding` and {func}`~macos.language.entities` raise
+{func}`~macos.language.embedding`, {func}`~macos.language.entities` and
+{func}`~macos.language.keywords` raise
 {class}`~macos.NotSupportedError` for a language whose model isn't on the Mac,
 instead of returning a misleading result. 
 
@@ -112,4 +142,5 @@ language works for every language, always.
 - {func}`macos.language.similarity`
 - {func}`macos.language.embedding`
 - {func}`macos.language.entities`
+- {func}`macos.language.keywords`
 - {class}`macos.language.Entity`

@@ -756,3 +756,14 @@ def test_network():
 def test_appearance_wait_for_change_times_out():
     with pytest.raises(TimeoutError):
         macos.appearance.wait_for_change(timeout=0.3, interval=0.1)
+
+
+def test_keywords():
+    text = "The new MacBook Pro has amazing battery life and the displays are gorgeous."
+
+    assert macos.language.keywords(text, language="en") == ["MacBook", "Pro", "battery", "life", "displays"]
+    assert "display" in macos.language.keywords(text, language="en", lemmas=True)
+    assert "has" in macos.language.keywords(text, language="en", verbs=True)
+    assert macos.language.keywords("   ") == []
+    with pytest.raises(macos.NotSupportedError):
+        macos.language.keywords("東京でティム・クックに会いました", language="ja")

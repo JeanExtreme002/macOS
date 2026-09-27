@@ -194,6 +194,7 @@ explain how to use each part.
 .. autofunction:: macos.language.similarity
 .. autofunction:: macos.language.embedding
 .. autofunction:: macos.language.entities
+.. autofunction:: macos.language.keywords
 .. autoclass:: macos.language.Entity
 ```
 

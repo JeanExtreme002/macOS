@@ -292,6 +292,7 @@ class _ImmediateThread:
         lambda: macos.language.similarity("car", "automobile"),
         lambda: macos.language.embedding("hello"),
         lambda: macos.language.entities("Tim Cook"),
+        lambda: macos.language.keywords("battery life"),
         lambda: macos.sound.play("Glass"),
         lambda: macos.sound.beep(),
         lambda: macos.network.is_online(),
