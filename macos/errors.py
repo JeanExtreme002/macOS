@@ -32,19 +32,28 @@ class CommandError(MacOSError):
     """A system command the package relies on exited with an error."""
 
     def __init__(self, args: Sequence[str], returncode: int, stderr: str = "") -> None:
+        # The constructor arguments go to Exception, so ``self.args`` can
+        # rebuild the exception: that is what lets it cross a pickle, e.g.
+        # from a multiprocessing worker back to the parent.
+        super().__init__(list(args), returncode, stderr)
         self.cmd = list(args)
         self.returncode = returncode
         self.stderr = stderr.strip()
 
-        message = "{!r} exited with status {}".format(self.cmd[0], returncode)
+    def __str__(self) -> str:
+        message = "{!r} exited with status {}".format(self.cmd[0], self.returncode)
         if self.stderr:
             message += ": " + self.stderr
-        super().__init__(message)
+        return message
 
 
 class KeychainError(MacOSError):
     """The Security framework returned an error status (``OSStatus``)."""
 
     def __init__(self, status: int, message: Optional[str] = None) -> None:
+        super().__init__(status, message)  # picklable, see CommandError
         self.status = status
-        super().__init__("{} (OSStatus {})".format(message or "Keychain error", status))
+        self.message = message
+
+    def __str__(self) -> str:
+        return "{} (OSStatus {})".format(self.message or "Keychain error", self.status)

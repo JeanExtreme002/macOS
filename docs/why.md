@@ -1,13 +1,13 @@
-# Why macos?
+# Why `pymacos`?
 
 Showing a notification, reading the clipboard or checking for Dark mode from
 Python usually means shelling out to `osascript`, remembering `defaults` keys,
-or pulling in PyObjC and learning Cocoa. `macos` gives you one small, typed API
+or pulling in PyObjC and learning Cocoa. `pymacos` gives you one small, typed API
 instead.
 
 ## Before and after
 
-Without `macos`:
+Without `pymacos`:
 
 ```python
 import subprocess
@@ -32,7 +32,7 @@ result = subprocess.run(
 is_dark = result.stdout.strip() == "Dark"
 ```
 
-With `macos`:
+With `pymacos`:
 
 ```python
 import macos
@@ -65,7 +65,7 @@ Passwords go straight to the Keychain and never show up in the process list.
 ### Errors that explain themselves
 
 macOS often fails silently: a screenshot taken without the Screen Recording
-permission just comes back mostly empty. `macos` checks first and raises
+permission just comes back mostly empty. `pymacos` checks first and raises
 {class}`~macos.PermissionDeniedError`, saying which permission is missing and
 where to turn it on. Everything it raises derives from
 {class}`~macos.MacOSError`. See [Errors](errors.md).

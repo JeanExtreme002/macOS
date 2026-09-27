@@ -15,7 +15,7 @@ permission.
 ## Screen Recording
 
 Without this permission macOS doesn't fail: it returns a screenshot that shows
-only the wallpaper and the menu bar. `macos` checks first and raises
+only the wallpaper and the menu bar. `pymacos` checks first and raises
 {class}`~macos.PermissionDeniedError` instead.
 
 ```python

@@ -6,13 +6,24 @@ import uuid
 import pytest
 
 import macos
+from macos import _objc
 
 pytestmark = pytest.mark.live
+
+
+def _clipboard_has_content() -> bool:
+    with _objc.autorelease_pool():
+        types = _objc.send(macos.clipboard._pasteboard(), "types")
+        return bool(types) and _objc.send(types, "count", restype=_objc.NSUInteger) > 0
 
 
 @pytest.fixture
 def restore_clipboard():
     before = macos.clipboard.paste()
+    if before is None and _clipboard_has_content():
+        # Only text can be saved and put back: don't destroy a copied image
+        # or file just to run the tests.
+        pytest.skip("the clipboard holds non-text content")
     yield
     if before is None:
         macos.clipboard.clear()
@@ -78,6 +89,20 @@ def test_get_finds_apps_by_bundle_id():
     assert found is not None
     assert found.pid == app.pid
     assert found.is_running
+
+
+def test_locate_ignores_a_folder_with_the_app_name(tmp_path, monkeypatch):
+    (tmp_path / "Finder").mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    assert macos.apps._locate("Finder") == os.path.realpath("/System/Library/CoreServices/Finder.app")
+
+
+def test_find_launched_requires_the_same_bundle_path():
+    finder = os.path.realpath("/System/Library/CoreServices/Finder.app")
+
+    assert macos.apps._find_launched(finder, "com.apple.finder").bundle_id == "com.apple.finder"
+    assert macos.apps._find_launched("/Applications/Another Finder.app", "com.apple.finder") is None
 
 
 def test_get_unknown_app_returns_none():

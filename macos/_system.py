@@ -17,7 +17,7 @@ from .errors import CommandError, NotSupportedError
 def require_macos() -> None:
     """Raise :class:`NotSupportedError` unless running on macOS."""
     if sys.platform != "darwin":
-        raise NotSupportedError("the macos package only works on macOS (running on {!r})".format(sys.platform))
+        raise NotSupportedError("pymacos only works on macOS (running on {!r})".format(sys.platform))
 
 
 def run(args: Sequence[str], *, input: Optional[str] = None) -> str:

@@ -1,6 +1,7 @@
-# Makefile for the macos Python package
+# Makefile for the pymacos Python package
 
 # Variables
+# The import name (the PyPI distribution is "pymacos").
 PACKAGE_NAME = macos
 PYTHON = python3
 PIP = $(PYTHON) -m pip
@@ -18,7 +19,7 @@ NC = \033[0m # No Color
 # Default target
 .PHONY: help
 help:
-	@echo "$(GREEN)macos Python package Makefile$(NC)"
+	@echo "$(GREEN)pymacos Python package Makefile$(NC)"
 	@echo ""
 	@echo "Setup:"
 	@echo "  $(YELLOW)venv$(NC)             - Create a virtual environment in $(VENV_DIR)"

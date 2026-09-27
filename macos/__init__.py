@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-macos — a Pythonic interface to macOS.
+pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
 Notifications, clipboard, appearance, apps, Keychain, speech and screenshots
 in one import, with no dependencies::

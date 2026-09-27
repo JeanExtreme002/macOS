@@ -10,7 +10,7 @@ except macos.MacOSError as error:
     print("macOS said no:", error)
 ```
 
-Where a builtin exception means the same thing, the `macos` exception also
+Where a builtin exception means the same thing, the `pymacos` exception also
 subclasses it, so existing handlers keep working: `except PermissionError`
 catches {class}`~macos.PermissionDeniedError`, and `except LookupError` catches
 {class}`~macos.AppNotFoundError`.

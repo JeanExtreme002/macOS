@@ -1,4 +1,4 @@
-# macos
+# pymacos
 
 **A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps,
 Keychain, speech and screenshots, all from one import with zero dependencies.
@@ -15,7 +15,7 @@ macos.say("Done!")
 macos.screenshot("screen.png")
 ```
 
-New here? Read [Why macos?](why.md), then start with
+New here? Read [Why pymacos?](why.md), then start with
 [Installation](installation.md) and the [Quick Start](quickstart.md).
 
 ```{toctree}

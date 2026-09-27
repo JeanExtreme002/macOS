@@ -33,8 +33,10 @@ __all__ = ["App", "running", "frontmost", "get", "open"]
 # NSApplicationActivationPolicy
 _POLICY_REGULAR = 0
 
-# NSApplicationActivateAllWindows
-_ACTIVATE_ALL_WINDOWS = 1 << 0
+# NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps.
+# Without the second flag, macOS 13 and earlier only activate the app when no
+# other app is active, and from a script some app (the terminal) always is.
+_ACTIVATE_OPTIONS = (1 << 0) | (1 << 1)
 
 
 @lru_cache(maxsize=None)
@@ -127,14 +129,31 @@ class App:
         with _objc.autorelease_pool():
             return bool(_objc.send(self._handle(), "isHidden", restype=BOOL))
 
-    def activate(self) -> bool:
-        """Bring the application to the front. Return ``False`` if macOS refused."""
-        with _objc.autorelease_pool():
-            return bool(
+    def activate(self, *, timeout: float = 2.0) -> bool:
+        """
+        Bring the application to the front and return whether it is now frontmost.
+
+        Waits up to ``timeout`` seconds for the switch to happen.
+        """
+        if self.path:
+            # Since macOS 14, AppKit ignores activation requests from a process
+            # that isn't active itself, which a script never is: the call
+            # returns YES and nothing happens. LaunchServices (`open`) has no
+            # such restriction.
+            self._handle()  # raise AppNotFoundError if it has quit
+            run(["open", "-a", self.path])
+        else:
+            with _objc.autorelease_pool():
                 _objc.send(
-                    self._handle(), "activateWithOptions:", _ACTIVATE_ALL_WINDOWS, argtypes=(NSUInteger,), restype=BOOL
+                    self._handle(), "activateWithOptions:", _ACTIVATE_OPTIONS, argtypes=(NSUInteger,), restype=BOOL
                 )
-            )
+
+        deadline = time.monotonic() + timeout
+        while not self.is_active:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+        return True
 
     def hide(self) -> bool:
         with _objc.autorelease_pool():
@@ -230,7 +249,9 @@ def get(name: str) -> Optional[App]:
 
 def _locate(name: str) -> str:
     """Resolve an app name, bundle identifier or path to the real path of its bundle."""
-    if _is_path(name) or os.path.isdir(name):
+    # Only names that look like paths are paths: a bare "Notes" must find the
+    # Notes app even when the current directory has a "Notes" folder.
+    if _is_path(name):
         expanded = os.path.expanduser(name)
         if not os.path.isdir(expanded):
             raise AppNotFoundError("no application at {!r}".format(name))
@@ -258,22 +279,36 @@ def _bundle_id(path: str) -> Optional[str]:
         return _objc.pystring(_objc.send(bundle, "bundleIdentifier")) if bundle else None
 
 
+def _bundle_path(handle: int) -> Optional[str]:
+    url = _objc.send(handle, "bundleURL")
+    path = _objc.pystring(_objc.send(url, "path")) if url else None
+    return os.path.realpath(path) if path else None
+
+
 def _find_launched(path: str, bundle_id: Optional[str]) -> Optional[App]:
+    """The running instance of the bundle at ``path``, if it is up yet."""
     with _objc.autorelease_pool():
         if bundle_id is not None:
             # Only asks about this one bundle id, instead of listing every
             # process on each poll.
-            launched = _objc.send(
-                _running_application_class(),
-                "runningApplicationsWithBundleIdentifier:",
-                _objc.nsstring(bundle_id),
-                argtypes=(_objc.id,),
+            candidates = _objc.nsarray(
+                _objc.send(
+                    _running_application_class(),
+                    "runningApplicationsWithBundleIdentifier:",
+                    _objc.nsstring(bundle_id),
+                    argtypes=(_objc.id,),
+                )
             )
-            for handle in _objc.nsarray(launched):
-                if not _objc.send(handle, "isTerminated", restype=BOOL):
-                    return _app(handle)
-            return None
-    return get(path)
+        else:
+            candidates = _handles(include_background=True)
+
+        for handle in candidates:
+            # Two copies of an app share a bundle id; only the one at `path`
+            # is the one that was asked for. Comparing the path on the handle
+            # also avoids building an App for every other process.
+            if _bundle_path(handle) == path and not _objc.send(handle, "isTerminated", restype=BOOL):
+                return _app(handle)
+    return None
 
 
 def open(name: str, *, background: bool = False, timeout: float = 10.0) -> App:
