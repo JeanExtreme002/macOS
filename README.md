@@ -29,11 +29,8 @@
                 alt="Newest PyPI version"
                 src="https://img.shields.io/pypi/v/pymacos.svg"></a>
             <a href="https://pypi.org/project/pymacos/"><img
-                alt="Number of PyPI downloads"
-                src="https://img.shields.io/pypi/dm/pymacos.svg"></a>
-            <a href="https://pypi.org/project/pymacos/"><img
                 alt="Supported Python versions"
-                src="https://img.shields.io/pypi/pyversions/pymacos.svg"></a>
+                src="https://img.shields.io/pypi/pyversions/pymacos.svg?color=8A2BE2"></a>
             <a href="https://pypi.org/project/pymacos/"><img
                 alt="Platform"
                 src="https://img.shields.io/badge/platform-macOS-lightgrey.svg"></a>
@@ -43,14 +40,6 @@
             <a href="https://github.com/JeanExtreme002/pymacos/blob/main/LICENSE"><img
                 alt="License"
                 src="https://img.shields.io/pypi/l/pymacos.svg"></a>
-        </td>
-    </tr>
-    <tr>
-        <th>social</th>
-        <td>
-            <a href="https://github.com/JeanExtreme002/pymacos"><img
-                alt="GitHub stars"
-                src="https://img.shields.io/github/stars/JeanExtreme002/pymacos?style=social"></a>
         </td>
     </tr>
 </table>
