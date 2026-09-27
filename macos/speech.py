@@ -60,9 +60,18 @@ def say(text: str, *, voice: Optional[str] = None, rate: Optional[int] = None, w
     except FileNotFoundError:
         raise NotSupportedError("the 'say' command was not found on this system") from None
 
-    # communicate() feeds stdin, tolerates say exiting early (no
-    # BrokenPipeError) and reaps the process, so no zombie is left behind.
-    threading.Thread(target=process.communicate, args=(text.encode("utf-8"),), daemon=True).start()
+    # Write the text before returning, not from a background thread: if the
+    # script ends right after this call, a thread could be killed before the
+    # text reached say, which would then speak nothing.
+    assert process.stdin is not None
+    try:
+        process.stdin.write(text.encode("utf-8"))
+        process.stdin.close()
+    except BrokenPipeError:
+        pass  # say exited early; there is nothing left to speak to.
+
+    # Reap the process when it finishes, so no zombie is left behind.
+    threading.Thread(target=process.wait, daemon=True).start()
 
 
 def voices() -> List[Voice]:

@@ -56,6 +56,11 @@ macos.apps.open("Mail", background=True)   # launch without stealing focus
 It raises {class}`~macos.AppNotFoundError` if no installed app matches, or if
 the app doesn't show up within `timeout` seconds (10 by default).
 
+A name is only treated as a path when it contains a `/` (or starts with `~`),
+so `open("Notes")` finds the Notes app even if the current directory has a
+`Notes` folder. Use `open("./Notes.app")` for a bundle in the current
+directory.
+
 ## Controlling an app
 
 {func}`~macos.apps.running`, {func}`~macos.apps.frontmost`,
@@ -71,7 +76,7 @@ app.is_running    # still running?
 app.is_active     # frontmost?
 app.is_hidden
 
-app.activate()    # bring to the front
+app.activate()    # bring to the front; returns whether it is now frontmost
 app.hide()
 app.unhide()
 ```

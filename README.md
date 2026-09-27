@@ -1,4 +1,4 @@
-# macOS
+# pymacos
 
 **A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps, Keychain, speech and screenshots, all from one import with zero dependencies.
 
@@ -26,7 +26,7 @@ Requires macOS and Python 3.9+.
 
 ## Why
 
-Doing any of this from Python usually means shelling out to `osascript`, remembering `defaults` keys, or pulling in PyObjC and learning Cocoa. `macos` gives you one small, typed API instead:
+Doing any of this from Python usually means shelling out to `osascript`, remembering `defaults` keys, or pulling in PyObjC and learning Cocoa. `pymacos` gives you one small, typed API instead:
 
 - **No dependencies.** Native features call the system frameworks through `ctypes`; the rest wraps tools that ship with every Mac.
 - **Pythonic.** Plain functions, dataclasses and real exceptions, not Objective-C selectors or exit codes.

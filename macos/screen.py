@@ -31,8 +31,11 @@ _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tif
 
 
 @lru_cache(maxsize=None)
-def _graphics() -> ctypes.CDLL:
+def _graphics() -> Optional[ctypes.CDLL]:
+    """CoreGraphics, or ``None`` before macOS 10.15, which had no Screen Recording permission."""
     cg = framework("CoreGraphics")
+    if not hasattr(cg, "CGPreflightScreenCaptureAccess"):
+        return None
     cg.CGPreflightScreenCaptureAccess.argtypes = ()
     cg.CGPreflightScreenCaptureAccess.restype = ctypes.c_bool
     cg.CGRequestScreenCaptureAccess.argtypes = ()
@@ -42,7 +45,8 @@ def _graphics() -> ctypes.CDLL:
 
 def has_permission() -> bool:
     """Whether this process may capture the screen, without prompting the user."""
-    return bool(_graphics().CGPreflightScreenCaptureAccess())
+    cg = _graphics()
+    return cg is None or bool(cg.CGPreflightScreenCaptureAccess())
 
 
 def request_permission() -> bool:
@@ -52,7 +56,8 @@ def request_permission() -> bool:
     Returns whether it is granted now. After the user grants it in System
     Settings, the app running Python must be restarted for it to take effect.
     """
-    return bool(_graphics().CGRequestScreenCaptureAccess())
+    cg = _graphics()
+    return cg is None or bool(cg.CGRequestScreenCaptureAccess())
 
 
 def screenshot(

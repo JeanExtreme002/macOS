@@ -103,6 +103,29 @@ def test_other_platforms_raise_not_supported(monkeypatch):
         macos.say("x")
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        macos.CommandError(["say", "-v", "x"], 1, "boom\n"),
+        macos.KeychainError(-25300, "The item could not be found."),
+        macos.KeychainError(-25300),
+    ],
+)
+def test_errors_survive_pickling(error):
+    import pickle
+
+    copy = pickle.loads(pickle.dumps(error))
+
+    assert type(copy) is type(error)
+    assert str(copy) == str(error)
+    assert vars(copy) == vars(error)
+
+
+def test_error_messages():
+    assert str(macos.CommandError(["say"], 1, "boom\n")) == "'say' exited with status 1: boom"
+    assert str(macos.KeychainError(-25300)) == "Keychain error (OSStatus -25300)"
+
+
 def test_permission_error_is_also_the_builtin():
     assert issubclass(macos.PermissionDeniedError, PermissionError)
     assert issubclass(macos.AppNotFoundError, LookupError)
@@ -118,21 +141,36 @@ def test_notify_ends_options_before_user_text(fake_run):
 def test_say_without_waiting_reaps_the_process(fake_run, monkeypatch):
     started = []
 
+    class FakeStdin:
+        def __init__(self):
+            self.data, self.closed = b"", False
+
+        def write(self, data):
+            self.data += data
+
+        def close(self):
+            self.closed = True
+
     class FakePopen:
         def __init__(self, args, **kwargs):
             self.args = args
+            self.stdin = FakeStdin()
+            self.waited = False
             started.append(self)
 
-        def communicate(self, data):
-            self.data = data
+        def wait(self):
+            self.waited = True
 
     monkeypatch.setattr(macos.speech.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(macos.speech.threading, "Thread", _ImmediateThread)
 
     macos.say("-hi", wait=False)
 
-    assert started[0].args == ["say", "-f", "-"]
-    assert started[0].data == b"-hi"
+    process = started[0]
+    assert process.args == ["say", "-f", "-"]
+    # The text is written and stdin closed before say() returns.
+    assert process.stdin.data == b"-hi" and process.stdin.closed
+    assert process.waited
 
 
 def test_say_without_waiting_reports_a_missing_command(fake_run, monkeypatch):

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-macos — a Pythonic interface to macOS.
+pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
 Notifications, clipboard, appearance, apps, Keychain, speech and screenshots
 in one import, with no dependencies::
@@ -20,7 +20,7 @@ The package imports on any platform (so it can sit in cross-platform code and
 docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 from . import appearance, apps, clipboard, keychain, screen, speech
 from .errors import (

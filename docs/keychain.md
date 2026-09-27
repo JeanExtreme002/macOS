@@ -57,7 +57,7 @@ command line, where every user on the Mac could see it in the process list.
 ## Limitations
 
 - Service and account names can't contain NUL characters (`"\0"`): the keychain
-  would silently cut them there and address a different item, so `macos`
+  would silently cut them there and address a different item, so `pymacos`
   raises `ValueError`.
 - If the stored data isn't UTF-8 text (e.g. binary data written by another
   app), {func}`~macos.keychain.get` raises {class}`~macos.KeychainError`.
