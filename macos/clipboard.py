@@ -92,23 +92,33 @@ def wait_for_change(*, timeout: Optional[float] = None, interval: float = 0.2) -
     Wait until something new is copied, and return it as text.
 
     Returns ``None`` if the new content isn't text (an image, files...).
-    Raises :class:`TimeoutError` if nothing changes within ``timeout`` seconds.
+    Clearing the clipboard doesn't count as a copy. Raises
+    :class:`TimeoutError` if nothing is copied within ``timeout`` seconds.
     ``interval`` is how often to check, in seconds.
     """
     if interval <= 0:
         raise ValueError("interval must be positive, not {}".format(interval))
     start = change_count()
     deadline = None if timeout is None else time.monotonic() + timeout
-    while change_count() == start:
+    # An app copies by clearing the clipboard, then writing to it, and the
+    # clearing alone already bumps the change count: keep waiting while the
+    # clipboard is empty, or the text could be read before it's written.
+    while change_count() == start or _is_empty():
         if deadline is None:
             time.sleep(interval)
             continue
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise TimeoutError("the clipboard didn't change within {}s".format(timeout))
+            raise TimeoutError("nothing was copied within {}s".format(timeout))
         # Never sleep past the deadline, even with a long interval.
         time.sleep(min(interval, remaining))
     return paste()
+
+
+def _is_empty() -> bool:
+    with _objc.autorelease_pool():
+        types = _objc.send(_pasteboard(), "types")
+        return not types or not _objc.send(types, "count", restype=_objc.NSUInteger)
 
 
 def copy_image(image: Union[bytes, str, "os.PathLike[str]"]) -> None:
