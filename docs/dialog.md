@@ -48,7 +48,7 @@ password = macos.dialog.prompt("Password:", hidden=True)   # shows dots
 
 ```python
 fruit = macos.dialog.choose(
-    ["Apple", "Banana", "Pear"], prompt="Pick a fruit", default="Pear"
+    ["Apple", "Banana", "Pear"], prompt="Pick a fruit", default="Pear", title="Fruits"
 )
 ```
 

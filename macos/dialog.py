@@ -129,7 +129,13 @@ def prompt(
     return "\n".join(result[1:]) if result[0] == "ok" else None
 
 
-def choose(options: Sequence[str], *, prompt: Optional[str] = None, default: Optional[str] = None) -> Optional[str]:
+def choose(
+    options: Sequence[str],
+    *,
+    prompt: Optional[str] = None,
+    default: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Optional[str]:
     """Let the user pick one of ``options`` from a list, and return it (``None`` if cancelled)."""
     options = [str(option) for option in options]
     if not options:
@@ -139,11 +145,13 @@ def choose(options: Sequence[str], *, prompt: Optional[str] = None, default: Opt
     if default is not None and default not in options:
         raise ValueError("default {!r} is not one of the options".format(default))
 
-    statement = "set r to choose from list (items 3 thru -1 of argv) with prompt (item 1 of argv)"
+    statement = "set r to choose from list (items 4 thru -1 of argv) with prompt (item 1 of argv)"
     if default is not None:
         statement += " default items {(item 2 of argv)}"
+    if title is not None:
+        statement += " with title (item 3 of argv)"
     body = [statement, 'if r is false then return "{}"'.format(_CANCEL), 'return "ok" & linefeed & (item 1 of r)']
-    result = _show(body, [prompt or "Choose an option:", default or "", *options])
+    result = _show(body, [prompt or "Choose an option:", default or "", title or "", *options])
     return result[1] if result[0] == "ok" else None
 
 

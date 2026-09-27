@@ -612,7 +612,12 @@ def test_dialog_choose(fake_run):
     fake_run.stdout = "ok\nPear\n"
 
     assert macos.dialog.choose(["Apple", "Pear"], prompt="Fruit?", default="Pear") == "Pear"
-    assert fake_run.args[-4:] == ["Fruit?", "Pear", "Apple", "Pear"]
+    assert fake_run.args[-5:] == ["Fruit?", "Pear", "", "Apple", "Pear"]
+    assert "with title" not in _script(fake_run.args)
+
+    macos.dialog.choose(["Apple", "Pear"], title="Fruits")
+    assert fake_run.args[-3:] == ["Fruits", "Apple", "Pear"]
+    assert "with title (item 3 of argv)" in _script(fake_run.args)
 
     fake_run.stdout = "cancel\n"
     assert macos.dialog.choose(["Apple"]) is None
