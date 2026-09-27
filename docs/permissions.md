@@ -28,8 +28,9 @@ only applies the change to newly started processes.
 
 ## Notifications
 
-Notifications are posted through AppleScript, so macOS attributes them to
-*Script Editor*. If {func}`macos.notify` runs without errors but nothing shows
+Notifications are posted through AppleScript, so macOS attributes them to *Script Editor*.
+
+If {func}`macos.notify` runs without errors but nothing shows
 up, notifications for Script Editor are turned off. If Script Editor isn't
 listed in System Settings › Notifications yet, open Script Editor, run
 `display notification "hi"` once and accept the prompt.

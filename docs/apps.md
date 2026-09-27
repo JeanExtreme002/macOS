@@ -92,6 +92,7 @@ For example, a small focus mode:
 ```python
 for name in ("Slack", "Discord", "Mail"):
     app = macos.apps.get(name)
+
     if app is not None:
         app.quit()
 ```

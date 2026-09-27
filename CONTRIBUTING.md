@@ -12,6 +12,9 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+The `Makefile` wraps every command below: run `make help` to list the targets,
+for example `make check` (lint, type check and tests) or `make docs`.
+
 ## Tests
 
 ```bash

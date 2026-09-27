@@ -12,8 +12,9 @@ macos.keychain.delete("my-app", "alice")   # True
 macos.keychain.get("my-app", "alice")      # None
 ```
 
-Each item is identified by a **service** (usually your app's name) and an
-**account** (usually a user name). {func}`~macos.keychain.set` replaces the
+Each item is identified by a **service** (usually your app's name) and an **account** (usually a user name).
+
+{func}`~macos.keychain.set` replaces the
 password if the item already exists. {func}`~macos.keychain.delete` returns
 `False` if there was nothing to delete.
 

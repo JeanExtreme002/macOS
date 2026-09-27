@@ -15,34 +15,14 @@ macos.say("Done!")
 macos.screenshot("screen.png")
 ```
 
-Doing any of this from Python usually means shelling out to `osascript`,
-remembering `defaults` keys, or pulling in PyObjC and learning Cocoa. `macos`
-gives you one small, typed API instead:
-
-- **No dependencies.** Native features call the system frameworks through
-  `ctypes`; the rest wraps tools that ship with every Mac.
-- **Pythonic.** Plain functions, dataclasses and real exceptions, not
-  Objective-C selectors or exit codes.
-- **Safe by default.** Your text is never spliced into shell or AppleScript
-  source, and passwords never show up in the process list.
-- **Helpful errors.** A missing privacy permission raises an error that says
-  where to enable it, instead of failing silently.
-
-Start with [Installation](installation.md) and the [Quick Start](quickstart.md),
-then read the page for each feature.
-
-```{admonition} Enjoying macos?
-:class: tip
-
-If it saved you a trip to the AppleScript docs, please
-**[star it on GitHub](https://github.com/JeanExtreme002/macOS)**. It's the
-easiest way to support the project and help others find it.
-```
+New here? Read [Why macos?](why.md), then start with
+[Installation](installation.md) and the [Quick Start](quickstart.md).
 
 ```{toctree}
 :caption: Getting Started
 :hidden:
 
+why
 installation
 quickstart
 permissions

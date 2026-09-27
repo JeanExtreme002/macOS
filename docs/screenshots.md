@@ -34,8 +34,9 @@ The format follows the file extension: `.png`, `.jpg` (or `.jpeg`), `.heic`,
 
 ## Permission
 
-Capturing other apps' windows requires the *Screen Recording* permission. Without
-it, macOS silently returns an image with only the wallpaper and the menu bar, so
+Capturing other apps' windows requires the *Screen Recording* permission.
+
+Without it, macOS silently returns an image with only the wallpaper and the menu bar, so
 {func}`~macos.screenshot` checks first and raises
 {class}`~macos.PermissionDeniedError`:
 
