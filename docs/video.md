@@ -63,7 +63,8 @@ macos.video.to_gif("talk.mov", "moment.gif", start=42, duration=3)
 ```
 
 `fps` (10 by default) and `width` (480 pixels, never wider than the video)
-set its smoothness and size. GIFs get big fast: a few seconds at 10 fps and
+set its smoothness and size. The GIF loops forever; `loop=False` plays it
+once. GIFs get big fast: a few seconds at 10 fps and
 480 pixels is a good size.
 
 ## Reference

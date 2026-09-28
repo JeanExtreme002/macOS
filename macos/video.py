@@ -274,9 +274,10 @@ def to_gif(
     width: int = 480,
     start: Optional[float] = None,
     duration: Optional[float] = None,
+    loop: bool = True,
 ) -> Path:
     """
-    Turn a video (or part of it) into an animated GIF that loops, and return ``output``.
+    Turn a video (or part of it) into an animated GIF, and return ``output``.
 
     Made for screen recordings you put in a README, an issue or a chat::
 
@@ -285,8 +286,9 @@ def to_gif(
 
     ``fps`` is the frames per second of the GIF and ``width`` its width in
     pixels (never wider than the video), keeping the proportions. ``start``
-    and ``duration``, in seconds, keep only part of the video. GIFs get big
-    fast: a few seconds at 10 fps and 480 pixels is a good size.
+    and ``duration``, in seconds, keep only part of the video. The GIF
+    loops forever; ``loop=False`` plays it once. GIFs get big fast: a few
+    seconds at 10 fps and 480 pixels is a good size.
     """
     from . import image
 
@@ -342,15 +344,18 @@ def to_gif(
                 pictures.append(picture)
 
         delay = round(step, 2)  # GIF delays are in hundredths of a second
-        loop = _cf.from_python({"{GIF}": {"LoopCount": 0}})  # 0: loop forever
+        # LoopCount 0 loops forever. Without it, ImageIO writes no loop block
+        # at all, and viewers play the GIF once.
+        repeat = _cf.from_python({"{GIF}": {"LoopCount": 0}}) if loop else None
         timing = _cf.from_python({"{GIF}": {"DelayTime": delay, "UnclampedDelayTime": delay}})
 
         def add(destination: int) -> None:
-            io.CGImageDestinationSetProperties(destination, loop)
+            if repeat:
+                io.CGImageDestinationSetProperties(destination, repeat)
             for picture in pictures:
                 io.CGImageDestinationAddImage(destination, picture, timing)
 
-        with _cf.owned(loop), _cf.owned(timing):
+        with _cf.owned(repeat), _cf.owned(timing):
             target.parent.mkdir(parents=True, exist_ok=True)
             return image._write(target, "com.compuserve.gif", add, len(pictures))
     finally:

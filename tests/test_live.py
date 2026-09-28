@@ -1289,6 +1289,14 @@ def test_windows(test_window):
     time.sleep(0.2)
     assert (window.position, window.size) == ((100, 120), (360, 260))
 
+    window.center()
+    time.sleep(0.2)
+    display = macos.screen.displays()[0]
+    x, y, width, height = window.frame
+    assert (width, height) == (360, 260)  # the same size
+    assert abs(x + width / 2 - (display.x + display.width / 2)) <= 1
+    assert abs(y + height / 2 - (display.y + display.height / 2)) <= 1
+
     assert window.fullscreen is False
     if os.environ.get("CI"):  # it switches to a Space of its own: not on the user's Mac
         window.set_fullscreen()  # returns once the animation is done
@@ -1417,6 +1425,10 @@ def test_video_to_gif(movie, tmp_path):
         assert io.CGImageSourceGetCount(source) == 10  # 2 seconds at 5 fps
         with _cf.owned(io.CGImageSourceCopyPropertiesAtIndex(source, 3, None)) as frame:
             assert _cf.to_python(frame)["{GIF}"]["DelayTime"] == pytest.approx(0.2)
+    # It loops through the NETSCAPE2.0 block; without it, viewers play it once.
+    assert b"NETSCAPE2.0" in gif.read_bytes()
+    once = macos.video.to_gif(movie, tmp_path / "once.gif", fps=5, width=160, duration=1, loop=False)
+    assert b"NETSCAPE2.0" not in once.read_bytes()
 
 
 def test_pdf_grayscale(tmp_path):

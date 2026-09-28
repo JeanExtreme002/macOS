@@ -45,6 +45,13 @@ display = macos.screen.displays()[0]
 window.set_frame(display.x, display.y + 25, display.width // 2, display.height - 25)
 ```
 
+{meth}`~macos.windows.Window.center` centers a window on the display it's on,
+keeping its size:
+
+```python
+window.center()
+```
+
 Apps may refuse a size below their minimum and keep the closest one they
 accept. {attr}`~macos.windows.Window.title`,
 {attr}`~macos.windows.Window.frame` and the other attributes are read fresh

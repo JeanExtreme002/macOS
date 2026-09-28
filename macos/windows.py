@@ -261,6 +261,32 @@ class Window:
         # that didn't fit there yet: try again now that it's in place.
         self.move(x, y)
 
+    def center(self) -> None:
+        """
+        Center it on the display it's on (the main one, if it's on none), keeping its size.
+
+        A window taller than the display keeps its top edge on the display.
+        """
+        from . import screen
+
+        x, y, width, height = self.frame
+        middle_x, middle_y = x + width / 2, y + height / 2
+        displays = screen.displays()
+        if not displays:
+            raise MacOSError("no display is connected")
+        display = next(
+            (
+                candidate
+                for candidate in displays
+                if candidate.x <= middle_x < candidate.x + candidate.width
+                and candidate.y <= middle_y < candidate.y + candidate.height
+            ),
+            displays[0],  # the main display comes first
+        )
+        left = display.x + (display.width - width) / 2
+        top = max(display.y + (display.height - height) / 2, display.y)
+        self.move(round(left), round(top))
+
     def _set_flag(self, attribute: str, on: bool, what: str) -> None:
         flag = _cf.constant(_cf.lib(), "kCFBooleanTrue" if on else "kCFBooleanFalse")
         _set(self._element, attribute, flag, what)

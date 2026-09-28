@@ -109,7 +109,7 @@ explain how to use each part.
 .. autofunction:: macos.windows.list
 .. autofunction:: macos.windows.focused
 .. autoclass:: macos.windows.Window
-   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, focus, minimize, restore, close, set_fullscreen
+   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, center, focus, minimize, restore, close, set_fullscreen
 .. autofunction:: macos.windows.has_permission
 .. autofunction:: macos.windows.request_permission
 ```
