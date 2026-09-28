@@ -51,6 +51,7 @@ macos.audio.set_output(speakers)
 ```python
 macos.audio.input_volume()          # 0.75, from 0.0 to 1.0
 macos.audio.set_input_volume(0.5)
+
 macos.audio.input_muted()           # False
 macos.audio.mute_input()            # every app now hears silence
 macos.audio.mute_input(False)
