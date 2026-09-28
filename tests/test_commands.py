@@ -292,6 +292,11 @@ class _ImmediateThread:
         lambda: macos.image.straighten(__file__, "out.png"),
         lambda: macos.pdf.watermark(__file__, "DRAFT", "out.pdf"),
         lambda: macos.pdf.compress(__file__, "out.pdf"),
+        lambda: macos.pdf.grayscale(__file__, "out.pdf"),
+        lambda: macos.video.to_gif(__file__, "out.gif"),
+        lambda: macos.music.volume(),
+        lambda: macos.music.set_volume(50),
+        lambda: macos.music.seek(10),
         lambda: macos.system.volumes(),
         lambda: macos.system.eject("Backup"),
         lambda: macos.image.info(__file__),
@@ -1744,6 +1749,18 @@ def test_v18_argument_checks(tmp_path):
         macos.pdf.watermark(__file__, "DRAFT", tmp_path / "out.pdf", opacity=0)
     with pytest.raises(ValueError, match="hex color"):
         macos.pdf.watermark(__file__, "DRAFT", tmp_path / "out.pdf", color="red")
+    with pytest.raises(ValueError, match="fps"):
+        macos.video.to_gif(__file__, tmp_path / "out.gif", fps=0)
+    with pytest.raises(ValueError, match="width"):
+        macos.video.to_gif(__file__, tmp_path / "out.gif", width=0)
+    with pytest.raises(ValueError, match="duration"):
+        macos.video.to_gif(__file__, tmp_path / "out.gif", duration=0)
+    with pytest.raises(ValueError, match=".gif"):
+        macos.video.to_gif(__file__, tmp_path / "out.mp4")
+    with pytest.raises(ValueError, match="0 to 100"):
+        macos.music.set_volume(101)
+    with pytest.raises(ValueError, match="negative"):
+        macos.music.seek(-1)
 
 
 def test_video_convert_command(commands, tmp_path):
@@ -1795,6 +1812,7 @@ class _FakePlayers:
 
     def __init__(self, running, states, tracks):
         self.running, self.states, self.tracks = running, states, tracks
+        self.volumes = {"Music": 100, "Spotify": 100}
         self.commands = []
 
     def __call__(self, args, **kwargs):
@@ -1802,6 +1820,8 @@ class _FakePlayers:
         app = "Spotify" if '"Spotify"' in script else "Music"
         if "player state as string" in script and "current track" not in script:
             output = self.states[app] + "\n"
+        elif script.endswith("to sound volume"):
+            output = "{}\n".format(self.volumes[app])
         elif "current track" in script:
             output = self.tracks.get(app, "") + "\n"
         else:
@@ -1881,3 +1901,23 @@ def test_hotkeys_registry():
         assert (80, control) not in macos.hotkeys._registered
     finally:
         macos.hotkeys.unregister("ctrl+f19")
+
+
+def test_player_volume_and_seek(players):
+    players.volumes = {"Music": 40, "Spotify": 75}
+
+    assert macos.music.volume() == 75  # Spotify plays
+    assert macos.music.volume(app="Music") == 40
+    macos.music.set_volume(30)
+    macos.music.seek(62.5, app="Music")
+
+    assert players.commands == [("Spotify", "set sound volume to 30"), ("Music", "set player position to 62.5")]
+
+
+def test_player_volume_needs_a_running_player(players):
+    players.running = ["Music"]
+
+    with pytest.raises(macos.MacOSError, match="Spotify isn't running"):
+        macos.music.volume(app="Spotify")
+    with pytest.raises(macos.MacOSError, match="Spotify isn't running"):
+        macos.music.seek(10, app="Spotify")

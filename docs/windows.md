@@ -62,6 +62,17 @@ window.close()      # like its red button
 {meth}`~macos.windows.Window.close` works like the red button: the app may ask
 to save changes first.
 
+## Full screen
+
+```python
+window.fullscreen             # False
+window.set_fullscreen()       # like its green button
+window.set_fullscreen(False)
+```
+
+macOS animates it into a Space of its own, which takes about a second.
+Windows whose app doesn't allow full screen raise {class}`~macos.MacOSError`.
+
 ## Reference
 
 - {func}`macos.windows.list`

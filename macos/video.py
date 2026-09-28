@@ -8,6 +8,7 @@ Read, grab frames from and convert videos.
     macos.video.info("clip.mov")                 # VideoInfo(duration=12.5, width=1920, height=1080, ...)
     Path("cover.png").write_bytes(macos.video.frame("clip.mov", at=3.0))
     macos.video.convert("clip.mov", "small.mp4", quality="medium")
+    macos.video.to_gif("screen.mov", "demo.gif", fps=10, width=480)
 
 Uses AVFoundation, the framework behind QuickTime Player, and the
 ``avconvert`` command that ships with macOS: every format QuickTime opens
@@ -22,11 +23,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
-from . import _objc
+from . import _cf, _objc
 from ._system import framework, run
 from .errors import MacOSError
 
-__all__ = ["VideoInfo", "info", "frame", "convert"]
+__all__ = ["VideoInfo", "info", "frame", "convert", "to_gif"]
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -263,3 +264,95 @@ def convert(
         args += ["--duration", str(duration)]
     run(args)
     return target
+
+
+def to_gif(
+    source: PathLike,
+    output: PathLike,
+    *,
+    fps: float = 10.0,
+    width: int = 480,
+    start: Optional[float] = None,
+    duration: Optional[float] = None,
+) -> Path:
+    """
+    Turn a video (or part of it) into an animated GIF that loops, and return ``output``.
+
+    Made for screen recordings you put in a README, an issue or a chat::
+
+        macos.screen.record("demo.mov", 8, region=(0, 0, 1280, 800))
+        macos.video.to_gif("demo.mov", "demo.gif", fps=10, width=640)
+
+    ``fps`` is the frames per second of the GIF and ``width`` its width in
+    pixels (never wider than the video), keeping the proportions. ``start``
+    and ``duration``, in seconds, keep only part of the video. GIFs get big
+    fast: a few seconds at 10 fps and 480 pixels is a good size.
+    """
+    from . import image
+
+    if not 0 < fps <= 50:
+        raise ValueError("fps must be above 0 and at most 50, not {}".format(fps))
+    if width <= 0:
+        raise ValueError("width must be positive, not {}".format(width))
+    for label, value in (("start", start), ("duration", duration)):
+        if value is not None and (value < 0 or (label == "duration" and value == 0)):
+            raise ValueError("{} must be positive, not {}".format(label, value))
+    target = Path(output).expanduser().absolute()
+    if target.suffix.lower() != ".gif":
+        raise ValueError("the output must be a .gif, not {!r}".format(target.suffix))
+    details = info(source)
+    begin = start or 0.0
+    if begin >= details.duration:
+        raise ValueError("start={} is past the end of the {:.3f}-second video".format(begin, details.duration))
+    end = min(details.duration, begin + duration) if duration is not None else details.duration
+    step = 1.0 / fps
+    times = [begin + index * step for index in range(max(1, int((end - begin) * fps)))]
+
+    original = _existing(source)
+    io = image._io()
+    pictures: List[int] = []
+    try:
+        with _objc.autorelease_pool():
+            generator = _objc.send(
+                _objc.cls("AVAssetImageGenerator"), "assetImageGeneratorWithAsset:", _asset(original), argtypes=(_objc.id,)
+            )
+            _objc.send(generator, "setAppliesPreferredTrackTransform:", True, argtypes=(_objc.BOOL,), restype=None)
+            # Half a frame either way: close enough, and much faster than exact frames.
+            tolerance = _CMTime(round(step / 2 * _TIMESCALE), _TIMESCALE, _VALID, 0)
+            for selector in ("setRequestedTimeToleranceBefore:", "setRequestedTimeToleranceAfter:"):
+                _objc.send(generator, selector, tolerance, argtypes=(_CMTime,), restype=None)
+            if width < details.width and details.width:
+                size = _objc.CGSize(width, round(width * details.height / details.width))
+                _objc.send(generator, "setMaximumSize:", size, argtypes=(_objc.CGSize,), restype=None)
+            for moment in times:
+                error = ctypes.c_void_p()
+                picture = _objc.send(
+                    generator,
+                    "copyCGImageAtTime:actualTime:error:",
+                    _CMTime(round(moment * _TIMESCALE), _TIMESCALE, _VALID, 0),
+                    None,
+                    ctypes.byref(error),
+                    argtypes=(_CMTime, ctypes.c_void_p, ctypes.c_void_p),
+                    restype=ctypes.c_void_p,
+                )
+                if not picture:
+                    raise MacOSError(
+                        "could not read the frame at {:.2f}s: {}".format(moment, _objc.error_message(error) or "no image")
+                    )
+                pictures.append(picture)
+
+        delay = round(step, 2)  # GIF delays are in hundredths of a second
+        loop = _cf.from_python({"{GIF}": {"LoopCount": 0}})  # 0: loop forever
+        timing = _cf.from_python({"{GIF}": {"DelayTime": delay, "UnclampedDelayTime": delay}})
+
+        def add(destination: int) -> None:
+            io.CGImageDestinationSetProperties(destination, loop)
+            for picture in pictures:
+                io.CGImageDestinationAddImage(destination, picture, timing)
+
+        with _cf.owned(loop), _cf.owned(timing):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            return image._write(target, "com.compuserve.gif", add, len(pictures))
+    finally:
+        for picture in pictures:
+            _cf.release(picture)

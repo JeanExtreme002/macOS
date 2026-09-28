@@ -27,6 +27,8 @@ def main(title: str, seconds: float) -> None:
             argtypes=(_objc.CGRect, _objc.NSUInteger, _objc.NSUInteger, _objc.BOOL),
         )
         _objc.send(window, "setReleasedWhenClosed:", False, argtypes=(_objc.BOOL,), restype=None)
+        # Allow full screen, as regular app windows do (NSWindowCollectionBehaviorFullScreenPrimary).
+        _objc.send(window, "setCollectionBehavior:", 1 << 7, argtypes=(_objc.NSUInteger,), restype=None)
         _objc.send(window, "setTitle:", _objc.nsstring(title), argtypes=(_objc.id,), restype=None)
         _objc.send(window, "makeKeyAndOrderFront:", None, argtypes=(_objc.id,), restype=None)
         print("ready", flush=True)

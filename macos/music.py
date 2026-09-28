@@ -23,7 +23,7 @@ from . import apps
 from ._system import run
 from .errors import CommandError, MacOSError, PermissionDeniedError
 
-__all__ = ["Track", "now_playing", "play", "pause", "play_pause", "next", "previous"]
+__all__ = ["Track", "now_playing", "play", "pause", "play_pause", "next", "previous", "volume", "set_volume", "seek"]
 
 PLAYERS = ("Music", "Spotify")
 _SEPARATOR = "\x1f"  # ASCII unit separator: never in a song's title
@@ -168,3 +168,47 @@ def next(app: Optional[str] = None) -> None:
 def previous(app: Optional[str] = None) -> None:
     """Go back to the previous song (or the start of this one, as the player decides)."""
     _command("previous track", app)
+
+
+def _running_player(app: Optional[str]) -> str:
+    """Like ``_player``, but never opens a player: reading or tuning one that isn't running makes no sense."""
+    player = _player(app)
+    if player not in _running():
+        raise MacOSError("{} isn't running".format(player))
+    return player
+
+
+def volume(app: Optional[str] = None) -> int:
+    """
+    The player's own volume, from 0 to 100 (separate from the system volume, see :mod:`macos.volume`).
+
+    ``app`` works as in :func:`play`. Raises :class:`~macos.errors.MacOSError`
+    when the player isn't running.
+    """
+    player = _running_player(app)
+    output = _osascript(player, 'tell application "{}" to sound volume'.format(player))
+    level = _number(output)
+    if level is None:
+        raise MacOSError("{} returned something unexpected: {!r}".format(player, output))
+    return int(round(level))
+
+
+def set_volume(level: int, app: Optional[str] = None) -> None:
+    """Set the player's own volume, from 0 to 100. ``app`` works as in :func:`volume`."""
+    if not 0 <= level <= 100:
+        raise ValueError("volume must be from 0 to 100, not {}".format(level))
+    player = _running_player(app)
+    _osascript(player, 'tell application "{}" to set sound volume to {}'.format(player, int(level)))
+
+
+def seek(seconds: float, app: Optional[str] = None) -> None:
+    """
+    Jump to ``seconds`` into the current song, like dragging the progress bar.
+
+    ``app`` works as in :func:`volume`. Past the end, the player moves on to the next song.
+    """
+    if seconds < 0:
+        raise ValueError("seconds must not be negative, not {}".format(seconds))
+    player = _running_player(app)
+    # A plain decimal point, whatever the user's locale: AppleScript reads numbers in code that way.
+    _osascript(player, 'tell application "{}" to set player position to {}'.format(player, float(seconds)))

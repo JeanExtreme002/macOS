@@ -108,7 +108,7 @@ explain how to use each part.
 .. autofunction:: macos.windows.list
 .. autofunction:: macos.windows.focused
 .. autoclass:: macos.windows.Window
-   :members: title, position, size, frame, minimized, move, resize, set_frame, focus, minimize, restore, close
+   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, focus, minimize, restore, close, set_fullscreen
 .. autofunction:: macos.windows.has_permission
 .. autofunction:: macos.windows.request_permission
 ```
@@ -140,6 +140,9 @@ explain how to use each part.
 .. autofunction:: macos.music.play_pause
 .. autofunction:: macos.music.next
 .. autofunction:: macos.music.previous
+.. autofunction:: macos.music.volume
+.. autofunction:: macos.music.set_volume
+.. autofunction:: macos.music.seek
 .. autoclass:: macos.music.Track
 ```
 
@@ -286,6 +289,7 @@ explain how to use each part.
 .. autofunction:: macos.pdf.encrypt
 .. autofunction:: macos.pdf.watermark
 .. autofunction:: macos.pdf.compress
+.. autofunction:: macos.pdf.grayscale
 .. autofunction:: macos.pdf.render
 .. autofunction:: macos.pdf.from_images
 .. autoclass:: macos.pdf.Metadata
@@ -299,6 +303,7 @@ explain how to use each part.
 .. autofunction:: macos.video.info
 .. autofunction:: macos.video.frame
 .. autofunction:: macos.video.convert
+.. autofunction:: macos.video.to_gif
 .. autoclass:: macos.video.VideoInfo
 ```
 

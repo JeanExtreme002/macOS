@@ -43,6 +43,7 @@ __all__ = [
     "encrypt",
     "watermark",
     "compress",
+    "grayscale",
     "render",
     "from_images",
     "Metadata",
@@ -459,14 +460,30 @@ def compress(path: PathLike, output: PathLike, *, password: Optional[str] = None
     text) can't get smaller: then ``output`` is a copy of it, never a bigger
     file. ``password`` opens an encrypted PDF; the result isn't encrypted.
     """
+    return _filtered(path, output, "Reduce File Size", password, keep_smaller=True)
+
+
+def grayscale(path: PathLike, output: PathLike, *, password: Optional[str] = None) -> Path:
+    """
+    Save a copy of a PDF in shades of gray, for printing without color, and return ``output``.
+
+    Uses the *Gray Tone* filter that ships with macOS, like Preview's
+    *Export › Quartz Filter*. ``password`` opens an encrypted PDF; the result
+    isn't encrypted.
+    """
+    return _filtered(path, output, "Gray Tone", password)
+
+
+def _filtered(path: PathLike, output: PathLike, name: str, password: Optional[str], keep_smaller: bool = False) -> Path:
+    """Write ``path`` through the Quartz filter ``name`` (from /System/Library/Filters) into ``output``."""
     framework("Quartz")
-    reduce = "/System/Library/Filters/Reduce File Size.qfilter"
+    location = "/System/Library/Filters/{}.qfilter".format(name)
     with _open(path, password) as document:
         quartz_filter = _objc.send(
-            _objc.cls("QuartzFilter"), "quartzFilterWithURL:", _objc.file_url(reduce), argtypes=(_objc.id,)
+            _objc.cls("QuartzFilter"), "quartzFilterWithURL:", _objc.file_url(location), argtypes=(_objc.id,)
         )
         if not quartz_filter:
-            raise MacOSError("this macOS has no Reduce File Size filter")
+            raise MacOSError("this macOS has no {} filter".format(name))
         options = _objc.send(
             _objc.cls("NSDictionary"),
             "dictionaryWithObject:forKey:",
@@ -487,7 +504,7 @@ def compress(path: PathLike, output: PathLike, *, password: Optional[str] = None
     # Rewriting a PDF can make it bigger (PDFKit writes less compactly than
     # some tools do), and the filter only shrinks images: keep the original
     # then. Not for an encrypted one, whose copy would still be encrypted.
-    if not encrypted and target.stat().st_size >= source.stat().st_size and target != source:
+    if keep_smaller and not encrypted and target.stat().st_size >= source.stat().st_size and target != source:
         _write_atomically(target, lambda name: bool(shutil.copyfile(str(source), name)))
     return target
 

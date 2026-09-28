@@ -198,6 +198,28 @@ class Window:
         with _cf.owned(value):
             return _cf.to_bool(value)
 
+    @property
+    def fullscreen(self) -> bool:
+        """Whether it's in full screen, in a Space of its own."""
+        value = self._read("AXFullScreen")
+        with _cf.owned(value):
+            return _cf.to_bool(value)
+
+    def set_fullscreen(self, on: bool = True) -> None:
+        """
+        Enter full screen (or leave it with ``on=False``), like its green button.
+
+        macOS animates the change into a Space of its own, which takes about
+        a second. Windows that can't go full screen raise
+        :class:`~macos.errors.MacOSError`.
+        """
+        try:
+            self._set_flag("AXFullScreen", on, "{} full screen".format("enter" if on else "leave"))
+        except MacOSError as error:
+            if on and "AXError -25200" in str(error):  # kAXErrorFailure
+                raise MacOSError("this window can't go full screen: its app doesn't allow it") from None
+            raise
+
     def move(self, x: float, y: float) -> None:
         """Move its top-left corner to ``(x, y)``."""
         point = CGPoint(x, y)

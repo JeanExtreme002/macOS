@@ -70,7 +70,17 @@ photos several times smaller, while text stays sharp.
 macos.pdf.compress("scan.pdf", "scan-small.pdf")
 ```
 
-Photos lose detail, so keep the original.
+Photos lose detail, so keep the original. A PDF with only text has nothing to
+shrink: then the output is a copy of it, never a bigger file.
+
+## Grayscale
+
+{func}`~macos.pdf.grayscale` saves a copy in shades of gray, for printing
+without color, with the *Gray Tone* filter that ships with macOS:
+
+```python
+macos.pdf.grayscale("slides.pdf", "slides-print.pdf")
+```
 
 ## Rendering pages
 
@@ -145,6 +155,7 @@ macos.pdf.encrypt("locked.pdf", "relocked.pdf", "new-pass", current_password="12
 - {func}`macos.pdf.encrypt`
 - {func}`macos.pdf.watermark`
 - {func}`macos.pdf.compress`
+- {func}`macos.pdf.grayscale`
 - {func}`macos.pdf.render`
 - {func}`macos.pdf.from_images`
 - {class}`macos.pdf.Metadata`

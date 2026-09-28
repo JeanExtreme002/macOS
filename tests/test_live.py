@@ -1289,6 +1289,15 @@ def test_windows(test_window):
     time.sleep(0.2)
     assert (window.position, window.size) == ((100, 120), (360, 260))
 
+    assert window.fullscreen is False
+    if os.environ.get("CI"):  # it switches to a Space of its own: not on the user's Mac
+        window.set_fullscreen()
+        time.sleep(1.5)
+        assert window.fullscreen
+        window.set_fullscreen(False)
+        time.sleep(1.5)
+        assert not window.fullscreen
+
     window.minimize()
     time.sleep(0.8)
     assert window.minimized
@@ -1396,3 +1405,31 @@ def test_pdf_watermark_and_compress(tmp_path):
     locked = macos.pdf.encrypt(photos, tmp_path / "locked.pdf", "s3cret")
     opened = macos.pdf.compress(locked, tmp_path / "opened.pdf", password="s3cret")
     assert macos.pdf.page_count(opened) == 1  # no password needed any more
+
+
+def test_video_to_gif(movie, tmp_path):
+    from macos import _cf
+
+    gif = macos.video.to_gif(movie, tmp_path / "clip.gif", fps=5, width=160, duration=2)
+
+    details = macos.image.info(gif)
+    assert (details.format, details.width) == ("gif", 160)
+    io = macos.image._io()
+    with _cf.owned(macos.image._source(gif)) as source:
+        assert io.CGImageSourceGetCount(source) == 10  # 2 seconds at 5 fps
+        with _cf.owned(io.CGImageSourceCopyPropertiesAtIndex(source, 3, None)) as frame:
+            assert _cf.to_python(frame)["{GIF}"]["DelayTime"] == pytest.approx(0.2)
+
+
+def test_pdf_grayscale(tmp_path):
+    colorful = tmp_path / "colorful.png"
+    colorful.write_bytes(_rgb_png(120, 80, lambda x, y: (230, 60, 30) if x < 60 else (20, 90, 220)))
+    document = macos.pdf.from_images([colorful], tmp_path / "colorful.pdf")
+
+    gray = macos.pdf.grayscale(document, tmp_path / "gray.pdf")
+
+    page = tmp_path / "page.png"
+    page.write_bytes(macos.pdf.render(gray, size=120))
+    for color in macos.image.dominant_colors(page, count=3):
+        red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
+        assert max(red, green, blue) - min(red, green, blue) <= 3  # no color left

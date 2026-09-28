@@ -51,9 +51,25 @@ macos.video.convert("talk.mov", "talk.m4a")                        # the sound o
 It uses the `avconvert` command that ships with macOS, and replaces the output
 if it exists. To record the screen, see {func}`macos.screen.record`.
 
+## Animated GIFs
+
+{func}`~macos.video.to_gif` turns a video, or part of it, into a GIF that
+loops, for a README, an issue or a chat:
+
+```python
+macos.screen.record("demo.mov", 8, region=(0, 0, 1280, 800))
+macos.video.to_gif("demo.mov", "demo.gif", fps=10, width=640)
+macos.video.to_gif("talk.mov", "moment.gif", start=42, duration=3)
+```
+
+`fps` (10 by default) and `width` (480 pixels, never wider than the video)
+set its smoothness and size. GIFs get big fast: a few seconds at 10 fps and
+480 pixels is a good size.
+
 ## Reference
 
 - {func}`macos.video.info`
 - {func}`macos.video.frame`
 - {func}`macos.video.convert`
+- {func}`macos.video.to_gif`
 - {class}`macos.video.VideoInfo`

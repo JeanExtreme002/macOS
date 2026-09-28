@@ -117,6 +117,7 @@ def _io() -> ctypes.CDLL:
         "CGImageDestinationAddImageFromSource": ((pointer, pointer, ctypes.c_size_t, pointer), None),
         "CGImageDestinationAddImage": ((pointer, pointer, pointer), None),
         "CGImageDestinationFinalize": ((pointer,), ctypes.c_bool),
+        "CGImageDestinationSetProperties": ((pointer, pointer), None),
         "CGImageDestinationCopyImageSource": ((pointer, pointer, pointer, pointer), ctypes.c_bool),
         "CGImageSourceCopyMetadataAtIndex": ((pointer, ctypes.c_size_t, pointer), pointer),
         "CGImageMetadataCreateMutableCopy": ((pointer,), pointer),
