@@ -154,6 +154,9 @@ explain how to use each part.
 .. autofunction:: macos.finder.add_tags
 .. autofunction:: macos.finder.remove_tags
 .. autofunction:: macos.finder.thumbnail
+.. autofunction:: macos.finder.is_alias
+.. autofunction:: macos.finder.resolve_alias
+.. autofunction:: macos.finder.make_alias
 ```
 
 ## macos.volume
