@@ -1188,17 +1188,27 @@ _WALLPAPER_MOVIE = Path("/System/Library/Desktop Pictures/.wallpapers/Sequoia Su
 
 
 @pytest.fixture
-def movie():
+def wallpaper_movie():
     if not _WALLPAPER_MOVIE.exists():
         pytest.skip("the video wallpapers aren't installed")
     return _WALLPAPER_MOVIE
+
+
+@pytest.fixture
+def movie(tmp_path):
+    """A video wallpaper, or else a short screen recording (CI runners have no video wallpapers)."""
+    if _WALLPAPER_MOVIE.exists():
+        return _WALLPAPER_MOVIE
+    if not macos.screen.has_permission():
+        pytest.skip("no video wallpaper, and no Screen Recording permission to make a video")
+    return macos.screen.record(tmp_path / "screen.mov", 3, region=(0, 0, 320, 200))
 
 
 def test_video_info_frame_and_convert(movie, tmp_path):
     import struct
 
     details = macos.video.info(movie)
-    assert details.duration > 10 and details.width > details.height > 0 and details.codec
+    assert details.duration > 2 and details.width > details.height > 0 and details.codec
 
     thumbnail = macos.video.frame(movie, at=2.0, size=320)
     assert max(struct.unpack(">II", thumbnail[16:24])) == 320
@@ -1342,9 +1352,9 @@ def test_now_playing_never_opens_the_player():
     assert {app.name for app in macos.apps.running()} & set(macos.music.PLAYERS) == running & set(macos.music.PLAYERS)
 
 
-def test_horizon_and_straighten(movie, tmp_path):
+def test_horizon_and_straighten(wallpaper_movie, tmp_path):
     frame = tmp_path / "sunrise.png"
-    frame.write_bytes(macos.video.frame(movie, at=20))
+    frame.write_bytes(macos.video.frame(wallpaper_movie, at=20))
     tilt = macos.vision.horizon(frame)
     if tilt is None:
         pytest.skip("Vision doesn't see this frame's horizon here")
