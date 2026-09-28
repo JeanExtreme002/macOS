@@ -47,6 +47,41 @@ macos.pdf.rotate("scan.pdf", -90, "fixed.pdf", pages=[2])  # only page 2, counte
 The output can be the input itself: it's replaced only once the new file is
 written.
 
+## Watermarks
+
+{func}`~macos.pdf.watermark` writes a text across every page, diagonally and
+see-through:
+
+```python
+macos.pdf.watermark("contract.pdf", "DRAFT", "contract-draft.pdf")
+macos.pdf.watermark("id.pdf", "Only for Acme Inc.", "id-acme.pdf", color="#d00000", opacity=0.3)
+```
+
+The text is sized to fit each page. The pages keep their look and their text,
+but not their links or form fields.
+
+## Making PDFs smaller
+
+{func}`~macos.pdf.compress` works like Preview's *Export › Reduce File Size*:
+images are scaled down and compressed again, which makes PDFs of scans and
+photos several times smaller, while text stays sharp.
+
+```python
+macos.pdf.compress("scan.pdf", "scan-small.pdf")
+```
+
+Photos lose detail, so keep the original. A PDF with only text has nothing to
+shrink: then the output is a copy of it, never a bigger file.
+
+## Grayscale
+
+{func}`~macos.pdf.grayscale` saves a copy in shades of gray, for printing
+without color, with the *Gray Tone* filter that ships with macOS:
+
+```python
+macos.pdf.grayscale("slides.pdf", "slides-print.pdf")
+```
+
 ## Rendering pages
 
 {func}`~macos.pdf.render` draws a page as PNG bytes. `size` is the longest side
@@ -118,6 +153,9 @@ macos.pdf.encrypt("locked.pdf", "relocked.pdf", "new-pass", current_password="12
 - {func}`macos.pdf.extract`
 - {func}`macos.pdf.rotate`
 - {func}`macos.pdf.encrypt`
+- {func}`macos.pdf.watermark`
+- {func}`macos.pdf.compress`
+- {func}`macos.pdf.grayscale`
 - {func}`macos.pdf.render`
 - {func}`macos.pdf.from_images`
 - {class}`macos.pdf.Metadata`

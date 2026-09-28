@@ -148,6 +148,6 @@ All functions work from any thread, not only the main one.
 - {func}`macos.apps.open`
 - {class}`macos.apps.App`
 - {func}`macos.open`
-- {func}`macos.open_with`
+- {func}`macos.apps.open_with`
 - {func}`macos.apps.default_for`
 - {func}`macos.apps.default_browser`

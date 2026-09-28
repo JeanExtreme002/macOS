@@ -17,7 +17,9 @@ Preview.
 """
 
 import ctypes
+import math
 import os
+import shutil
 import tempfile
 from contextlib import contextmanager
 from functools import lru_cache
@@ -39,6 +41,9 @@ __all__ = [
     "extract",
     "rotate",
     "encrypt",
+    "watermark",
+    "compress",
+    "grayscale",
     "render",
     "from_images",
     "Metadata",
@@ -296,6 +301,232 @@ def encrypt(path: PathLike, output: PathLike, password: str, *, current_password
         return _save(document, output, options)
 
 
+@lru_cache(maxsize=None)
+def _core_text() -> ctypes.CDLL:
+    text_library = framework("CoreText")
+    pointer = ctypes.c_void_p
+    text_library.CTFontCreateWithName.argtypes = (pointer, ctypes.c_double, pointer)
+    text_library.CTFontCreateWithName.restype = pointer
+    text_library.CTLineCreateWithAttributedString.argtypes = (pointer,)
+    text_library.CTLineCreateWithAttributedString.restype = pointer
+    text_library.CTLineGetTypographicBounds.argtypes = (
+        pointer,
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_double),
+    )
+    text_library.CTLineGetTypographicBounds.restype = ctypes.c_double
+    text_library.CTLineDraw.argtypes = (pointer, pointer)
+    text_library.CTLineDraw.restype = None
+    return text_library
+
+
+def _line(text: str, size: float) -> Tuple[int, float, float]:
+    """An owned Core Text line of ``text`` in bold Helvetica, its width and its height (ascent + descent)."""
+    from . import _cf
+
+    core_text = _core_text()
+    with _cf.owned(_cf.string("Helvetica-Bold")) as name:
+        font = core_text.CTFontCreateWithName(name, size, None)
+    true = _cf.constant(_cf.lib(), "kCFBooleanTrue")
+    attributes = _cf.dictionary(
+        {
+            _cf.constant(core_text, "kCTFontAttributeName"): font,
+            # Take the color (and transparency) from the drawing context.
+            _cf.constant(core_text, "kCTForegroundColorFromContextAttributeName"): true,
+        }
+    )
+    cf = _cf.lib()
+    cf.CFAttributedStringCreate.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+    cf.CFAttributedStringCreate.restype = ctypes.c_void_p
+    with _cf.owned(font), _cf.owned(attributes), _cf.owned(_cf.string(text)) as string:
+        with _cf.owned(cf.CFAttributedStringCreate(None, string, attributes)) as attributed:
+            line = core_text.CTLineCreateWithAttributedString(attributed)
+    ascent, descent, leading = ctypes.c_double(), ctypes.c_double(), ctypes.c_double()
+    width = core_text.CTLineGetTypographicBounds(line, ctypes.byref(ascent), ctypes.byref(descent), ctypes.byref(leading))
+    return line, float(width), ascent.value + descent.value
+
+
+def _color(text: str) -> Tuple[float, float, float]:
+    value = text.strip().lstrip("#")
+    if len(value) != 6 or any(char not in "0123456789abcdefABCDEF" for char in value):
+        raise ValueError("color must be a hex color such as '#ff0000', not {!r}".format(text))
+    return (int(value[0:2], 16) / 255, int(value[2:4], 16) / 255, int(value[4:6], 16) / 255)
+
+
+def watermark(
+    path: PathLike,
+    text: str,
+    output: PathLike,
+    *,
+    color: str = "#808080",
+    opacity: float = 0.25,
+    password: Optional[str] = None,
+) -> Path:
+    """
+    Write ``text`` across every page, diagonally and see-through, and save the result to ``output``.
+
+    For drafts and copies you share: ``"CONFIDENTIAL"``, ``"DRAFT"``, a
+    name... ``color`` is a hex color and ``opacity`` goes from 0.0
+    (invisible) to 1.0. The text is sized to fit each page::
+
+        macos.pdf.watermark("contract.pdf", "DRAFT", "contract-draft.pdf")
+        macos.pdf.watermark("id.pdf", "Only for Acme Inc.", "id-acme.pdf", color="#d00000", opacity=0.3)
+
+    The pages keep their look and their text, but not their links or form
+    fields, which are redrawn as they appear. ``password`` opens an
+    encrypted PDF; the result isn't encrypted.
+    """
+    if not text.strip():
+        raise ValueError("the watermark text can't be empty")
+    if not 0.0 < opacity <= 1.0:
+        raise ValueError("opacity must be above 0.0 and at most 1.0, not {}".format(opacity))
+    red, green, blue = _color(color)
+    source = Path(path).expanduser().absolute()
+    if not source.exists():
+        raise FileNotFoundError(str(source))
+    from . import _cf
+
+    graphics, core_text = _graphics(), _core_text()
+    with _cf.owned(_cf.file_url(str(source))) as url:
+        document = graphics.CGPDFDocumentCreateWithURL(url)
+    if not document:
+        raise ValueError("{} is not a PDF".format(source))
+    try:
+        if graphics.CGPDFDocumentIsEncrypted(document) and not graphics.CGPDFDocumentIsUnlocked(document):
+            unlocked = password is not None and graphics.CGPDFDocumentUnlockWithPassword(
+                document, password.encode("utf-8")
+            )
+            if not unlocked:
+                raise PermissionDeniedError(
+                    "{} is encrypted: {}".format(source, "wrong password" if password else "pass its password")
+                )
+        pages = graphics.CGPDFDocumentGetNumberOfPages(document)
+
+        def write(name: str) -> bool:
+            with _cf.owned(_cf.file_url(name)) as url:
+                context = graphics.CGPDFContextCreateWithURL(url, None, None)
+            if not context:
+                return False
+            try:
+                for number in range(1, pages + 1):
+                    page = graphics.CGPDFDocumentGetPage(document, number)
+                    box = graphics.CGPDFPageGetBoxRect(page, _MEDIA_BOX)
+                    width, height = box.size.width, box.size.height
+                    if graphics.CGPDFPageGetRotationAngle(page) % 180:
+                        width, height = height, width  # draw it as it shows, turned
+                    frame = _objc.CGRect(_objc.CGPoint(0, 0), _objc.CGSize(width, height))
+                    graphics.CGContextBeginPage(context, ctypes.byref(frame))
+                    graphics.CGContextSaveGState(context)
+                    graphics.CGContextConcatCTM(
+                        context, graphics.CGPDFPageGetDrawingTransform(page, _MEDIA_BOX, frame, 0, True)
+                    )
+                    graphics.CGContextDrawPDFPage(context, page)
+                    graphics.CGContextRestoreGState(context)
+                    # The text along the page's diagonal, over 70% of its length.
+                    angle = math.atan2(height, width)
+                    probe, natural, _ = _line(text, 100)
+                    _cf.release(probe)
+                    size = 100 * 0.7 * math.hypot(width, height) / max(natural, 1.0)
+                    line, line_width, line_height = _line(text, size)
+                    try:
+                        graphics.CGContextSaveGState(context)
+                        graphics.CGContextSetRGBFillColor(context, red, green, blue, opacity)
+                        graphics.CGContextTranslateCTM(context, width / 2, height / 2)
+                        graphics.CGContextRotateCTM(context, angle)
+                        graphics.CGContextSetTextPosition(context, -line_width / 2, -line_height / 3)
+                        core_text.CTLineDraw(line, context)
+                        graphics.CGContextRestoreGState(context)
+                    finally:
+                        _cf.release(line)
+                    graphics.CGContextEndPage(context)
+                graphics.CGPDFContextClose(context)
+            finally:
+                graphics.CGContextRelease(context)
+            return True
+
+        return _write_atomically(output, write)
+    finally:
+        graphics.CGPDFDocumentRelease(document)
+
+
+def compress(path: PathLike, output: PathLike, *, password: Optional[str] = None) -> Path:
+    """
+    Save a smaller copy of a PDF, like Preview's *Export › Reduce File Size*, and return ``output``.
+
+    Images are scaled down and compressed again, which makes PDFs of scans
+    and photos several times smaller; text and drawings stay sharp. Photos
+    lose detail, so keep the original. A PDF with no images to shrink (only
+    text) can't get smaller: then ``output`` is a copy of it, never a bigger
+    file. ``password`` opens an encrypted PDF; the result isn't encrypted.
+    """
+    return _filtered(path, output, "Reduce File Size", password, keep_smaller=True)
+
+
+def grayscale(path: PathLike, output: PathLike, *, password: Optional[str] = None) -> Path:
+    """
+    Save a copy of a PDF in shades of gray, for printing without color, and return ``output``.
+
+    Uses the *Gray Tone* filter that ships with macOS, like Preview's
+    *Export › Quartz Filter*. ``password`` opens an encrypted PDF; the result
+    isn't encrypted.
+    """
+    return _filtered(path, output, "Gray Tone", password)
+
+
+def _filtered(path: PathLike, output: PathLike, name: str, password: Optional[str], keep_smaller: bool = False) -> Path:
+    """Write ``path`` through the Quartz filter ``name`` (from /System/Library/Filters) into ``output``."""
+    framework("Quartz")
+    location = "/System/Library/Filters/{}.qfilter".format(name)
+    with _open(path, password) as document:
+        quartz_filter = _objc.send(
+            _objc.cls("QuartzFilter"), "quartzFilterWithURL:", _objc.file_url(location), argtypes=(_objc.id,)
+        )
+        if not quartz_filter:
+            raise MacOSError("this macOS has no {} filter".format(name))
+        options = _objc.send(
+            _objc.cls("NSDictionary"),
+            "dictionaryWithObject:forKey:",
+            quartz_filter,
+            _objc.nsstring("QuartzFilter"),
+            argtypes=(_objc.id, _objc.id),
+        )
+        encrypted = bool(_objc.send(document, "isEncrypted", restype=BOOL))
+        source = Path(path).expanduser().absolute()
+        target = Path(output).expanduser().absolute()
+        if encrypted:
+            # PDFKit keeps the encryption when it writes an unlocked
+            # document: copy its pages into a new, unencrypted one.
+            plain = _new_document()
+            for number in range(1, _count(document) + 1):
+                _append(plain, _page(document, number))
+            document = plain
+        if not keep_smaller or encrypted:
+            return _save(document, output, options)
+        # Rewriting a PDF can make it bigger (PDFKit writes less compactly
+        # than some tools do), and the filter only shrinks images: write it
+        # aside first, and keep the original when it isn't smaller. That also
+        # protects the original when the output is the input itself.
+        handle, name = tempfile.mkstemp(dir=str(target.parent) if target.parent.is_dir() else None, suffix=".pdf")
+        os.close(handle)
+        candidate = Path(name)
+        try:
+            _save(document, candidate, options)
+            smaller = candidate.stat().st_size < source.stat().st_size
+        except BaseException:
+            candidate.unlink(missing_ok=True)
+            raise
+    try:
+        if smaller:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(str(candidate), str(target))
+        elif target != source:
+            _write_atomically(target, lambda name: bool(shutil.copyfile(str(source), name)))
+    finally:
+        candidate.unlink(missing_ok=True)
+    return target
+
+
 def render(path: PathLike, page: int = 1, *, size: int = 1024, password: Optional[str] = None) -> bytes:
     """
     Draw a page as a PNG image and return its bytes. ``size`` is the longest side, in pixels (up to 4096).
@@ -345,6 +576,24 @@ def _graphics() -> ctypes.CDLL:
         "CGContextDrawImage": ((pointer, _objc.CGRect, pointer), None),
         "CGImageGetWidth": ((pointer,), ctypes.c_size_t),
         "CGImageGetHeight": ((pointer,), ctypes.c_size_t),
+        "CGPDFDocumentCreateWithURL": ((pointer,), pointer),
+        "CGPDFDocumentIsEncrypted": ((pointer,), ctypes.c_bool),
+        "CGPDFDocumentIsUnlocked": ((pointer,), ctypes.c_bool),
+        "CGPDFDocumentUnlockWithPassword": ((pointer, ctypes.c_char_p), ctypes.c_bool),
+        "CGPDFDocumentGetNumberOfPages": ((pointer,), ctypes.c_size_t),
+        "CGPDFDocumentGetPage": ((pointer, ctypes.c_size_t), pointer),
+        "CGPDFDocumentRelease": ((pointer,), None),
+        "CGPDFPageGetBoxRect": ((pointer, ctypes.c_int), _objc.CGRect),
+        "CGPDFPageGetRotationAngle": ((pointer,), ctypes.c_int),
+        "CGPDFPageGetDrawingTransform": (
+            (pointer, ctypes.c_int, _objc.CGRect, ctypes.c_int, ctypes.c_bool),
+            _objc.CGAffineTransform,
+        ),
+        "CGContextDrawPDFPage": ((pointer, pointer), None),
+        "CGContextSetRGBFillColor": ((pointer, ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double), None),
+        "CGContextTranslateCTM": ((pointer, ctypes.c_double, ctypes.c_double), None),
+        "CGContextRotateCTM": ((pointer, ctypes.c_double), None),
+        "CGContextSetTextPosition": ((pointer, ctypes.c_double, ctypes.c_double), None),
     }
     for name, (argtypes, restype) in signatures.items():
         function = getattr(graphics, name)

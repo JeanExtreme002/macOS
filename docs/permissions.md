@@ -9,6 +9,10 @@ itself, so a script can work in one terminal and not in another.
 | {func}`macos.screenshot` | Screen Recording | System Settings › Privacy & Security › Screen & System Audio Recording |
 | {func}`macos.notify` | Notifications for *Script Editor* | System Settings › Notifications › Script Editor |
 | {mod}`macos.keyboard` typing and keys, {mod}`macos.mouse` moving, clicking and scrolling | Accessibility | System Settings › Privacy & Security › Accessibility |
+| {mod}`macos.windows` | Accessibility | System Settings › Privacy & Security › Accessibility |
+| {mod}`macos.hotkeys` | Input Monitoring, and Accessibility to keep shortcuts from the app in front | System Settings › Privacy & Security › Input Monitoring |
+| {func}`macos.screen.record` | Screen Recording (and Microphone with `audio=True`) | System Settings › Privacy & Security › Screen & System Audio Recording |
+| {mod}`macos.music` | Automation of Music or Spotify (asked the first time) | System Settings › Privacy & Security › Automation |
 | {func}`macos.appearance.set_mode` | Automation of *System Events* (asked the first time) | System Settings › Privacy & Security › Automation |
 | {func}`macos.bluetooth.connect`, {func}`~macos.bluetooth.disconnect` | Bluetooth (asked the first time) | System Settings › Privacy & Security › Bluetooth |
 
@@ -46,11 +50,24 @@ macos.keyboard.request_permission()   # show the system prompt
 
 As with Screen Recording, **restart the app running Python** after allowing it.
 
+## Input Monitoring
+
+{mod}`macos.hotkeys` listens to the keyboard for its shortcuts, which macOS
+treats as Input Monitoring. Without the permission, {func}`~macos.hotkeys.run`
+and {func}`~macos.hotkeys.wait` raise {class}`~macos.PermissionDeniedError`.
+
+```python
+macos.hotkeys.has_permission()       # check without prompting
+macos.hotkeys.request_permission()   # show the system prompt
+```
+
+Restart the app running Python after allowing it.
+
 ## Automation
 
 {func}`macos.appearance.set_mode` asks System Events to switch the
-appearance, so the first time macOS asks whether the app running Python may
-control System Events. If that's denied, it raises
+appearance, and {mod}`macos.music` asks Music or Spotify to play, so the first
+time macOS asks whether the app running Python may control them. If that's denied, it raises
 {class}`~macos.PermissionDeniedError`; allow it again in System Settings ›
 Privacy & Security › Automation.
 

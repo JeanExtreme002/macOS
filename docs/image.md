@@ -66,6 +66,18 @@ turns by 90, 180 or 270 degrees; negative values turn counter-clockwise. As
 with {func}`~macos.image.resize`, photos are turned upright first, the
 metadata is kept, and the output's extension sets the format.
 
+## Straightening
+
+{func}`~macos.image.straighten` levels a photo whose horizon is tilted, found
+with {func}`macos.vision.horizon`. The photo is turned and cropped to the
+largest part with the same proportions, so no empty corners show:
+
+```python
+macos.image.straighten("beach.jpg", "beach-level.jpg")
+```
+
+A photo without a tilted horizon is saved unchanged.
+
 ## Hiding faces
 
 {func}`~macos.image.blur_faces` saves a copy with every face pixelated, for
@@ -180,6 +192,7 @@ default), `"Q"` or `"H"`. To read QR codes, see {func}`macos.vision.barcodes`.
 - {func}`macos.image.crop`
 - {func}`macos.image.rotate`
 - {func}`macos.image.flip`
+- {func}`macos.image.straighten`
 - {func}`macos.image.blur_faces`
 - {func}`macos.image.dominant_colors`
 - {func}`macos.image.qr_code`

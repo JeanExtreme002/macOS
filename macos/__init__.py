@@ -3,10 +3,11 @@
 """
 pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
-Notifications, clipboard, keyboard and mouse, appearance, apps, Keychain,
-speech, screenshots, power, Shortcuts, Finder, volume, Spotlight, dialogs,
-system info, Bluetooth, OCR, document scanning, images, PDFs and language
-detection in one import, with no dependencies::
+Notifications, clipboard, keyboard and mouse, windows, hotkeys, appearance,
+apps, Keychain, speech, screenshots, power, Shortcuts, Finder, volume,
+Spotlight, dialogs, system info, Bluetooth, music, OCR, document scanning,
+images, videos, PDFs and language detection in one import, with no
+dependencies::
 
     import macos
 
@@ -35,6 +36,10 @@ detection in one import, with no dependencies::
     macos.keyboard.press("cmd+c")
     macos.mouse.click(300, 400)
     macos.bluetooth.devices()
+    macos.windows.focused().set_frame(0, 25, 1280, 800)
+    macos.hotkeys.wait("ctrl+option+s")
+    macos.video.convert("screen.mov", "screen.mp4", quality="medium")
+    macos.music.now_playing()
 
 The package imports on any platform (so it can sit in cross-platform code and
 docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
@@ -50,11 +55,13 @@ from . import (
     clipboard,
     dialog,
     finder,
+    hotkeys,
     image,
     keyboard,
     keychain,
     language,
     mouse,
+    music,
     network,
     notifications,
     pdf,
@@ -65,8 +72,10 @@ from . import (
     speech,
     spotlight,
     system,
+    video,
     vision,
     volume,
+    windows,
 )
 from .errors import (
     AppNotFoundError,
@@ -90,11 +99,13 @@ __all__ = [
     "clipboard",
     "dialog",
     "finder",
+    "hotkeys",
     "image",
     "keyboard",
     "keychain",
     "language",
     "mouse",
+    "music",
     "network",
     "notifications",
     "pdf",
@@ -105,8 +116,10 @@ __all__ = [
     "speech",
     "spotlight",
     "system",
+    "video",
     "vision",
     "volume",
+    "windows",
     "notify",
     "open_with",
     "say",

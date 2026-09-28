@@ -276,6 +276,27 @@ class _ImmediateThread:
         lambda: macos.finder.is_alias(__file__),
         lambda: macos.finder.resolve_alias(__file__),
         lambda: macos.finder.make_alias(__file__, "elsewhere"),
+        lambda: macos.video.info(__file__),
+        lambda: macos.video.frame(__file__),
+        lambda: macos.video.convert(__file__, "out.mp4"),
+        lambda: macos.screen.record("out.mov", 1),
+        lambda: macos.windows.list(),
+        lambda: macos.windows.focused(),
+        lambda: macos.windows.has_permission(),
+        lambda: macos.hotkeys.run(timeout=0.1),
+        lambda: macos.hotkeys.wait("f19", timeout=0.1),
+        lambda: macos.hotkeys.has_permission(),
+        lambda: macos.music.now_playing(),
+        lambda: macos.music.play(),
+        lambda: macos.vision.horizon(b"image"),
+        lambda: macos.image.straighten(__file__, "out.png"),
+        lambda: macos.pdf.watermark(__file__, "DRAFT", "out.pdf"),
+        lambda: macos.pdf.compress(__file__, "out.pdf"),
+        lambda: macos.pdf.grayscale(__file__, "out.pdf"),
+        lambda: macos.video.to_gif(__file__, "out.gif"),
+        lambda: macos.music.volume(),
+        lambda: macos.music.set_volume(50),
+        lambda: macos.music.seek(10),
         lambda: macos.system.volumes(),
         lambda: macos.system.eject("Backup"),
         lambda: macos.image.info(__file__),
@@ -849,16 +870,17 @@ def test_open_passes_urls_through_and_checks_paths(fake_run, tmp_path):
 
 
 def test_open_with_resolves_the_app(fake_run, monkeypatch, tmp_path):
-    monkeypatch.setattr(macos.launch, "_locate", lambda app: "/Applications/{}.app".format(app))
+    monkeypatch.setattr(macos.apps, "_locate", lambda app: "/Applications/{}.app".format(app))
     target = tmp_path / "photo.png"
     target.touch()
 
-    macos.open_with(target, "Preview")
+    macos.apps.open_with(target, "Preview")
     assert fake_run.args == ["open", "-a", "/Applications/Preview.app", "--", str(target)]
+    assert macos.open_with is macos.apps.open_with  # the short name
 
 
 def test_open_with_reports_failures_as_app_not_found(fake_run, monkeypatch, tmp_path):
-    monkeypatch.setattr(macos.launch, "_locate", lambda app: "/Applications/Nope.app")
+    monkeypatch.setattr(macos.apps, "_locate", lambda app: "/Applications/Nope.app")
     fake_run.returncode, fake_run.stderr = 1, "LSOpenURLsWithRole() failed"
 
     with pytest.raises(macos.AppNotFoundError, match="could not open"):
@@ -1695,3 +1717,217 @@ def test_make_alias_checks_its_paths(tmp_path):
         macos.finder.make_alias(original, tmp_path / "no" / "folder" / "alias")
     with pytest.raises(ValueError, match="no folder around it"):
         macos.finder.make_alias("/")  # a disk has nothing next to it
+
+
+def test_v18_argument_checks(tmp_path):
+    with pytest.raises(ValueError, match="negative"):
+        macos.video.frame(__file__, at=-1)
+    with pytest.raises(ValueError, match="can't write"):
+        macos.video.convert(__file__, tmp_path / "out.avi")
+    with pytest.raises(ValueError, match="quality"):
+        macos.video.convert(__file__, tmp_path / "out.mp4", quality="best")
+    with pytest.raises(ValueError, match="height must be one of"):
+        macos.video.convert(__file__, tmp_path / "out.mp4", height=333)
+    with pytest.raises(ValueError, match="with hevc=True"):
+        macos.video.convert(__file__, tmp_path / "out.mp4", hevc=True, height=720)
+    with pytest.raises(ValueError, match="only has the 'high' quality"):
+        macos.video.convert(__file__, tmp_path / "out.mp4", hevc=True, quality="low")
+    with pytest.raises(ValueError, match="duration"):
+        macos.video.convert(__file__, tmp_path / "out.mp4", duration=0)
+    with pytest.raises(ValueError, match="positive"):
+        macos.screen.record(tmp_path / "out.mov", 0)
+    with pytest.raises(ValueError, match=".mov"):
+        macos.screen.record(tmp_path / "out.mp4", 1)
+    with pytest.raises(ValueError, match="app must be one of"):
+        macos.music.play(app="Winamp")
+    with pytest.raises(ValueError, match="app must be one of"):
+        macos.music.now_playing(app="Winamp")
+    with pytest.raises(ValueError, match="not a modifier"):
+        macos.hotkeys.register("hyper+k", lambda: None)
+    with pytest.raises(ValueError, match="empty"):
+        macos.pdf.watermark(__file__, " ", tmp_path / "out.pdf")
+    with pytest.raises(ValueError, match="opacity"):
+        macos.pdf.watermark(__file__, "DRAFT", tmp_path / "out.pdf", opacity=0)
+    with pytest.raises(ValueError, match="hex color"):
+        macos.pdf.watermark(__file__, "DRAFT", tmp_path / "out.pdf", color="red")
+    with pytest.raises(ValueError, match="fps"):
+        macos.video.to_gif(__file__, tmp_path / "out.gif", fps=0)
+    with pytest.raises(ValueError, match="width"):
+        macos.video.to_gif(__file__, tmp_path / "out.gif", width=0)
+    with pytest.raises(ValueError, match="duration"):
+        macos.video.to_gif(__file__, tmp_path / "out.gif", duration=0)
+    with pytest.raises(ValueError, match=".gif"):
+        macos.video.to_gif(__file__, tmp_path / "out.mp4")
+    with pytest.raises(ValueError, match="0 to 100"):
+        macos.music.set_volume(101)
+    with pytest.raises(ValueError, match="negative"):
+        macos.music.seek(-1)
+
+
+def test_video_convert_command(commands, tmp_path):
+    macos.video.convert(__file__, tmp_path / "out.mp4", quality="medium", start=5, duration=10.5)
+    assert commands.calls[-1] == [
+        "avconvert",
+        "--source",
+        __file__,
+        "--output",
+        str(tmp_path / "out.mp4"),
+        "--preset",
+        "PresetMediumQuality",
+        "--replace",
+        "--start",
+        "5",
+        "--duration",
+        "10.5",
+    ]
+    macos.video.convert(__file__, tmp_path / "out.mov", hevc=True, height=2160)
+    assert commands.calls[-1][6] == "PresetHEVC3840x2160"
+    macos.video.convert(__file__, tmp_path / "out.m4v", height=720)
+    assert commands.calls[-1][6] == "Preset1280x720"
+
+
+def test_screen_record_command(fake_run, monkeypatch, tmp_path):
+    target = tmp_path / "demo.mov"
+    monkeypatch.setattr(macos.screen, "has_permission", lambda: True)
+
+    def record(args, **kwargs):
+        fake_run(args, **kwargs)
+        target.write_bytes(b"movie")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(_system.subprocess, "run", record)
+
+    assert macos.screen.record(target, 2.4, region=(0, 0, 800, 600), display=2, audio=True, clicks=True) == target
+    assert fake_run.args == ["screencapture", "-x", "-v", "-V2", "-R0,0,800,600", "-D2", "-g", "-k", str(target)]
+
+
+def test_screen_record_needs_the_permission(fake_run, monkeypatch, tmp_path):
+    monkeypatch.setattr(macos.screen, "has_permission", lambda: False)
+
+    with pytest.raises(macos.PermissionDeniedError, match="Screen Recording"):
+        macos.screen.record(tmp_path / "demo.mov", 1)
+
+
+class _FakePlayers:
+    """Answers osascript for Music and Spotify, and records the commands."""
+
+    def __init__(self, running, states, tracks):
+        self.running, self.states, self.tracks = running, states, tracks
+        self.volumes = {"Music": 100, "Spotify": 100}
+        self.commands = []
+
+    def __call__(self, args, **kwargs):
+        script = args[-1]
+        app = "Spotify" if '"Spotify"' in script else "Music"
+        if "player state as string" in script and "current track" not in script:
+            output = self.states[app] + "\n"
+        elif script.endswith("to sound volume"):
+            output = "{}\n".format(self.volumes[app])
+        elif "current track" in script:
+            output = self.tracks.get(app, "") + "\n"
+        else:
+            self.commands.append((app, script.split(" to ", 1)[1]))
+            output = ""
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+
+@pytest.fixture
+def players(monkeypatch):
+    from macos import apps
+
+    fake = _FakePlayers(
+        running=["Music", "Spotify"],
+        states={"Music": "paused", "Spotify": "playing"},
+        tracks={
+            "Music": "\x1f".join(["Imagine", "John Lennon", "Imagine", "183,5", "12,25", "paused"]),
+            "Spotify": "\x1f".join(["Blue", "Eiffel 65", "Europop", "220000", "30.0", "playing"]),
+        },
+    )
+    monkeypatch.setattr(_system.sys, "platform", "darwin")
+    monkeypatch.setattr(_system.subprocess, "run", fake)
+    monkeypatch.setattr(
+        apps, "running", lambda: [apps.App(name, None, 100 + index, None) for index, name in enumerate(fake.running)]
+    )
+    return fake
+
+
+def test_now_playing_prefers_the_player_that_plays(players):
+    track = macos.music.now_playing()
+
+    # Spotify counts milliseconds; Music writes "183,5" in a Portuguese locale.
+    assert track == macos.music.Track("Blue", "Eiffel 65", "Europop", 220.0, 30.0, True, "Spotify")
+    assert macos.music.now_playing(app="Music") == macos.music.Track(
+        "Imagine", "John Lennon", "Imagine", 183.5, 12.25, False, "Music"
+    )
+
+
+def test_now_playing_never_opens_a_player(players):
+    players.running = []
+
+    assert macos.music.now_playing() is None
+    assert macos.music.now_playing(app="Music") is None
+
+
+def test_player_commands_go_to_the_right_app(players):
+    macos.music.pause()
+    macos.music.next(app="Music")
+    players.running = []
+    macos.music.play()  # nothing runs: Music opens
+
+    assert players.commands == [("Spotify", "pause"), ("Music", "next track"), ("Music", "play")]
+
+
+def test_music_without_the_automation_permission(fake_run, monkeypatch):
+    from macos import apps
+
+    monkeypatch.setattr(apps, "running", lambda: [apps.App("Music", None, 1, None)])
+    fake_run.returncode = 1
+    fake_run.stderr = "Not authorized to send Apple events to Music. (-1743)"
+
+    with pytest.raises(macos.PermissionDeniedError, match="Automation"):
+        macos.music.play(app="Music")
+
+
+def test_hotkeys_registry():
+    cmd, option, control = 1 << 20, 1 << 19, 1 << 18
+
+    assert macos.hotkeys._combination("ctrl+option+cmd+f19") == (80, control | option | cmd)
+    assert macos.hotkeys._combination("f5") == (96, 0)
+
+    first = macos.hotkeys.register("ctrl+f19", lambda: "first")
+    second = macos.hotkeys.register("ctrl+f19", lambda: "second")  # replaces it
+    try:
+        assert macos.hotkeys._registered[(80, control)] is second
+        first.unregister()  # the same keys: removes the current one
+        assert (80, control) not in macos.hotkeys._registered
+    finally:
+        macos.hotkeys.unregister("ctrl+f19")
+
+
+def test_player_volume_and_seek(players):
+    players.volumes = {"Music": 40, "Spotify": 75}
+
+    assert macos.music.volume() == 75  # Spotify plays
+    assert macos.music.volume(app="Music") == 40
+    macos.music.set_volume(30)
+    macos.music.seek(62.5, app="Music")
+
+    assert players.commands == [("Spotify", "set sound volume to 30"), ("Music", "set player position to 62.5")]
+
+
+def test_player_controls_never_open_a_player(players):
+    players.running = []
+
+    for control in (macos.music.pause, macos.music.play_pause, macos.music.next, macos.music.previous):
+        with pytest.raises(macos.MacOSError, match="isn't running"):
+            control()
+    assert players.commands == []  # nothing was sent: Music stays closed
+
+
+def test_player_volume_needs_a_running_player(players):
+    players.running = ["Music"]
+
+    with pytest.raises(macos.MacOSError, match="Spotify isn't running"):
+        macos.music.volume(app="Spotify")
+    with pytest.raises(macos.MacOSError, match="Spotify isn't running"):
+        macos.music.seek(10, app="Spotify")

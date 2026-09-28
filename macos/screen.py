@@ -45,6 +45,7 @@ __all__ = [
     "lock",
     "is_locked",
     "is_asleep",
+    "record",
 ]
 
 _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tiff": "tiff", ".gif": "gif", ".pdf": "pdf"}
@@ -548,3 +549,53 @@ def is_asleep(display_id: Union[int, Display, None] = None) -> bool:
     else:
         target = display_id.id if isinstance(display_id, Display) else display_id
     return bool(graphics.CGDisplayIsAsleep(target))
+
+
+def record(
+    path: Union[str, "os.PathLike[str]"],
+    seconds: float,
+    *,
+    region: Optional[Tuple[int, int, int, int]] = None,
+    display: Optional[int] = None,
+    audio: bool = False,
+    clicks: bool = False,
+) -> Path:
+    """
+    Record the screen for ``seconds`` into a ``.mov`` video, and return its path.
+
+    This returns when the recording ends. ``region`` and ``display`` work as
+    in :func:`macos.screenshot`. ``audio=True`` also records the default
+    microphone (macOS asks for the Microphone permission the first time), and
+    ``clicks=True`` shows the mouse clicks. Needs the Screen Recording
+    permission, like screenshots::
+
+        macos.screen.record("demo.mov", 10, region=(0, 0, 1280, 800))
+        macos.video.convert("demo.mov", "demo.mp4", quality="medium")
+    """
+    if seconds <= 0:
+        raise ValueError("seconds must be positive, not {}".format(seconds))
+    target = Path(path).expanduser().resolve()
+    if target.suffix.lower() != ".mov":
+        raise ValueError("screen recordings are .mov videos, not {!r}".format(target.suffix))
+    if not has_permission():
+        raise PermissionDeniedError(
+            "Screen Recording permission is missing: allow the app running Python (your terminal or IDE) in "
+            "System Settings › Privacy & Security › Screen & System Audio Recording, then restart it"
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # -V stops after the given seconds; screencapture only takes whole seconds.
+    args = ["screencapture", "-x", "-v", "-V{}".format(max(1, round(seconds)))]
+    if region is not None:
+        x, y, width, height = region
+        args.append("-R{},{},{},{}".format(x, y, width, height))
+    if display is not None:
+        args.append("-D{}".format(display))
+    if audio:
+        args.append("-g")
+    if clicks:
+        args.append("-k")
+    args.append(str(target))
+    run(args)
+    if not target.exists():
+        raise MacOSError("the screen recording wasn't saved")
+    return target

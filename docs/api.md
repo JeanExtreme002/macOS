@@ -60,6 +60,7 @@ explain how to use each part.
 .. autofunction:: macos.apps.frontmost
 .. autofunction:: macos.apps.get
 .. autofunction:: macos.apps.open
+.. autofunction:: macos.apps.open_with
 .. autoclass:: macos.apps.App
    :members: is_running, is_active, is_hidden, activate, hide, unhide, quit
 .. autofunction:: macos.apps.default_for
@@ -98,6 +99,52 @@ explain how to use each part.
 .. autofunction:: macos.mouse.scroll
 .. autofunction:: macos.mouse.has_permission
 .. autofunction:: macos.mouse.request_permission
+```
+
+## macos.windows
+
+```{eval-rst}
+.. module:: macos.windows
+
+.. autofunction:: macos.windows.list
+.. autofunction:: macos.windows.focused
+.. autoclass:: macos.windows.Window
+   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, center, focus, minimize, restore, close, set_fullscreen
+.. autofunction:: macos.windows.has_permission
+.. autofunction:: macos.windows.request_permission
+```
+
+## macos.hotkeys
+
+```{eval-rst}
+.. module:: macos.hotkeys
+
+.. autofunction:: macos.hotkeys.register
+.. autofunction:: macos.hotkeys.unregister
+.. autofunction:: macos.hotkeys.run
+.. autofunction:: macos.hotkeys.stop
+.. autofunction:: macos.hotkeys.wait
+.. autoclass:: macos.hotkeys.Hotkey
+   :members: unregister
+.. autofunction:: macos.hotkeys.has_permission
+.. autofunction:: macos.hotkeys.request_permission
+```
+
+## macos.music
+
+```{eval-rst}
+.. module:: macos.music
+
+.. autofunction:: macos.music.now_playing
+.. autofunction:: macos.music.play
+.. autofunction:: macos.music.pause
+.. autofunction:: macos.music.play_pause
+.. autofunction:: macos.music.next
+.. autofunction:: macos.music.previous
+.. autofunction:: macos.music.volume
+.. autofunction:: macos.music.set_volume
+.. autofunction:: macos.music.seek
+.. autoclass:: macos.music.Track
 ```
 
 ## macos.keychain
@@ -201,6 +248,7 @@ explain how to use each part.
 .. autofunction:: macos.vision.image_distance
 .. autofunction:: macos.vision.duplicates
 .. autofunction:: macos.vision.best_shot
+.. autofunction:: macos.vision.horizon
 .. autoclass:: macos.vision.Animal
 ```
 
@@ -221,6 +269,7 @@ explain how to use each part.
 .. autofunction:: macos.image.crop
 .. autofunction:: macos.image.rotate
 .. autofunction:: macos.image.flip
+.. autofunction:: macos.image.straighten
 .. autofunction:: macos.image.blur_faces
 .. autofunction:: macos.image.dominant_colors
 .. autofunction:: macos.image.qr_code
@@ -239,9 +288,24 @@ explain how to use each part.
 .. autofunction:: macos.pdf.extract
 .. autofunction:: macos.pdf.rotate
 .. autofunction:: macos.pdf.encrypt
+.. autofunction:: macos.pdf.watermark
+.. autofunction:: macos.pdf.compress
+.. autofunction:: macos.pdf.grayscale
 .. autofunction:: macos.pdf.render
 .. autofunction:: macos.pdf.from_images
 .. autoclass:: macos.pdf.Metadata
+```
+
+## macos.video
+
+```{eval-rst}
+.. module:: macos.video
+
+.. autofunction:: macos.video.info
+.. autofunction:: macos.video.frame
+.. autofunction:: macos.video.convert
+.. autofunction:: macos.video.to_gif
+.. autoclass:: macos.video.VideoInfo
 ```
 
 ## macos.language
@@ -324,6 +388,7 @@ explain how to use each part.
 .. autoclass:: macos.screen.Display
 .. autofunction:: macos.screen.wallpaper
 .. autofunction:: macos.screen.set_wallpaper
+.. autofunction:: macos.screen.record
 .. autofunction:: macos.screen.start_screensaver
 .. autofunction:: macos.screen.brightness
 .. autofunction:: macos.screen.set_brightness
