@@ -40,6 +40,7 @@ __all__ = [
     "set_brightness",
     "night_shift",
     "set_night_shift",
+    "lock",
 ]
 
 _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tiff": "tiff", ".gif": "gif", ".pdf": "pdf"}
@@ -457,3 +458,20 @@ def set_night_shift(on: bool) -> None:
         ok = _objc.send(_night_shift_client(), "setEnabled:", bool(on), argtypes=(_objc.BOOL,), restype=_objc.BOOL)
     if not ok:
         raise MacOSError("macOS refused to turn Night Shift {}".format("on" if on else "off"))
+
+
+def lock() -> None:
+    """
+    Lock the screen now, like Ctrl-Cmd-Q or *Lock Screen* in the Apple menu.
+
+    Apps keep running; the user needs their password (or Touch ID) to come
+    back. Uses a private macOS framework, since there's no public one.
+    """
+    login = private_framework("login")
+    if not hasattr(login, "SACLockScreenImmediate"):
+        raise NotSupportedError("this version of macOS doesn't expose locking the screen")
+    login.SACLockScreenImmediate.argtypes = ()
+    login.SACLockScreenImmediate.restype = ctypes.c_int
+    status = login.SACLockScreenImmediate()
+    if status != 0:
+        raise MacOSError("could not lock the screen (error {})".format(status))

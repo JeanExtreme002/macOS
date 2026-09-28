@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Information about the Mac: macOS version, model, name, uptime, idle time, disks, fonts, heat and lid.
+Information about the Mac: macOS version, model, name, uptime, idle time, disks, fonts, heat, lid, camera and microphone use.
 
 ::
 
@@ -44,6 +44,8 @@ __all__ = [
     "fonts",
     "thermal_state",
     "lid_closed",
+    "camera_in_use",
+    "microphone_in_use",
     "Volume",
 ]
 
@@ -337,3 +339,79 @@ def lid_closed() -> bool:
                 return _cf.to_bool(value)
     finally:
         io.IOObjectRelease(service)
+
+
+class _PropertyAddress(ctypes.Structure):
+    # The same layout for CoreAudio and CoreMediaIO properties.
+    _fields_ = [("selector", ctypes.c_uint32), ("scope", ctypes.c_uint32), ("element", ctypes.c_uint32)]
+
+
+def _four_cc(text: str) -> int:
+    return int.from_bytes(text.encode("ascii"), "big")
+
+
+@lru_cache(maxsize=None)
+def _media_io() -> ctypes.CDLL:
+    media = framework("CoreMediaIO")
+    address = ctypes.POINTER(_PropertyAddress)
+    size = ctypes.POINTER(ctypes.c_uint32)
+    media.CMIOObjectGetPropertyDataSize.argtypes = (ctypes.c_uint32, address, ctypes.c_uint32, ctypes.c_void_p, size)
+    media.CMIOObjectGetPropertyDataSize.restype = ctypes.c_int32
+    media.CMIOObjectGetPropertyData.argtypes = (
+        ctypes.c_uint32,
+        address,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        size,
+        ctypes.c_void_p,
+    )
+    media.CMIOObjectGetPropertyData.restype = ctypes.c_int32
+    return media
+
+
+def _camera_property(target: int, selector: str) -> Optional[bytes]:
+    media = _media_io()
+    address = _PropertyAddress(_four_cc(selector), _four_cc("glob"), 0)
+    size = ctypes.c_uint32()
+    if media.CMIOObjectGetPropertyDataSize(target, ctypes.byref(address), 0, None, ctypes.byref(size)) != 0:
+        return None
+    buffer = ctypes.create_string_buffer(size.value)
+    used = ctypes.c_uint32()
+    status = media.CMIOObjectGetPropertyData(
+        target, ctypes.byref(address), 0, None, size.value, ctypes.byref(used), buffer
+    )
+    return buffer.raw[: used.value] if status == 0 else None
+
+
+def _uints(raw: Optional[bytes]) -> List[int]:
+    raw = raw or b""
+    return [int.from_bytes(raw[index : index + 4], "little") for index in range(0, len(raw) - 3, 4)]
+
+
+def camera_in_use() -> bool:
+    """
+    Whether an app is using a camera right now, as when its green light is on.
+
+    Handy for an "on air" light, or to pause something noisy during video
+    calls. It doesn't say which app. Needs no permission.
+    """
+    cameras = _uints(_camera_property(1, "dev#"))  # 1: kCMIOObjectSystemObject
+    return any(_uints(_camera_property(camera, "gone"))[:1] == [1] for camera in cameras)
+
+
+def microphone_in_use() -> bool:
+    """
+    Whether an app is recording from a microphone right now, as when the orange dot shows in the menu bar.
+
+    It doesn't say which app. Needs no permission.
+    """
+    from . import audio
+
+    processes = _uints(audio._property(audio._SYSTEM, "prs#"))
+    if processes:
+        # macOS 14+: each process says whether it records (kAudioProcessPropertyIsRunningInput).
+        return any(audio._uint(process, "piri") for process in processes)
+    # Before: whether an input device is running for any app. A headset
+    # that only plays sound can count too.
+    return any(audio._uint(device.id, "gone") for device in audio.inputs())

@@ -32,6 +32,7 @@ __all__ = [
     "type",
     "press",
     "hold",
+    "caps_lock",
     "layout",
     "layouts",
     "set_layout",
@@ -308,6 +309,15 @@ def hold(*keys: str) -> Iterator[None]:
         for flag, code in reversed(pressed):
             _events.HELD.remove(flag)
             _events.post(_key_event(code, False, 0))
+
+
+_ALPHA_SHIFT = 1 << 16  # kCGEventFlagMaskAlphaShift: Caps Lock is on
+_HID_STATE = 1  # kCGEventSourceStateHIDSystemState: the hardware's own state
+
+
+def caps_lock() -> bool:
+    """Whether Caps Lock is on. Needs no permission."""
+    return bool(_events.graphics().CGEventSourceFlagsState(_HID_STATE) & _ALPHA_SHIFT)
 
 
 def _chunks(text: str, size: int) -> List[str]:

@@ -9,6 +9,7 @@ List audio devices and switch the default output and input.
     macos.audio.default_output()                          # Device(name='MacBook Pro Speakers', ...)
     macos.audio.set_output("AirPods Pro")
     macos.audio.set_input("MacBook Pro Microphone")
+    macos.audio.mute_input()                              # mute the microphone
 
 Talks to CoreAudio directly, like the Sound settings do. Switching needs no
 permission.
@@ -22,9 +23,22 @@ from typing import List, Optional, Union
 
 from . import _cf
 from ._system import framework
-from .errors import MacOSError
+from .errors import MacOSError, NotSupportedError
 
-__all__ = ["Device", "devices", "outputs", "inputs", "default_output", "default_input", "set_output", "set_input"]
+__all__ = [
+    "Device",
+    "devices",
+    "outputs",
+    "inputs",
+    "default_output",
+    "default_input",
+    "set_output",
+    "set_input",
+    "input_volume",
+    "set_input_volume",
+    "input_muted",
+    "mute_input",
+]
 
 
 def _code(text: str) -> int:
@@ -100,10 +114,10 @@ def _core_audio() -> ctypes.CDLL:
     return audio
 
 
-def _property(target: int, selector: str, scope: int = _GLOBAL) -> Optional[bytes]:
+def _property(target: int, selector: str, scope: int = _GLOBAL, element: int = _MAIN_ELEMENT) -> Optional[bytes]:
     """Raw bytes of a CoreAudio property, or ``None`` if the object doesn't have it."""
     audio = _core_audio()
-    address = _Address(_code(selector), scope, _MAIN_ELEMENT)
+    address = _Address(_code(selector), scope, element)
     size = ctypes.c_uint32()
     if audio.AudioObjectGetPropertyDataSize(target, ctypes.byref(address), 0, None, ctypes.byref(size)) != 0:
         return None
@@ -124,8 +138,8 @@ def _string(target: int, selector: str) -> str:
         return _cf.to_str(ref) or ""
 
 
-def _uint(target: int, selector: str) -> Optional[int]:
-    raw = _property(target, selector)
+def _uint(target: int, selector: str, scope: int = _GLOBAL, element: int = _MAIN_ELEMENT) -> Optional[int]:
+    raw = _property(target, selector, scope, element)
     return int(struct.unpack("I", raw[:4])[0]) if raw and len(raw) >= 4 else None
 
 
@@ -218,3 +232,85 @@ def set_input(device: Union[str, Device]) -> Device:
     chosen = _find(device, inputs(), "input")
     _set_default("dIn ", chosen)
     return chosen
+
+
+# The microphone's volume and mute, on the default input device or another one.
+
+
+def _input_device(device: Union[str, Device, None]) -> Device:
+    if device is None:
+        current = default_input()
+        if current is None:
+            raise NotSupportedError("this Mac has no microphone")
+        return current
+    return _find(device, inputs(), "input")
+
+
+def _elements(device: Device, selector: str) -> List[int]:
+    """The elements that have ``selector`` on the input side: the main one, or each channel."""
+    if _property(device.id, selector, _INPUT, 0) is not None:
+        return [0]
+    return [channel for channel in range(1, 9) if _property(device.id, selector, _INPUT, channel) is not None]
+
+
+def _set_input(device: Device, selector: str, elements: List[int], value: ctypes._SimpleCData) -> None:
+    audio = _core_audio()
+    for element in elements:
+        address = _Address(_code(selector), _INPUT, element)
+        status = audio.AudioObjectSetPropertyData(
+            device.id, ctypes.byref(address), 0, None, ctypes.sizeof(value), ctypes.byref(value)
+        )
+        if status != 0:
+            raise MacOSError("could not change {!r} (OSStatus {})".format(device.name, status))
+
+
+def input_volume(device: Union[str, Device, None] = None) -> float:
+    """
+    The microphone's input volume, from 0.0 to 1.0, as the slider in System Settings › Sound › Input.
+
+    ``device`` works as in :func:`set_input`; by default, the default input.
+    """
+    chosen = _input_device(device)
+    levels = [
+        struct.unpack("f", raw[:4])[0]
+        for raw in (_property(chosen.id, "volm", _INPUT, element) for element in _elements(chosen, "volm"))
+        if raw and len(raw) >= 4
+    ]
+    if not levels:
+        raise NotSupportedError("{!r} has no adjustable input volume".format(chosen.name))
+    return round(sum(levels) / len(levels), 3)
+
+
+def set_input_volume(value: float, *, device: Union[str, Device, None] = None) -> None:
+    """Set the microphone's input volume, from 0.0 to 1.0. ``device`` works as in :func:`input_volume`."""
+    if not 0.0 <= value <= 1.0:
+        raise ValueError("volume must be from 0.0 to 1.0, not {}".format(value))
+    chosen = _input_device(device)
+    elements = _elements(chosen, "volm")
+    if not elements:
+        raise NotSupportedError("{!r} has no adjustable input volume".format(chosen.name))
+    _set_input(chosen, "volm", elements, ctypes.c_float(value))
+
+
+def input_muted(device: Union[str, Device, None] = None) -> bool:
+    """Whether the microphone is muted. ``device`` works as in :func:`input_volume`."""
+    chosen = _input_device(device)
+    elements = _elements(chosen, "mute")
+    if not elements:
+        raise NotSupportedError("{!r} can't be muted; use set_input_volume(0.0)".format(chosen.name))
+    return all(_uint(chosen.id, "mute", _INPUT, element) for element in elements)
+
+
+def mute_input(on: bool = True, *, device: Union[str, Device, None] = None) -> None:
+    """
+    Mute the microphone (or unmute it with ``on=False``), for every app at once.
+
+    Handy as a "mute me" shortcut in meetings. ``device`` works as in
+    :func:`input_volume`. Devices without a mute switch raise
+    :class:`~macos.errors.NotSupportedError`: set their volume to 0 instead.
+    """
+    chosen = _input_device(device)
+    elements = _elements(chosen, "mute")
+    if not elements:
+        raise NotSupportedError("{!r} can't be muted; use set_input_volume(0.0)".format(chosen.name))
+    _set_input(chosen, "mute", elements, ctypes.c_uint32(1 if on else 0))

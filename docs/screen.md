@@ -117,6 +117,16 @@ the switch in Control Center: a schedule set in System Settings › Displays ›
 Night Shift still applies afterwards. It uses a private macOS framework,
 since there's no public one.
 
+## Locking
+
+```python
+macos.screen.lock()
+```
+
+It locks the screen at once, like Ctrl-Cmd-Q: apps keep running, and the
+user needs their password or Touch ID to come back. It uses a private macOS
+framework, since there's no public one.
+
 ## Screen saver
 
 ```python
@@ -141,3 +151,4 @@ this also locks it.
 - {func}`macos.screen.set_brightness`
 - {func}`macos.screen.night_shift`
 - {func}`macos.screen.set_night_shift`
+- {func}`macos.screen.lock`

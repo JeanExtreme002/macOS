@@ -74,6 +74,7 @@ explain how to use each part.
 .. autofunction:: macos.keyboard.type
 .. autofunction:: macos.keyboard.press
 .. autofunction:: macos.keyboard.hold
+.. autofunction:: macos.keyboard.caps_lock
 .. autofunction:: macos.keyboard.layouts
 .. autofunction:: macos.keyboard.layout
 .. autofunction:: macos.keyboard.set_layout
@@ -125,6 +126,7 @@ explain how to use each part.
 .. module:: macos.power
 
 .. autofunction:: macos.power.battery
+.. autofunction:: macos.power.low_power_mode
 .. autoclass:: macos.power.Battery
 .. autofunction:: macos.power.keep_awake
 .. autofunction:: macos.power.sleep
@@ -266,6 +268,10 @@ explain how to use each part.
 .. autofunction:: macos.audio.default_input
 .. autofunction:: macos.audio.set_output
 .. autofunction:: macos.audio.set_input
+.. autofunction:: macos.audio.input_volume
+.. autofunction:: macos.audio.set_input_volume
+.. autofunction:: macos.audio.input_muted
+.. autofunction:: macos.audio.mute_input
 .. autoclass:: macos.audio.Device
 ```
 
@@ -320,6 +326,7 @@ explain how to use each part.
 .. autofunction:: macos.screen.set_brightness
 .. autofunction:: macos.screen.night_shift
 .. autofunction:: macos.screen.set_night_shift
+.. autofunction:: macos.screen.lock
 ```
 
 ## macos.dialog
@@ -355,6 +362,8 @@ explain how to use each part.
 .. autofunction:: macos.system.fonts
 .. autofunction:: macos.system.thermal_state
 .. autofunction:: macos.system.lid_closed
+.. autofunction:: macos.system.camera_in_use
+.. autofunction:: macos.system.microphone_in_use
 .. autoclass:: macos.system.Volume
 ```
 

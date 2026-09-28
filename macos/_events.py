@@ -49,6 +49,7 @@ def graphics() -> ctypes.CDLL:
         "CGEventSetFlags": ((pointer, ctypes.c_uint64), None),
         "CGEventSetIntegerValueField": ((pointer, ctypes.c_uint32, ctypes.c_int64), None),
         "CGEventPost": ((ctypes.c_uint32, pointer), None),
+        "CGEventSourceFlagsState": ((ctypes.c_int32,), ctypes.c_uint64),
         "CFRelease": ((pointer,), None),
     }
     for name, (argtypes, restype) in signatures.items():

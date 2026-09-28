@@ -46,6 +46,23 @@ speakers = next(d for d in macos.audio.outputs() if d.transport == "builtin")
 macos.audio.set_output(speakers)
 ```
 
+## Microphone volume and mute
+
+```python
+macos.audio.input_volume()          # 0.75, from 0.0 to 1.0
+macos.audio.set_input_volume(0.5)
+macos.audio.input_muted()           # False
+macos.audio.mute_input()            # every app now hears silence
+macos.audio.mute_input(False)
+```
+
+They act on the default input, or on `device=`, given as for
+{func}`~macos.audio.set_input`. Muting works for every app at once, which
+makes a handy "mute me" shortcut in meetings. Microphones without a mute
+switch raise {class}`~macos.NotSupportedError`; set their volume to 0
+instead. To know whether an app is recording, see
+{func}`macos.system.microphone_in_use`.
+
 ## Reference
 
 - {func}`macos.audio.devices`
@@ -55,4 +72,8 @@ macos.audio.set_output(speakers)
 - {func}`macos.audio.default_input`
 - {func}`macos.audio.set_output`
 - {func}`macos.audio.set_input`
+- {func}`macos.audio.input_volume`
+- {func}`macos.audio.set_input_volume`
+- {func}`macos.audio.input_muted`
+- {func}`macos.audio.mute_input`
 - {class}`macos.audio.Device`

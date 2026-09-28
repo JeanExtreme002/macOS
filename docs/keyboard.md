@@ -78,6 +78,14 @@ with macos.keyboard.hold("cmd", "option"):
 Keys are written as for {func}`~macos.keyboard.press`. They are released at
 the end of the block, even when it raises.
 
+## Caps Lock
+
+```python
+macos.keyboard.caps_lock()   # True when on
+```
+
+Handy to warn before typing a password. It needs no permission.
+
 ## Keyboard layouts
 
 ```python
@@ -114,6 +122,7 @@ They use a private macOS framework, since there's no public one.
 - {func}`macos.keyboard.type`
 - {func}`macos.keyboard.press`
 - {func}`macos.keyboard.hold`
+- {func}`macos.keyboard.caps_lock`
 - {func}`macos.keyboard.layouts`
 - {func}`macos.keyboard.layout`
 - {func}`macos.keyboard.set_layout`

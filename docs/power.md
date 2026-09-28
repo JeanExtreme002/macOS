@@ -27,6 +27,15 @@ same number as System Settings › Battery › Battery Health.
 while charging. It's `None` while macOS is still estimating it, and when the
 battery is full and plugged in.
 
+## Low Power Mode
+
+```python
+macos.power.low_power_mode()   # True when on (System Settings › Battery)
+```
+
+Low Power Mode makes the Mac slower to save energy, so a long job can check
+it and lighten its work, like {func}`macos.system.thermal_state`.
+
 ## Keeping the Mac awake
 
 {func}`~macos.power.keep_awake` stops the Mac from going to sleep while a block
@@ -69,6 +78,7 @@ off), {func}`~macos.power.sleep_display` also locks the screen.
 ## Reference
 
 - {func}`macos.power.battery`
+- {func}`macos.power.low_power_mode`
 - {class}`macos.power.Battery`
 - {func}`macos.power.keep_awake`
 - {func}`macos.power.sleep`

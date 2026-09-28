@@ -15,7 +15,8 @@ itself, so a script can work in one terminal and not in another.
 The other features (clipboard, appearance, apps, Keychain, speech, power,
 Shortcuts, Finder, volume, Spotlight, dialogs, system info, Vision, images,
 PDFs, language, audio devices, sounds, network, brightness, the keyboard
-backlight, the mouse position, listing Bluetooth devices) need no permission.
+backlight, the mouse position, listing Bluetooth devices, Caps Lock, microphone
+volume, camera and microphone use, locking the screen) need no permission.
 
 ## Screen Recording
 

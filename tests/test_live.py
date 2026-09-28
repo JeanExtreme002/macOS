@@ -1107,3 +1107,28 @@ def test_thermal_state_and_lid():
         assert isinstance(macos.system.lid_closed(), bool)
     except macos.NotSupportedError:
         pass  # a desktop Mac
+
+
+def test_camera_microphone_and_power_state():
+    assert isinstance(macos.system.camera_in_use(), bool)
+    assert isinstance(macos.system.microphone_in_use(), bool)
+    assert isinstance(macos.power.low_power_mode(), bool)
+    assert isinstance(macos.keyboard.caps_lock(), bool)
+
+
+def test_microphone_volume_and_mute():
+    if macos.audio.default_input() is None:
+        pytest.skip("no microphone")
+    try:
+        volume = macos.audio.input_volume()
+    except macos.NotSupportedError:
+        pytest.skip("the microphone has no adjustable volume")
+    assert 0.0 <= volume <= 1.0
+    macos.audio.set_input_volume(volume)  # the same value: nothing changes
+    assert abs(macos.audio.input_volume() - volume) < 0.01
+    try:
+        muted = macos.audio.input_muted()
+    except macos.NotSupportedError:
+        return
+    macos.audio.mute_input(muted)
+    assert macos.audio.input_muted() == muted

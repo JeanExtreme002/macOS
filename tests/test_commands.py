@@ -353,6 +353,15 @@ class _ImmediateThread:
         lambda: macos.appearance.set_mode("dark"),
         lambda: macos.system.thermal_state(),
         lambda: macos.system.lid_closed(),
+        lambda: macos.system.camera_in_use(),
+        lambda: macos.system.microphone_in_use(),
+        lambda: macos.power.low_power_mode(),
+        lambda: macos.screen.lock(),
+        lambda: macos.keyboard.caps_lock(),
+        lambda: macos.audio.input_volume(),
+        lambda: macos.audio.set_input_volume(0.5),
+        lambda: macos.audio.input_muted(),
+        lambda: macos.audio.mute_input(),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -1124,6 +1133,8 @@ def test_hardware_argument_checks():
     # Rejected before switching anything.
     with pytest.raises(ValueError, match="timeout"):
         macos.bluetooth.set_power(False, timeout=0)
+    with pytest.raises(ValueError, match="0.0 to 1.0"):
+        macos.audio.set_input_volume(1.5)
     with pytest.raises(ValueError, match="'dark' or 'light'"):
         macos.appearance.set_mode("blue")
 
@@ -1169,6 +1180,11 @@ class _FakeEvents:
 
     def CFRelease(self, event):
         pass
+
+    flags_state = 0
+
+    def CGEventSourceFlagsState(self, state):
+        return self.flags_state
 
 
 @pytest.fixture
@@ -1491,3 +1507,128 @@ def test_missing_private_classes_are_not_supported(monkeypatch):
         macos.keyboard.brightness()
     with pytest.raises(macos.NotSupportedError, match="Night Shift"):
         macos.screen.night_shift()
+
+
+def test_caps_lock(fake_events):
+    assert macos.keyboard.caps_lock() is False
+    fake_events.flags_state = (1 << 16) | (1 << 17)  # Caps Lock and Shift
+    assert macos.keyboard.caps_lock() is True
+
+
+class _FakeCoreAudio:
+    """Input properties by (device, selector, element), as CoreAudio would hold them."""
+
+    def __init__(self, values):
+        import struct
+
+        self.values = values
+        self.pack = struct.pack
+        self.writes = []
+
+    def property(self, target, selector, scope=None, element=0):
+        value = self.values.get((target, selector, element))
+        if value is None:
+            return None
+        return self.pack("f" if isinstance(value, float) else "I", value)
+
+    def AudioObjectSetPropertyData(self, target, address, qualifier_size, qualifier, size, data):
+        value = data._obj.value
+        address = address._obj
+        selector = address.selector.to_bytes(4, "big").decode()
+        self.writes.append((target, selector, address.element, round(value, 3) if isinstance(value, float) else value))
+        self.values[(target, selector, address.element)] = value
+        return 0
+
+
+@pytest.fixture
+def fake_audio(monkeypatch):
+    from macos import audio
+
+    microphone = audio.Device(7, "USB Mic", "usb-mic", "usb", False, True)
+    fake = _FakeCoreAudio({(7, "volm", 1): 0.5, (7, "volm", 2): 0.7, (7, "mute", 0): 0})
+    monkeypatch.setattr(audio, "_property", fake.property)
+    monkeypatch.setattr(audio, "_core_audio", lambda: fake)
+    monkeypatch.setattr(audio, "default_input", lambda: microphone)
+    monkeypatch.setattr(audio, "inputs", lambda: [microphone])
+    return fake
+
+
+def test_input_volume_per_channel(fake_audio):
+    # This microphone has no main volume, only one per channel.
+    assert macos.audio.input_volume() == 0.6
+    macos.audio.set_input_volume(0.25, device="USB")
+
+    assert fake_audio.writes == [(7, "volm", 1, 0.25), (7, "volm", 2, 0.25)]
+    assert macos.audio.input_volume() == 0.25
+
+
+def test_mute_input(fake_audio):
+    assert macos.audio.input_muted() is False
+    macos.audio.mute_input()
+    assert macos.audio.input_muted() is True
+    macos.audio.mute_input(False)
+
+    assert fake_audio.writes == [(7, "mute", 0, 1), (7, "mute", 0, 0)]
+
+    del fake_audio.values[(7, "mute", 0)]
+    with pytest.raises(macos.NotSupportedError, match="can't be muted"):
+        macos.audio.mute_input()
+
+
+def test_microphone_in_use(monkeypatch):
+    from macos import audio
+
+    properties = {(1, "prs#"): [101, 102], (101, "piri"): 0, (102, "piri"): 0}
+
+    def fake_property(target, selector, scope=None, element=0):
+        value = properties.get((target, selector))
+        if value is None:
+            return None
+        values = value if isinstance(value, list) else [value]
+        return b"".join(number.to_bytes(4, "little") for number in values)
+
+    monkeypatch.setattr(audio, "_property", fake_property)
+    monkeypatch.setattr(audio, "_uint", lambda target, selector: properties.get((target, selector)))
+    assert macos.system.microphone_in_use() is False
+    properties[(102, "piri")] = 1  # one app records
+    assert macos.system.microphone_in_use() is True
+
+    # Before macOS 14 there's no process list: an input device running counts.
+    del properties[(1, "prs#")]
+    monkeypatch.setattr(audio, "inputs", lambda: [audio.Device(9, "Mic", "mic", "builtin", False, True)])
+    assert macos.system.microphone_in_use() is False
+    properties[(9, "gone")] = 1
+    assert macos.system.microphone_in_use() is True
+
+
+def test_camera_in_use(monkeypatch):
+    running = {1: [34, 35], 34: [0], 35: [0]}
+    monkeypatch.setattr(
+        macos.system,
+        "_camera_property",
+        lambda target, selector: b"".join(number.to_bytes(4, "little") for number in running[target]),
+    )
+
+    assert macos.system.camera_in_use() is False
+    running[35] = [1]
+    assert macos.system.camera_in_use() is True
+
+
+def test_lock(monkeypatch):
+    from types import SimpleNamespace
+
+    calls = []
+
+    def lock_now():
+        calls.append("lock")
+        return login.status
+
+    login = SimpleNamespace(status=0, SACLockScreenImmediate=lock_now)
+    monkeypatch.setattr(macos.screen, "private_framework", lambda name: login)
+
+    macos.screen.lock()
+    assert calls == ["lock"]
+
+    login.status = 1
+    with pytest.raises(macos.MacOSError, match="could not lock"):
+        macos.screen.lock()
