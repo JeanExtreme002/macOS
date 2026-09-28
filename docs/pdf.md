@@ -1,7 +1,7 @@
 # PDF
 
-{mod}`macos.pdf` reads, merges and splits PDFs with PDFKit, the framework
-behind Preview. Pages are numbered from 1, like in Preview.
+{mod}`macos.pdf` reads, merges and splits PDFs, and makes them from images,
+with PDFKit, the framework behind Preview. Pages are numbered from 1, like in Preview.
 
 ```python
 import macos
@@ -32,6 +32,23 @@ from pathlib import Path
 
 image = macos.pdf.render("report.pdf", page=1, size=1600)
 Path("cover.png").write_bytes(image)
+```
+
+## PDFs from images
+
+{func}`~macos.pdf.from_images` makes a PDF with one page per image, in order.
+Each page takes its image's size:
+
+```python
+macos.pdf.from_images(["page1.jpg", "page2.heic"], "document.pdf")
+```
+
+Images can also be bytes, so photos of paper become a PDF scan with
+{func}`macos.vision.scan_document`:
+
+```python
+pages = [macos.vision.scan_document(photo) for photo in ["receipt.jpg", "contract.jpg"]]
+macos.pdf.from_images(pages, "scan.pdf")
 ```
 
 ## Scanned PDFs
@@ -66,3 +83,4 @@ must share it. The files it writes are not encrypted.
 - {func}`macos.pdf.merge`
 - {func}`macos.pdf.extract`
 - {func}`macos.pdf.render`
+- {func}`macos.pdf.from_images`

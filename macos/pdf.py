@@ -26,7 +26,7 @@ from ._objc import BOOL, NSUInteger
 from ._system import framework
 from .errors import MacOSError, PermissionDeniedError
 
-__all__ = ["page_count", "text", "merge", "extract", "render"]
+__all__ = ["page_count", "text", "merge", "extract", "render", "from_images"]
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -171,3 +171,45 @@ def render(path: PathLike, page: int = 1, *, size: int = 1024, password: Optiona
         if not rep:
             raise MacOSError("page {} could not be drawn".format(page))
         return _objc.png(rep)
+
+
+def from_images(images: Sequence[Union[PathLike, bytes]], output: PathLike) -> Path:
+    """
+    Make a PDF with one page per image, in order, and return its path.
+
+    Any format macOS opens works (JPEG, PNG, HEIC...). Each page takes the size
+    of its image, so photos of documents become the pages of a scan::
+
+        pages = [macos.vision.scan_document(photo) for photo in photos]
+        macos.pdf.from_images(pages, "scan.pdf")
+
+    ``images`` may also hold PNG/JPEG bytes, such as :func:`macos.vision.scan_document` returns.
+    """
+    if not images:
+        raise ValueError("from_images() needs at least one image")
+    framework("PDFKit")
+    framework("AppKit")
+    with _objc.autorelease_pool():
+        document = _new_document()
+        for image in images:
+            picture = _objc.send(_objc.cls("NSImage"), "alloc")
+            if isinstance(image, (bytes, bytearray)):
+                picture = _objc.send(picture, "initWithData:", _objc.nsdata(bytes(image)), argtypes=(_objc.id,))
+                label = "image bytes"
+            else:
+                path = Path(image).expanduser().absolute()
+                if not path.exists():
+                    raise FileNotFoundError(str(path))
+                picture = _objc.send(picture, "initWithContentsOfFile:", _objc.nsstring(str(path)), argtypes=(_objc.id,))
+                label = str(path)
+            if not picture:
+                raise ValueError("{} is not an image macOS can read".format(label))
+            _objc.send(picture, "autorelease")
+            page = _objc.send(_objc.send(_objc.cls("PDFPage"), "alloc"), "initWithImage:", picture, argtypes=(_objc.id,))
+            if not page:
+                raise MacOSError("{} could not be turned into a page".format(label))
+            _objc.send(page, "autorelease")
+            _objc.send(
+                document, "insertPage:atIndex:", page, _count(document), argtypes=(_objc.id, NSUInteger), restype=None
+            )
+        return _save(document, output)

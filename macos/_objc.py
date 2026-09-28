@@ -230,3 +230,13 @@ def _core_foundation() -> ctypes.CDLL:
     cf.CFRelease.argtypes = (ctypes.c_void_p,)
     cf.CFRelease.restype = None
     return cf
+
+
+def ciimage_png(image: int) -> bytes:
+    """Render a Core Image ``CIImage`` into PNG bytes. Needs AppKit and CoreImage loaded."""
+    context = send(cls("CIContext"), "contextWithOptions:", None, argtypes=(id,))
+    extent = send(image, "extent", restype=CGRect)
+    rendered = send(context, "createCGImage:fromRect:", image, extent, argtypes=(id, CGRect), restype=ctypes.c_void_p)
+    if not rendered:
+        raise ValueError("the image could not be drawn")
+    return cgimage_png(rendered)

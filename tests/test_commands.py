@@ -301,6 +301,18 @@ class _ImmediateThread:
         lambda: macos.network.wifi_power(),
         lambda: macos.network.set_wifi_power(True),
         lambda: macos.appearance.wait_for_change(timeout=0.1),
+        lambda: macos.appearance.accent_color(),
+        lambda: macos.image.metadata(__file__),
+        lambda: macos.image.taken_at(__file__),
+        lambda: macos.image.location(__file__),
+        lambda: macos.image.strip_metadata(__file__, "out.jpg"),
+        lambda: macos.pdf.from_images([__file__], "out.pdf"),
+        lambda: macos.vision.scan_document(b"image"),
+        lambda: macos.vision.image_distance(b"image", b"image"),
+        lambda: macos.vision.duplicates([b"image", b"image"]),
+        lambda: macos.vision.smart_crop(b"image", 100, 100),
+        lambda: macos.system.fonts(),
+        lambda: macos.screen.start_screensaver(),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -877,8 +889,33 @@ def test_image_argument_checks(tmp_path):
 def test_vision_and_language_argument_checks():
     with pytest.raises(ValueError):
         macos.vision.classify(b"image", limit=0)
+    with pytest.raises(ValueError, match="threshold"):
+        macos.vision.duplicates([b"image"], threshold=0)
+    with pytest.raises(ValueError, match="positive"):
+        macos.vision.smart_crop(b"image", 0, 100)
+    with pytest.raises(ValueError, match="at least one"):
+        macos.pdf.from_images([], "out.pdf")
     with pytest.raises(ValueError):
         macos.language.guess("x", limit=0)
+
+
+def test_duplicates_groups_through_chains_in_the_given_order(monkeypatch):
+    # Feature prints are stood in by numbers; their distance is the difference.
+    monkeypatch.setattr(macos.vision, "_load", lambda: None)
+    monkeypatch.setattr(macos.vision, "_feature_print", lambda image: image)
+    monkeypatch.setattr(macos.vision, "_distance", lambda first, second: abs(first - second))
+    monkeypatch.setattr(macos.vision._objc, "send", lambda *args, **kwargs: None)
+
+    # 1.0 ~ 1.2 ~ 1.4 chain into one group, though 1.0 and 1.4 are far apart.
+    groups = macos.vision.duplicates([5.0, 1.0, 9.0, 1.2, 5.1, 1.4], threshold=0.3)
+
+    assert groups == [[5.0, 5.1], [1.0, 1.2, 1.4]]
+
+
+def test_start_screensaver(fake_run):
+    macos.screen.start_screensaver()
+
+    assert fake_run.args == ["open", "-a", "ScreenSaverEngine"]
 
 
 def test_network_ip_follows_the_default_route(commands):

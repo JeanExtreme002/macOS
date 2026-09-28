@@ -12,7 +12,8 @@ to :func:`release`; :func:`owned` does that automatically at the end of a
 import ctypes
 from contextlib import contextmanager
 from functools import lru_cache
-from typing import Dict, Iterator, List, Optional
+import plistlib
+from typing import Any, Dict, Iterator, List, Optional
 
 from ._system import framework
 
@@ -89,6 +90,11 @@ def lib() -> ctypes.CDLL:
     cf.CFDictionaryCreateMutableCopy.restype = CFTypeRef
     cf.CFDictionarySetValue.argtypes = (CFTypeRef, CFTypeRef, CFTypeRef)
     cf.CFDictionarySetValue.restype = None
+
+    cf.CFPropertyListCreateData.argtypes = (CFTypeRef, CFTypeRef, CFIndex, ctypes.c_ulong, ctypes.c_void_p)
+    cf.CFPropertyListCreateData.restype = CFTypeRef
+    cf.CFPropertyListCreateWithData.argtypes = (CFTypeRef, CFTypeRef, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_void_p)
+    cf.CFPropertyListCreateWithData.restype = CFTypeRef
     return cf
 
 
@@ -214,3 +220,30 @@ def dictionary(items: Dict[int, int]) -> int:
     key_callbacks = ctypes.addressof(ctypes.c_char.in_dll(cf, "kCFTypeDictionaryKeyCallBacks"))
     value_callbacks = ctypes.addressof(ctypes.c_char.in_dll(cf, "kCFTypeDictionaryValueCallBacks"))
     return cf.CFDictionaryCreate(None, keys, values, count, key_callbacks, value_callbacks)
+
+
+_BINARY_PLIST = 200  # kCFPropertyListBinaryFormat_v1_0
+
+
+def to_python(ref: Optional[int]) -> Any:
+    """
+    Convert a property-list ``CFType`` (dictionaries, arrays, strings, numbers,
+    dates, data, booleans, nested) into Python objects.
+
+    Goes through a binary property list, so every nesting level converts at once.
+    """
+    if not ref:
+        return None
+    with owned(lib().CFPropertyListCreateData(None, ref, _BINARY_PLIST, 0, None)) as data:
+        if not data:
+            raise ValueError("not a property list")
+        return plistlib.loads(to_bytes(data))
+
+
+def from_python(value: Any) -> int:
+    """The reverse of :func:`to_python`: an owned ``CFType`` for a plist-compatible Python object."""
+    with owned(data(plistlib.dumps(value, fmt=plistlib.FMT_BINARY))) as raw:
+        ref = lib().CFPropertyListCreateWithData(None, raw, 0, None, None)
+    if not ref:
+        raise ValueError("not a property list")
+    return ref

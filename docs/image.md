@@ -1,7 +1,7 @@
 # Images
 
 {mod}`macos.image` reads, converts and resizes images, including the HEIC
-photos from iPhones, and generates QR codes. It uses ImageIO, the framework
+photos from iPhones, reads and removes their metadata, and generates QR codes. It uses ImageIO, the framework
 behind Preview and Photos, so there's no Pillow or C library to install.
 
 ```python
@@ -57,6 +57,38 @@ only scaled down: a size larger than the original keeps the original size.
 `width` and `height` in pixels, the `format` (`'jpeg'`, `'png'`, `'heic'`...),
 whether it `has_alpha` (transparency), the EXIF `orientation` and the `dpi`.
 
+## Metadata
+
+{func}`~macos.image.taken_at` and {func}`~macos.image.location` read when and
+where a photo was taken, from its EXIF and GPS data:
+
+```python
+macos.image.taken_at("IMG_0042.heic")   # datetime.datetime(2024, 5, 1, 10, 30)
+macos.image.location("IMG_0042.heic")   # (-22.9519, -43.2105): latitude, longitude
+```
+
+Both return `None` when the image doesn't record it, as with screenshots and
+most images from the web. The date is the camera's local time, without a time
+zone. {func}`~macos.image.metadata` returns everything the file records, as
+nested dictionaries (`'{Exif}'`, `'{GPS}'`, `'{TIFF}'`...):
+
+```python
+macos.image.metadata("IMG_0042.heic")["{TIFF}"]["Model"]   # 'iPhone 15 Pro'
+```
+
+## Removing metadata
+
+iPhone photos record where they were taken. Before sharing one,
+{func}`~macos.image.strip_metadata` saves a copy without the location, the
+date, the camera or the editing software:
+
+```python
+macos.image.strip_metadata("IMG_0042.heic", "share.jpg")
+```
+
+Only the orientation is kept, so the picture still shows upright. As with
+{func}`~macos.image.convert`, the output's extension sets the format.
+
 ## QR codes
 
 {func}`~macos.image.qr_code` generates a QR code as PNG bytes:
@@ -74,6 +106,10 @@ default), `"Q"` or `"H"`. To read QR codes, see {func}`macos.vision.barcodes`.
 ## Reference
 
 - {func}`macos.image.info`
+- {func}`macos.image.metadata`
+- {func}`macos.image.taken_at`
+- {func}`macos.image.location`
+- {func}`macos.image.strip_metadata`
 - {func}`macos.image.convert`
 - {func}`macos.image.resize`
 - {func}`macos.image.qr_code`

@@ -16,16 +16,27 @@ library to install.
 
 import ctypes
 import os
+from datetime import datetime
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework
 from .errors import MacOSError
 
-__all__ = ["info", "convert", "resize", "qr_code", "ImageInfo"]
+__all__ = [
+    "info",
+    "metadata",
+    "taken_at",
+    "location",
+    "strip_metadata",
+    "convert",
+    "resize",
+    "qr_code",
+    "ImageInfo",
+]
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -87,6 +98,7 @@ def _io() -> ctypes.CDLL:
         "CGImageSourceGetCount": ((pointer,), ctypes.c_size_t),
         "CGImageSourceCopyPropertiesAtIndex": ((pointer, ctypes.c_size_t, pointer), pointer),
         "CGImageSourceCreateThumbnailAtIndex": ((pointer, ctypes.c_size_t, pointer), pointer),
+        "CGImageSourceCreateImageAtIndex": ((pointer, ctypes.c_size_t, pointer), pointer),
         "CGImageDestinationCreateWithURL": ((pointer, pointer, ctypes.c_size_t, pointer), pointer),
         "CGImageDestinationAddImageFromSource": ((pointer, pointer, ctypes.c_size_t, pointer), None),
         "CGImageDestinationAddImage": ((pointer, pointer, pointer), None),
@@ -210,6 +222,76 @@ def info(path: PathLike) -> ImageInfo:
     """Return the size, format, transparency, orientation and DPI of an image file."""
     with _cf.owned(_source(path)) as source:
         return _describe(source)
+
+
+def metadata(path: PathLike) -> Dict[str, Any]:
+    """
+    Return all the metadata of an image file as a dict, as ImageIO reports it.
+
+    Top-level keys include ``PixelWidth``, ``Orientation`` and ``DPIWidth``;
+    nested dicts hold the standards, such as ``"{Exif}"`` (date, exposure,
+    lens), ``"{TIFF}"`` (camera ``Make`` and ``Model``) and ``"{GPS}"``
+    (location). For the common questions, see :func:`taken_at` and
+    :func:`location`.
+    """
+    with _cf.owned(_source(path)) as source:
+        with _cf.owned(_io().CGImageSourceCopyPropertiesAtIndex(source, 0, None)) as properties:
+            return dict(_cf.to_python(properties) or {})
+
+
+def taken_at(path: PathLike) -> Optional[datetime]:
+    """When the photo was taken, from its EXIF data, or ``None`` if it doesn't say (local time, no time zone)."""
+    data = metadata(path)
+    exif, tiff = data.get("{Exif}", {}), data.get("{TIFF}", {})
+    for value in (exif.get("DateTimeOriginal"), exif.get("DateTimeDigitized"), tiff.get("DateTime")):
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value.strip(), "%Y:%m:%d %H:%M:%S")
+            except ValueError:
+                continue
+    return None
+
+
+def location(path: PathLike) -> Optional[Tuple[float, float]]:
+    """
+    Where the photo was taken, as ``(latitude, longitude)`` in degrees, or ``None`` if it has no GPS data.
+
+    South latitudes and west longitudes are negative, as maps expect::
+
+        lat, lon = macos.image.location("IMG_0042.heic")
+        macos.open("https://maps.apple.com/?ll={},{}".format(lat, lon))
+    """
+    gps = metadata(path).get("{GPS}", {})
+    latitude, longitude = gps.get("Latitude"), gps.get("Longitude")
+    if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+        return None
+    if str(gps.get("LatitudeRef", "N")).upper() == "S":
+        latitude = -latitude
+    if str(gps.get("LongitudeRef", "E")).upper() == "W":
+        longitude = -longitude
+    return (float(latitude), float(longitude))
+
+
+def strip_metadata(source: PathLike, output: PathLike) -> Path:
+    """
+    Save a copy of an image without its metadata (location, date, camera, editing software...).
+
+    Use it before sharing photos: iPhone pictures record where they were
+    taken. Only the orientation is kept, so the picture still shows upright.
+    ``output``'s extension sets the format.
+    """
+    target, kind = _output(output)
+    io = _io()
+    with _cf.owned(_source(source)) as image_source:
+        orientation = _describe(image_source).orientation
+        pixels = io.CGImageSourceCreateImageAtIndex(image_source, 0, None)
+    if not pixels:
+        raise MacOSError("could not read {}".format(source))
+    value = _cf.number(orientation)
+    with _cf.owned(pixels), _cf.owned(value):
+        keep = _cf.dictionary({_cf.constant(io, "kCGImagePropertyOrientation"): value})
+        with _cf.owned(keep):
+            return _write(target, kind, lambda destination: io.CGImageDestinationAddImage(destination, pixels, keep))
 
 
 def convert(source: PathLike, output: PathLike, *, quality: Optional[float] = None) -> Path:
@@ -343,11 +425,4 @@ def qr_code(content: str, *, size: int = 512, correction: str = "M") -> bytes:
             _CGAffineTransform(scale, 0, 0, scale, 0, 0),
             argtypes=(_CGAffineTransform,),
         )
-        context = _objc.send(_objc.cls("CIContext"), "contextWithOptions:", None, argtypes=(_objc.id,))
-        bounds = _objc.send(scaled, "extent", restype=_objc.CGRect)
-        rendered = _objc.send(
-            context, "createCGImage:fromRect:", scaled, bounds, argtypes=(_objc.id, _objc.CGRect), restype=ctypes.c_void_p
-        )
-        if not rendered:
-            raise MacOSError("the QR code could not be drawn")
-        return _objc.cgimage_png(rendered)
+        return _objc.ciimage_png(scaled)

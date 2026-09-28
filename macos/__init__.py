@@ -4,7 +4,9 @@
 pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
 Notifications, clipboard, appearance, apps, Keychain, speech, screenshots,
-power, Shortcuts, Finder, volume, Spotlight, dialogs, system info, OCR, images, PDFs and language detection in one import, with no dependencies::
+power, Shortcuts, Finder, volume, Spotlight, dialogs, system info, OCR,
+document scanning, images, PDFs and language detection in one import, with no
+dependencies::
 
     import macos
 
@@ -28,6 +30,7 @@ power, Shortcuts, Finder, volume, Spotlight, dialogs, system info, OCR, images, 
     macos.pdf.text("report.pdf")
     macos.language.detect("Olá, tudo bem?")
     macos.vision.remove_background("photo.jpg")
+    macos.vision.scan_document("receipt.jpg")
     macos.audio.set_output("AirPods")
 
 The package imports on any platform (so it can sit in cross-platform code and

@@ -1,7 +1,8 @@
 # Vision
 
 {mod}`macos.vision` analyzes images with Apple's Vision framework: it reads
-text (OCR), QR codes and barcodes, says what an image shows and finds faces. It
+text (OCR), QR codes and barcodes, says what an image shows, finds faces,
+scans documents, crops to the subject and finds duplicate photos. It
 runs on the Mac, offline: nothing to install, no model to download and no
 permission to grant.
 
@@ -126,6 +127,63 @@ for animal in macos.vision.animals("garden.jpg"):
     print(animal.kind, animal.confidence)   # dog 0.93
 ```
 
+## Scanning documents
+
+{func}`~macos.vision.scan_document` turns a photo of a sheet of paper (a
+receipt, a contract, a whiteboard) into a flat, straight scan, like the
+*Scan Documents* feature of the iPhone:
+
+```python
+from pathlib import Path
+
+scan = macos.vision.scan_document("receipt.jpg")
+Path("receipt.png").write_bytes(scan)
+macos.vision.text(scan)   # OCR reads a scan better than the photo
+```
+
+Vision finds the page's four corners and corrects the perspective, so only the
+page is left. It returns `None` when the photo doesn't show a document. To put
+several scans in one PDF, see {func}`macos.pdf.from_images`.
+
+## Smart cropping
+
+{func}`~macos.vision.smart_crop` crops and scales an image to a size, centring
+the crop on what draws the eye (a face, an animal, the main object) instead of
+the middle of the picture. Handy for thumbnails and avatars:
+
+```python
+Path("avatar.png").write_bytes(macos.vision.smart_crop("portrait.jpg", 256, 256))
+Path("banner.png").write_bytes(macos.vision.smart_crop("landscape.jpg", 1500, 500))
+```
+
+Images are only scaled down: when the image is too small, the result keeps the
+requested proportions at the largest size it can.
+
+## Duplicate photos
+
+{func}`~macos.vision.duplicates` groups the images that show the same picture:
+copies, resized or re-saved versions, burst shots:
+
+```python
+photos = sorted(Path("~/Pictures/Trip").expanduser().glob("*.jpg"))
+for group in macos.vision.duplicates(photos):
+    print("Same picture:", [photo.name for photo in group])
+```
+
+It compares what the images show, not their bytes, so a JPEG and a smaller
+PNG of the same photo match. Only groups of two or more come back. Raise
+`threshold` (0.3 by default) to also group similar shots.
+
+{func}`~macos.vision.image_distance` gives the underlying number for two
+images: copies are usually under 0.15 and unrelated photos around 0.7 to 0.9.
+
+```python
+macos.vision.image_distance("IMG_1.jpg", "IMG_1_edited.jpg")   # 0.06
+```
+
+Small images (a few hundred pixels) carry less detail, so their distances are
+less reliable.
+
 ## Reference
 
 - {func}`macos.vision.text`
@@ -139,3 +197,7 @@ for animal in macos.vision.animals("garden.jpg"):
 - {func}`macos.vision.remove_background`
 - {func}`macos.vision.animals`
 - {class}`macos.vision.Animal`
+- {func}`macos.vision.scan_document`
+- {func}`macos.vision.smart_crop`
+- {func}`macos.vision.image_distance`
+- {func}`macos.vision.duplicates`
