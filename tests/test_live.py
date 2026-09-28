@@ -1388,3 +1388,11 @@ def test_pdf_watermark_and_compress(tmp_path):
     smaller = macos.pdf.compress(photos, tmp_path / "small.pdf")
     assert smaller.stat().st_size < photos.stat().st_size / 2
     assert macos.pdf.page_count(smaller) == 1
+
+    # Only text: nothing to shrink, and rewriting it would make it bigger.
+    text_only = macos.pdf.compress(document, tmp_path / "text.pdf")
+    assert text_only.read_bytes() == document.read_bytes()
+
+    locked = macos.pdf.encrypt(photos, tmp_path / "locked.pdf", "s3cret")
+    opened = macos.pdf.compress(locked, tmp_path / "opened.pdf", password="s3cret")
+    assert macos.pdf.page_count(opened) == 1  # no password needed any more

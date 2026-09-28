@@ -19,6 +19,7 @@ Preview.
 import ctypes
 import math
 import os
+import shutil
 import tempfile
 from contextlib import contextmanager
 from functools import lru_cache
@@ -454,8 +455,9 @@ def compress(path: PathLike, output: PathLike, *, password: Optional[str] = None
 
     Images are scaled down and compressed again, which makes PDFs of scans
     and photos several times smaller; text and drawings stay sharp. Photos
-    lose detail, so keep the original. ``password`` opens an encrypted PDF;
-    the result isn't encrypted.
+    lose detail, so keep the original. A PDF with no images to shrink (only
+    text) can't get smaller: then ``output`` is a copy of it, never a bigger
+    file. ``password`` opens an encrypted PDF; the result isn't encrypted.
     """
     framework("Quartz")
     reduce = "/System/Library/Filters/Reduce File Size.qfilter"
@@ -472,7 +474,22 @@ def compress(path: PathLike, output: PathLike, *, password: Optional[str] = None
             _objc.nsstring("QuartzFilter"),
             argtypes=(_objc.id, _objc.id),
         )
-        return _save(document, output, options)
+        encrypted = bool(_objc.send(document, "isEncrypted", restype=BOOL))
+        source = Path(path).expanduser().absolute()
+        if encrypted:
+            # PDFKit keeps the encryption when it writes an unlocked
+            # document: copy its pages into a new, unencrypted one.
+            plain = _new_document()
+            for number in range(1, _count(document) + 1):
+                _append(plain, _page(document, number))
+            document = plain
+        target = _save(document, output, options)
+    # Rewriting a PDF can make it bigger (PDFKit writes less compactly than
+    # some tools do), and the filter only shrinks images: keep the original
+    # then. Not for an encrypted one, whose copy would still be encrypted.
+    if not encrypted and target.stat().st_size >= source.stat().st_size and target != source:
+        _write_atomically(target, lambda name: bool(shutil.copyfile(str(source), name)))
+    return target
 
 
 def render(path: PathLike, page: int = 1, *, size: int = 1024, password: Optional[str] = None) -> bytes:
