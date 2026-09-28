@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Finder operations: reveal files, move them to the Trash and manage tags.
+Finder operations: reveal files, move them to the Trash, manage tags and aliases.
 
 ::
 
@@ -9,6 +9,7 @@ Finder operations: reveal files, move them to the Trash and manage tags.
     macos.finder.trash("old.log")                 # Path in ~/.Trash
     macos.finder.add_tags("report.pdf", "Work")
     macos.finder.tags("report.pdf")               # ['Work']
+    macos.finder.resolve_alias("calibre alias")   # PosixPath('/Applications/calibre.app')
 
 Trash and tags go through Foundation (``NSFileManager``/``NSURL``), the same
 APIs Finder itself uses: a trashed file can be restored with *Put Back*, and
@@ -26,7 +27,18 @@ from ._objc import BOOL, NSUInteger
 from ._system import framework, run
 from .errors import MacOSError
 
-__all__ = ["reveal", "trash", "tags", "set_tags", "add_tags", "remove_tags", "thumbnail"]
+__all__ = [
+    "reveal",
+    "trash",
+    "tags",
+    "set_tags",
+    "add_tags",
+    "remove_tags",
+    "thumbnail",
+    "is_alias",
+    "resolve_alias",
+    "make_alias",
+]
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -248,3 +260,132 @@ def thumbnail(path: PathLike, *, size: int = 256) -> bytes:
             raise MacOSError("the icon of {} could not be drawn".format(target))
         # On a Retina display the icon comes out at twice the size: scale it.
         return _encode(_fit(cgimage, size))
+
+
+# Finder aliases: files that point to another file or folder, and keep finding
+# it when it's moved or renamed. Unlike symbolic links, Python can't follow them.
+
+_SUITABLE_FOR_BOOKMARK_FILE = 1 << 10  # NSURLBookmarkCreationSuitableForBookmarkFile
+_WITHOUT_UI = 1 << 8  # NSURLBookmarkResolutionWithoutUI: never ask the user anything
+_MAX_HOPS = 32  # an alias of an alias of...: stop at loops
+
+
+def _is_finder_alias(path: Path) -> bool:
+    with _objc.autorelease_pool():
+        value = ctypes.c_void_p()
+        error = ctypes.c_void_p()
+        key = ctypes.c_void_p.in_dll(framework("Foundation"), "NSURLIsAliasFileKey").value
+        ok = _objc.send(
+            _objc.file_url(path),
+            "getResourceValue:forKey:error:",
+            ctypes.byref(value),
+            key,
+            ctypes.byref(error),
+            argtypes=(ctypes.c_void_p, _objc.id, ctypes.c_void_p),
+            restype=BOOL,
+        )
+        if not ok:
+            _raise(error, "could not read {}".format(path))
+        # Foundation counts symbolic links as aliases too; a Finder alias isn't one.
+        return bool(value.value and _objc.send(value.value, "boolValue", restype=BOOL)) and not path.is_symlink()
+
+
+def is_alias(path: PathLike) -> bool:
+    """
+    Whether ``path`` is a Finder alias (made with *File › Make Alias*).
+
+    Symbolic links aren't aliases: check them with :meth:`pathlib.Path.is_symlink`.
+    """
+    return _is_finder_alias(_existing(path))
+
+
+def resolve_alias(path: PathLike) -> Path:
+    """
+    Return the file or folder a Finder alias points to, even after it was moved or renamed.
+
+    ``os.path.realpath()`` and :meth:`pathlib.Path.resolve` only follow
+    symbolic links: to Python, an alias is a small file of its own. This
+    follows aliases and symbolic links, one after another, and returns any
+    other path as it is, so it's safe to call on every path::
+
+        for item in Path("~/Desktop").expanduser().iterdir():
+            print(item.name, "->", macos.finder.resolve_alias(item))
+
+    Raises :class:`FileNotFoundError` when the original is gone. It never
+    shows a dialog, but an alias to a network share may mount it.
+    """
+    current = _existing(path)
+    for _ in range(_MAX_HOPS):
+        if not (current.is_symlink() or _is_finder_alias(current)):
+            return current
+        with _objc.autorelease_pool():
+            error = ctypes.c_void_p()
+            resolved = _objc.send(
+                _objc.cls("NSURL"),
+                "URLByResolvingAliasFileAtURL:options:error:",
+                _objc.file_url(current),
+                _WITHOUT_UI,
+                ctypes.byref(error),
+                argtypes=(_objc.id, NSUInteger, ctypes.c_void_p),
+            )
+            target = _objc.pystring(_objc.send(resolved, "path")) if resolved else None
+            if not target:
+                raise FileNotFoundError(
+                    "the original of the alias {} was not found: {}".format(
+                        current, _objc.error_message(error) or "it may have been deleted"
+                    )
+                )
+        current = Path(target)
+    raise MacOSError("{} is part of a loop of aliases".format(path))
+
+
+def make_alias(target: PathLike, alias: Optional[PathLike] = None) -> Path:
+    """
+    Create a Finder alias of ``target``, like *File › Make Alias*, and return its path.
+
+    By default it goes next to ``target``, named ``"<name> alias"`` as Finder
+    does. ``alias`` is the path to create, or a folder to create it in::
+
+        macos.finder.make_alias("report.pdf")                      # report.pdf alias
+        macos.finder.make_alias("report.pdf", "~/Desktop")         # ~/Desktop/report.pdf alias
+        macos.finder.make_alias("report.pdf", "~/Desktop/Report")  # named Report
+
+    Raises :class:`FileExistsError` if something already has the alias's path.
+    """
+    original = _existing(target)
+    if alias is None:
+        destination = original.with_name("{} alias".format(original.name))
+    else:
+        destination = Path(alias).expanduser().absolute()
+        if destination.is_dir() and not destination.is_symlink():
+            destination = destination / "{} alias".format(original.name)
+    if os.path.lexists(destination):
+        raise FileExistsError(str(destination))
+    if not destination.parent.is_dir():
+        raise FileNotFoundError(str(destination.parent))
+    with _objc.autorelease_pool():
+        error = ctypes.c_void_p()
+        bookmark = _objc.send(
+            _objc.file_url(original),
+            "bookmarkDataWithOptions:includingResourceValuesForKeys:relativeToURL:error:",
+            _SUITABLE_FOR_BOOKMARK_FILE,
+            None,
+            None,
+            ctypes.byref(error),
+            argtypes=(NSUInteger, _objc.id, _objc.id, ctypes.c_void_p),
+        )
+        if not bookmark:
+            _raise(error, "could not make an alias of {}".format(original))
+        ok = _objc.send(
+            _objc.cls("NSURL"),
+            "writeBookmarkData:toURL:options:error:",
+            bookmark,
+            _objc.file_url(destination),
+            _SUITABLE_FOR_BOOKMARK_FILE,
+            ctypes.byref(error),
+            argtypes=(_objc.id, _objc.id, NSUInteger, ctypes.c_void_p),
+            restype=BOOL,
+        )
+        if not ok:
+            _raise(error, "could not write the alias {}".format(destination))
+    return destination

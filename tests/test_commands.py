@@ -273,6 +273,9 @@ class _ImmediateThread:
         lambda: macos.clipboard.copy_files([__file__]),
         lambda: macos.clipboard.paste_files(),
         lambda: macos.finder.thumbnail(__file__),
+        lambda: macos.finder.is_alias(__file__),
+        lambda: macos.finder.resolve_alias(__file__),
+        lambda: macos.finder.make_alias(__file__, "elsewhere"),
         lambda: macos.system.volumes(),
         lambda: macos.system.eject("Backup"),
         lambda: macos.image.info(__file__),
@@ -1675,3 +1678,18 @@ def test_is_locked_reads_the_session(monkeypatch, session, locked):
     monkeypatch.setattr(macos.screen, "framework", lambda name: graphics)
 
     assert macos.screen.is_locked() is locked
+
+
+def test_make_alias_checks_its_paths(tmp_path):
+    original = tmp_path / "report.pdf"
+    original.write_text("x")
+    (tmp_path / "report.pdf alias").write_text("already here")
+
+    with pytest.raises(FileNotFoundError):
+        macos.finder.make_alias(tmp_path / "missing.pdf")
+    with pytest.raises(FileExistsError):
+        macos.finder.make_alias(original)  # "report.pdf alias" is taken
+    with pytest.raises(FileExistsError):
+        macos.finder.make_alias(original, tmp_path)  # the folder's "report.pdf alias" too
+    with pytest.raises(FileNotFoundError):
+        macos.finder.make_alias(original, tmp_path / "no" / "folder" / "alias")

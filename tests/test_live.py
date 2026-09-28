@@ -1144,3 +1144,35 @@ def test_true_tone_lock_and_sleep_state():
         assert macos.screen.true_tone() == on
     assert isinstance(macos.screen.is_locked(), bool)
     assert macos.screen.is_asleep() is False  # the tests run on a display that is on
+
+
+def test_finder_aliases(tmp_path):
+    original = tmp_path / "report.pdf"
+    original.write_text("x")
+    folder = tmp_path / "Folder"
+    folder.mkdir()
+
+    alias = macos.finder.make_alias(original)
+    assert alias == tmp_path / "report.pdf alias"
+    assert macos.finder.is_alias(alias) and not macos.finder.is_alias(original)
+    assert macos.finder.resolve_alias(alias).name == "report.pdf"
+    assert macos.finder.resolve_alias(original) == original  # not an alias: as it is
+    # Python itself sees a plain file.
+    assert Path(os.path.realpath(alias)).name == "report.pdf alias"
+
+    inside = macos.finder.make_alias(original, folder)
+    assert inside == folder / "report.pdf alias"
+    assert macos.finder.resolve_alias(macos.finder.make_alias(folder, tmp_path / "To folder")).name == "Folder"
+    assert macos.finder.resolve_alias(macos.finder.make_alias(alias, tmp_path / "Alias of alias")).name == "report.pdf"
+    link = tmp_path / "link"
+    link.symlink_to(alias)
+    assert not macos.finder.is_alias(link)
+    assert macos.finder.resolve_alias(link).name == "report.pdf"
+
+    # An alias follows its original when it's moved and renamed...
+    original.rename(folder / "moved.pdf")
+    assert macos.finder.resolve_alias(alias).name == "moved.pdf"
+    # ...but not when it's deleted.
+    (folder / "moved.pdf").unlink()
+    with pytest.raises(FileNotFoundError, match="original of the alias"):
+        macos.finder.resolve_alias(alias)
