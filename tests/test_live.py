@@ -826,6 +826,25 @@ def test_image_edits(tmp_path):
     assert _corner_color(upside_down, tmp_path, (0, 0, 5, 5)) == red
 
 
+def test_image_edits_work_on_the_upright_picture(tmp_path):
+    from macos import _cf
+
+    # The red/blue image stored as is, but tagged with EXIF orientation 6: it
+    # shows turned a quarter clockwise (20x40, red on top), as phone photos do.
+    portrait = tmp_path / "portrait.png"
+    io = macos.image._io()
+    with _cf.owned(macos.image._source(_halves(tmp_path))) as source, _cf.owned(
+        _cf.from_python({"Orientation": 6})
+    ) as options:
+        macos.image._write(portrait, "public.png", lambda d: io.CGImageDestinationAddImageFromSource(d, source, 0, options))
+
+    mirrored = macos.image.flip(portrait, tmp_path / "mirrored.png")
+    assert (macos.image.info(mirrored).width, macos.image.info(mirrored).height) == (20, 40)
+    assert macos.image.info(mirrored).orientation == 1
+    assert _corner_color(mirrored, tmp_path, (0, 0, 5, 5)) == "#ff0000"
+    assert _size(macos.vision.smart_crop(portrait, 20, 40)) == (20, 40)
+
+
 def test_blur_faces_and_best_shot_without_faces(tmp_path):
     image = _halves(tmp_path)
 

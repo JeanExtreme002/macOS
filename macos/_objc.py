@@ -244,12 +244,12 @@ def ciimage(image: "bytes | bytearray | os.PathLike[str] | str") -> int:
     Loads AppKit and CoreImage.
     """
     framework("AppKit")
-    framework("CoreImage")
+    core_image = framework("CoreImage")
     options = send(
         cls("NSDictionary"),
         "dictionaryWithObject:forKey:",
         send(cls("NSNumber"), "numberWithBool:", True, argtypes=(BOOL,)),
-        nsstring("kCIImageApplyOrientationProperty"),
+        ctypes.c_void_p.in_dll(core_image, "kCIImageApplyOrientationProperty").value,
         argtypes=(id, id),
     )
     if isinstance(image, (bytes, bytearray)):
