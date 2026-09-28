@@ -21,14 +21,14 @@ import os
 import time
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Iterator, List, Optional
+from typing import Iterator, List, Optional, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSInteger, NSUInteger
 from ._system import framework, require_macos, run
 from .errors import AppNotFoundError, CommandError
 
-__all__ = ["App", "running", "frontmost", "get", "open", "default_for", "default_browser"]
+__all__ = ["App", "running", "frontmost", "get", "open", "open_with", "default_for", "default_browser"]
 
 # NSApplicationActivationPolicy
 _POLICY_REGULAR = 0
@@ -339,6 +339,27 @@ def open(name: str, *, background: bool = False, timeout: float = 10.0) -> App:
 
 _ALL_ROLES = 0xFFFFFFFF  # kLSRolesAll
 _POSIX_PATH_STYLE = 0  # kCFURLPOSIXPathStyle
+
+
+def open_with(target: Union[str, "os.PathLike[str]"], app: str, *, background: bool = False) -> None:
+    """
+    Open a file, folder or URL with a specific app, like Finder's *Open With*.
+
+    ``app`` is an app name (``"Preview"``), bundle identifier
+    (``"com.apple.Preview"``) or path to an ``.app``, as for :func:`open`.
+    ``background=True`` opens it without bringing the app to the front::
+
+        macos.apps.open_with("report.pdf", "Preview")
+
+    Also available as ``macos.open_with``.
+    """
+    from .launch import _flags, _target  # launch imports this module
+
+    resolved = _target(target)
+    try:
+        run(["open", *_flags(background), "-a", _locate(app), "--", resolved])
+    except CommandError as error:
+        raise AppNotFoundError("{!r} could not open {}: {}".format(app, resolved, error.stderr or error)) from error
 
 
 @lru_cache(maxsize=None)

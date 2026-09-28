@@ -19,8 +19,7 @@ from pathlib import Path
 from typing import List, Union
 
 from ._system import run
-from .apps import _locate
-from .errors import AppNotFoundError, CommandError
+from .apps import open_with
 
 __all__ = ["open", "open_with"]
 
@@ -52,17 +51,3 @@ def open(target: Target, *, background: bool = False) -> None:
     without bringing the app to the front.
     """
     run(["open", *_flags(background), "--", _target(target)])
-
-
-def open_with(target: Target, app: str, *, background: bool = False) -> None:
-    """
-    Open a file, folder or URL with a specific app, like Finder's *Open With*.
-
-    ``app`` is an app name (``"Preview"``), bundle identifier
-    (``"com.apple.Preview"``) or path to an ``.app``.
-    """
-    resolved = _target(target)
-    try:
-        run(["open", *_flags(background), "-a", _locate(app), "--", resolved])
-    except CommandError as error:
-        raise AppNotFoundError("{!r} could not open {}: {}".format(app, resolved, error.stderr or error)) from error

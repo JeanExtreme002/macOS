@@ -105,7 +105,7 @@ for name in ("Slack", "Discord", "Mail"):
 ## Opening files with an app
 
 {func}`macos.open` opens a file, folder or URL with its default app, like
-double-clicking it. {func}`macos.open_with` picks the app, like Finder's
+double-clicking it. {func}`~macos.apps.open_with` picks the app, like Finder's
 *Open With*:
 
 ```python
@@ -113,9 +113,11 @@ macos.open("report.pdf")                  # in the default PDF app
 macos.open("~/Downloads")                 # in Finder
 macos.open("https://python.org")          # in the default browser
 
-macos.open_with("report.pdf", "Preview")
-macos.open_with("notes.md", "com.microsoft.VSCode")
+macos.apps.open_with("report.pdf", "Preview")
+macos.apps.open_with("notes.md", "com.microsoft.VSCode")
 ```
+
+`macos.open_with` is the same function, for short.
 
 The app can be a name, a bundle identifier or a path, as for
 {func}`~macos.apps.open`. Pass `background=True` to open without bringing the
@@ -148,6 +150,6 @@ All functions work from any thread, not only the main one.
 - {func}`macos.apps.open`
 - {class}`macos.apps.App`
 - {func}`macos.open`
-- {func}`macos.open_with`
+- {func}`macos.apps.open_with`
 - {func}`macos.apps.default_for`
 - {func}`macos.apps.default_browser`

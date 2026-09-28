@@ -60,6 +60,7 @@ explain how to use each part.
 .. autofunction:: macos.apps.frontmost
 .. autofunction:: macos.apps.get
 .. autofunction:: macos.apps.open
+.. autofunction:: macos.apps.open_with
 .. autoclass:: macos.apps.App
    :members: is_running, is_active, is_hidden, activate, hide, unhide, quit
 .. autofunction:: macos.apps.default_for

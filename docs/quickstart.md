@@ -192,7 +192,7 @@ macos.music.next()
 ## Open a file with an app
 
 ```python
-macos.open_with("report.pdf", "Preview")
+macos.apps.open_with("report.pdf", "Preview")
 ```
 
 ## Handle errors
