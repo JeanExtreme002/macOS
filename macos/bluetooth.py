@@ -20,7 +20,7 @@ running Python (your terminal or IDE) the first time.
 import ctypes
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from typing import Any, Dict, List, Union
 
@@ -167,7 +167,9 @@ def _find(target: Union[str, Device]) -> Device:
     raise ValueError("{!r} matches several paired devices ({}); use the full name".format(target, names))
 
 
-def _connection(target: Union[str, Device], selector: str, verb: str) -> Device:
+def _connection(target: Union[str, Device], selector: str, verb: str, connected: bool, timeout: float) -> Device:
+    if timeout <= 0:
+        raise ValueError("timeout must be positive, not {}".format(timeout))
     device = _find(target)
     if not power():
         raise MacOSError("Bluetooth is off; turn it on with macos.bluetooth.set_power(True)")
@@ -181,22 +183,36 @@ def _connection(target: Union[str, Device], selector: str, verb: str) -> Device:
         if not handle:
             raise MacOSError("macOS doesn't know the device {!r}".format(device.name))
         status = _objc.send(handle, selector, restype=ctypes.c_int)
-    if status != 0:
-        raise MacOSError("could not {} {!r} (IOReturn {:#x})".format(verb, device.name, status & 0xFFFFFFFF))
-    return device
+        if status != 0:
+            raise MacOSError("could not {} {!r} (IOReturn {:#x})".format(verb, device.name, status & 0xFFFFFFFF))
+        # The request returns before the link changes: wait for it, or a
+        # script that exits right away cancels it (the device stays connected).
+        deadline = time.monotonic() + timeout
+        while bool(_objc.send(handle, "isConnected", restype=_objc.BOOL)) != connected:
+            if time.monotonic() > deadline:
+                raise MacOSError("could not {} {!r} within {} seconds".format(verb, device.name, timeout))
+            time.sleep(0.1)
+    return replace(device, connected=connected)
 
 
-def connect(device: Union[str, Device]) -> Device:
+def connect(device: Union[str, Device], *, timeout: float = 10.0) -> Device:
     """
     Connect a paired device and return it, like clicking it in the Bluetooth menu.
 
     ``device`` is a :class:`Device`, its address, its full name or part of
     its name when that matches only one device (``"AirPods"``). The device
-    must be on and in range; this waits until it connects or fails.
+    must be on and in range. This returns once the device is connected, or
+    raises :class:`~macos.errors.MacOSError` after ``timeout`` seconds.
     """
-    return _connection(device, "openConnection", "connect to")
+    return _connection(device, "openConnection", "connect to", True, timeout)
 
 
-def disconnect(device: Union[str, Device]) -> Device:
-    """Disconnect a paired device (it stays paired) and return it. ``device`` works as in :func:`connect`."""
-    return _connection(device, "closeConnection", "disconnect")
+def disconnect(device: Union[str, Device], *, timeout: float = 10.0) -> Device:
+    """
+    Disconnect a paired device (it stays paired) and return it.
+
+    ``device`` works as in :func:`connect`. This returns once the device is
+    disconnected, or raises :class:`~macos.errors.MacOSError` after
+    ``timeout`` seconds.
+    """
+    return _connection(device, "closeConnection", "disconnect", False, timeout)
