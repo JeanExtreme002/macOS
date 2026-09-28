@@ -189,6 +189,13 @@ macos.music.now_playing()   # Track(title='Imagine', artist='John Lennon', ...)
 macos.music.next()
 ```
 
+## Record and take photos
+
+```python
+macos.audio.record("memo.m4a", 10)   # the microphone
+macos.camera.photo("me.jpg")         # the webcam
+```
+
 ## Open a file with an app
 
 ```python

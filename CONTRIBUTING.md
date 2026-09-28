@@ -23,7 +23,8 @@ pytest -m "not live"    # unit tests only (these also run on Linux)
 ```
 
 The live tests talk to the real system. They restore your clipboard and delete
-the Keychain items they create.
+the Keychain items they create. The ones that turn the camera or the microphone
+on only run when asked: `PYMACOS_CAPTURE_TESTS=1 pytest`.
 
 ## Lint and type check
 

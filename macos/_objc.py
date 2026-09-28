@@ -301,3 +301,117 @@ def ciimage_cgimage(image: int) -> int:
 def ciimage_png(image: int) -> bytes:
     """Render a Core Image ``CIImage`` into PNG bytes. Needs AppKit and CoreImage loaded."""
     return cgimage_png(ciimage_cgimage(image))
+
+
+# Blocks, classes made at run time and waiting on the run loop: what the APIs
+# that answer through callbacks (permissions, camera, microphone) need.
+
+
+class _BlockDescriptor(ctypes.Structure):
+    _fields_ = [("reserved", ctypes.c_ulong), ("size", ctypes.c_ulong), ("signature", ctypes.c_char_p)]
+
+
+class _BlockLiteral(ctypes.Structure):
+    _fields_ = [
+        ("isa", ctypes.c_void_p),
+        ("flags", ctypes.c_int),
+        ("reserved", ctypes.c_int),
+        ("invoke", ctypes.c_void_p),
+        ("descriptor", ctypes.POINTER(_BlockDescriptor)),
+    ]
+
+
+_BLOCK_IS_GLOBAL = 1 << 28  # never copied to the heap: the memory below is used as is
+_BLOCK_HAS_SIGNATURE = 1 << 30
+
+# The Python objects behind each block, kept alive as long as the process
+# runs: an API may call a block (or keep it) after the call that took it returns.
+_KEEP_ALIVE: list = []
+
+
+def block(function: Any, signature: bytes, *argtypes: Any) -> int:
+    """
+    An Objective-C block that calls ``function`` with the block's arguments, for APIs that take one.
+
+    ``signature`` is the block's type encoding, such as ``b"v@?c"`` for
+    ``void (^)(BOOL)``; ``argtypes`` are the ctypes of its arguments. The
+    block lives for the rest of the process, so make few of them.
+    """
+    invoke = ctypes.CFUNCTYPE(None, ctypes.c_void_p, *argtypes)(lambda _block, *arguments: function(*arguments))
+    descriptor = _BlockDescriptor(0, ctypes.sizeof(_BlockLiteral), signature)
+    global_block = ctypes.c_void_p.in_dll(ctypes.CDLL("/usr/lib/libSystem.B.dylib"), "_NSConcreteGlobalBlock")
+    literal = _BlockLiteral(
+        ctypes.addressof(global_block),
+        _BLOCK_IS_GLOBAL | _BLOCK_HAS_SIGNATURE,
+        0,
+        ctypes.cast(invoke, ctypes.c_void_p),
+        ctypes.pointer(descriptor),
+    )
+    _KEEP_ALIVE.append((invoke, descriptor, literal))
+    return ctypes.addressof(literal)
+
+
+_CLASSES: dict = {}
+
+
+def define_class(name: str, methods: Any, protocols: Sequence[str] = ()) -> int:
+    """
+    Create (once) an ``NSObject`` subclass whose methods are Python functions, and return it.
+
+    ``methods`` maps a selector to ``(type encoding, ctypes function type,
+    function)``; each function gets ``(self, _cmd, *arguments)``. Used for
+    the delegates the camera and microphone APIs call back.
+    """
+    if name in _CLASSES:
+        return int(_CLASSES[name][0])
+    lib = _libobjc()
+    lib.objc_allocateClassPair.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t)
+    lib.objc_allocateClassPair.restype = ctypes.c_void_p
+    lib.class_addMethod.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p)
+    lib.class_addMethod.restype = ctypes.c_bool
+    lib.objc_registerClassPair.argtypes = (ctypes.c_void_p,)
+    lib.objc_registerClassPair.restype = None
+    lib.objc_getProtocol.argtypes = (ctypes.c_char_p,)
+    lib.objc_getProtocol.restype = ctypes.c_void_p
+    lib.class_addProtocol.argtypes = (ctypes.c_void_p, ctypes.c_void_p)
+    lib.class_addProtocol.restype = ctypes.c_bool
+    lib.objc_getClass.argtypes = (ctypes.c_char_p,)
+    new_class = lib.objc_allocateClassPair(cls("NSObject"), name.encode(), 0)
+    if not new_class:  # already made, by another copy of this module
+        existing = lib.objc_getClass(name.encode())
+        _CLASSES[name] = (existing, [])
+        return int(existing)
+    implementations = []
+    for selector, (types, function_type, function) in methods.items():
+        implementation = function_type(function)
+        implementations.append(implementation)
+        lib.class_addMethod(new_class, sel(selector), ctypes.cast(implementation, ctypes.c_void_p), types.encode())
+    for protocol in protocols:
+        found = lib.objc_getProtocol(protocol.encode())
+        if found:
+            lib.class_addProtocol(new_class, found)
+    lib.objc_registerClassPair(new_class)
+    _CLASSES[name] = (new_class, implementations)
+    return int(new_class)
+
+
+def run_until(done: Any, timeout: float) -> bool:
+    """
+    Spin the current thread's run loop until ``done()`` is true or ``timeout`` seconds pass; return ``done()``.
+
+    Callbacks scheduled on the main queue (the camera's, for example) only
+    run while the main thread's run loop turns, which a script never does.
+    """
+    import time
+
+    cf = framework("CoreFoundation")
+    cf.CFRunLoopRunInMode.argtypes = (ctypes.c_void_p, ctypes.c_double, ctypes.c_bool)
+    cf.CFRunLoopRunInMode.restype = ctypes.c_int32
+    mode = ctypes.c_void_p.in_dll(cf, "kCFRunLoopDefaultMode")
+    deadline = time.monotonic() + timeout
+    while not done():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        cf.CFRunLoopRunInMode(mode, min(0.05, remaining), False)
+    return bool(done())

@@ -339,7 +339,24 @@ explain how to use each part.
 .. autofunction:: macos.audio.set_input_volume
 .. autofunction:: macos.audio.input_muted
 .. autofunction:: macos.audio.mute_input
+.. autofunction:: macos.audio.record
+.. autofunction:: macos.audio.input_level
+.. autofunction:: macos.audio.has_permission
+.. autofunction:: macos.audio.request_permission
 .. autoclass:: macos.audio.Device
+```
+
+## macos.camera
+
+```{eval-rst}
+.. module:: macos.camera
+
+.. autofunction:: macos.camera.devices
+.. autofunction:: macos.camera.photo
+.. autofunction:: macos.camera.record
+.. autoclass:: macos.camera.Camera
+.. autofunction:: macos.camera.has_permission
+.. autofunction:: macos.camera.request_permission
 ```
 
 ## macos.bluetooth

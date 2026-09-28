@@ -1449,3 +1449,47 @@ def test_pdf_grayscale(tmp_path):
     for color in macos.image.dominant_colors(page, count=3):
         red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
         assert max(red, green, blue) - min(red, green, blue) <= 3  # no color left
+
+
+_CAPTURE = pytest.mark.skipif(
+    not os.environ.get("PYMACOS_CAPTURE_TESTS"),
+    reason="turns the camera or the microphone on: set PYMACOS_CAPTURE_TESTS=1 to run",
+)
+
+
+def test_camera_devices():
+    cameras = macos.camera.devices()  # no permission needed, and the camera stays off
+
+    assert all(camera.name and camera.id for camera in cameras)
+    assert sum(camera.is_default for camera in cameras) <= 1
+    if cameras:
+        assert cameras[0].is_default
+
+
+@_CAPTURE
+def test_microphone_record_and_level(tmp_path):
+    if macos.audio.default_input() is None:
+        pytest.skip("no microphone")
+    for name in ("memo.m4a", "memo.wav"):
+        target = macos.audio.record(tmp_path / name, 1)
+        try:
+            details = macos.video.info(target)
+            assert details.has_audio and 0.8 < details.duration < 1.5
+        finally:
+            target.unlink()  # don't keep what the microphone heard
+    assert 0.0 <= macos.audio.input_level() <= 1.0
+
+
+@_CAPTURE
+def test_camera_photo_and_record(tmp_path):
+    if not macos.camera.devices():
+        pytest.skip("no camera")
+    shots = [macos.camera.photo(tmp_path / "shot.jpg"), macos.camera.photo(tmp_path / "shot.png"), macos.camera.photo()]
+    movie = macos.camera.record(tmp_path / "clip.mov", 2, audio=False)
+    try:
+        assert [macos.image.info(shot).format for shot in shots] == ["jpeg", "png", "jpeg"]
+        details = macos.video.info(movie)
+        assert details.width > 0 and 1.5 < details.duration < 3 and not details.has_audio
+    finally:
+        for made in shots + [movie]:
+            made.unlink()  # don't keep pictures of the room
