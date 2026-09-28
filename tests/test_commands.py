@@ -357,6 +357,10 @@ class _ImmediateThread:
         lambda: macos.system.microphone_in_use(),
         lambda: macos.power.low_power_mode(),
         lambda: macos.screen.lock(),
+        lambda: macos.screen.true_tone(),
+        lambda: macos.screen.set_true_tone(True),
+        lambda: macos.screen.is_locked(),
+        lambda: macos.screen.is_asleep(),
         lambda: macos.keyboard.caps_lock(),
         lambda: macos.audio.input_volume(),
         lambda: macos.audio.set_input_volume(0.5),
@@ -1507,6 +1511,8 @@ def test_missing_private_classes_are_not_supported(monkeypatch):
         macos.keyboard.brightness()
     with pytest.raises(macos.NotSupportedError, match="Night Shift"):
         macos.screen.night_shift()
+    with pytest.raises(macos.NotSupportedError, match="True Tone"):
+        macos.screen.true_tone()
 
 
 def test_caps_lock(fake_events):
@@ -1632,3 +1638,18 @@ def test_lock(monkeypatch):
     login.status = 1
     with pytest.raises(macos.MacOSError, match="could not lock"):
         macos.screen.lock()
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="builds real Core Foundation dictionaries")
+@pytest.mark.parametrize(
+    "session, locked", [({"kCGSSessionOnConsoleKey": True}, False), ({"CGSSessionScreenIsLocked": True}, True)]
+)
+def test_is_locked_reads_the_session(monkeypatch, session, locked):
+    from types import SimpleNamespace
+
+    from macos import _cf
+
+    graphics = SimpleNamespace(CGSessionCopyCurrentDictionary=lambda: _cf.from_python(session))
+    monkeypatch.setattr(macos.screen, "framework", lambda name: graphics)
+
+    assert macos.screen.is_locked() is locked

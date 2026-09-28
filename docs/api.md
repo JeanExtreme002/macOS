@@ -326,7 +326,11 @@ explain how to use each part.
 .. autofunction:: macos.screen.set_brightness
 .. autofunction:: macos.screen.night_shift
 .. autofunction:: macos.screen.set_night_shift
+.. autofunction:: macos.screen.true_tone
+.. autofunction:: macos.screen.set_true_tone
 .. autofunction:: macos.screen.lock
+.. autofunction:: macos.screen.is_locked
+.. autofunction:: macos.screen.is_asleep
 ```
 
 ## macos.dialog

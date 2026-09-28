@@ -117,6 +117,17 @@ the switch in Control Center: a schedule set in System Settings › Displays ›
 Night Shift still applies afterwards. It uses a private macOS framework,
 since there's no public one.
 
+## True Tone
+
+```python
+macos.screen.true_tone()           # True
+macos.screen.set_true_tone(False)  # exact colors, for photo editing
+```
+
+True Tone adapts the display's colors to the room's light. Macs whose
+displays don't have it raise {class}`~macos.NotSupportedError`. It uses a
+private macOS framework, like Night Shift.
+
 ## Locking
 
 ```python
@@ -126,6 +137,17 @@ macos.screen.lock()
 It locks the screen at once, like Ctrl-Cmd-Q: apps keep running, and the
 user needs their password or Touch ID to come back. It uses a private macOS
 framework, since there's no public one.
+
+{func}`~macos.screen.is_locked` tells whether the screen is locked, and
+{func}`~macos.screen.is_asleep` whether a display is off to save energy, so a
+script can wait for the user to come back:
+
+```python
+import time
+
+while macos.screen.is_locked():
+    time.sleep(5)
+```
 
 ## Screen saver
 
@@ -151,4 +173,8 @@ this also locks it.
 - {func}`macos.screen.set_brightness`
 - {func}`macos.screen.night_shift`
 - {func}`macos.screen.set_night_shift`
+- {func}`macos.screen.true_tone`
+- {func}`macos.screen.set_true_tone`
 - {func}`macos.screen.lock`
+- {func}`macos.screen.is_locked`
+- {func}`macos.screen.is_asleep`

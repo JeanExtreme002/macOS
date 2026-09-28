@@ -23,7 +23,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from . import _objc
+from . import _cf, _objc
 from ._system import framework, private_framework, run
 from .errors import MacOSError, NotSupportedError, PermissionDeniedError
 
@@ -40,7 +40,11 @@ __all__ = [
     "set_brightness",
     "night_shift",
     "set_night_shift",
+    "true_tone",
+    "set_true_tone",
     "lock",
+    "is_locked",
+    "is_asleep",
 ]
 
 _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tiff": "tiff", ".gif": "gif", ".pdf": "pdf"}
@@ -460,6 +464,40 @@ def set_night_shift(on: bool) -> None:
         raise MacOSError("macOS refused to turn Night Shift {}".format("on" if on else "off"))
 
 
+def _true_tone_client() -> int:
+    """An autoreleased ``CBTrueToneClient`` for a Mac with True Tone. Call inside an autorelease pool."""
+    private_framework("CoreBrightness")
+    framework("Foundation")
+    try:
+        _objc.cls("CBTrueToneClient")
+    except LookupError:
+        raise NotSupportedError("this version of macOS doesn't expose True Tone") from None
+    client = _objc.new("CBTrueToneClient")
+    for name in ("supported", "available"):
+        if not _objc.send(client, name, restype=_objc.BOOL):
+            raise NotSupportedError("True Tone isn't available on this Mac's displays")
+    return client
+
+
+def true_tone() -> bool:
+    """
+    Whether True Tone is on, adapting the display's colors to the room's light.
+
+    Raises :class:`~macos.errors.NotSupportedError` on Macs whose displays
+    don't have it.
+    """
+    with _objc.autorelease_pool():
+        return bool(_objc.send(_true_tone_client(), "enabled", restype=_objc.BOOL))
+
+
+def set_true_tone(on: bool) -> None:
+    """Turn True Tone on or off, like the switch in System Settings › Displays."""
+    with _objc.autorelease_pool():
+        ok = _objc.send(_true_tone_client(), "setEnabled:", bool(on), argtypes=(_objc.BOOL,), restype=_objc.BOOL)
+    if not ok:
+        raise MacOSError("macOS refused to turn True Tone {}".format("on" if on else "off"))
+
+
 def lock() -> None:
     """
     Lock the screen now, like Ctrl-Cmd-Q or *Lock Screen* in the Apple menu.
@@ -475,3 +513,38 @@ def lock() -> None:
     status = login.SACLockScreenImmediate()
     if status != 0:
         raise MacOSError("could not lock the screen (error {})".format(status))
+
+
+def is_locked() -> bool:
+    """
+    Whether the screen is locked (by :func:`lock`, the user, or the screen saver asking for the password).
+
+    A script can wait for the user to come back::
+
+        while macos.screen.is_locked():
+            time.sleep(5)
+    """
+    graphics = framework("CoreGraphics")
+    graphics.CGSessionCopyCurrentDictionary.argtypes = ()
+    graphics.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+    with _cf.owned(graphics.CGSessionCopyCurrentDictionary()) as session:
+        if not session:
+            raise MacOSError("could not read the login session")
+        # Present, and true, only while the screen is locked.
+        return _cf.to_bool(_cf.lookup(session, "CGSSessionScreenIsLocked"))
+
+
+def is_asleep(display_id: Union[int, Display, None] = None) -> bool:
+    """
+    Whether a display is asleep (turned off to save energy), the main one by default.
+
+    ``display_id`` works as in :func:`wallpaper`.
+    """
+    graphics = _display_api()
+    graphics.CGDisplayIsAsleep.argtypes = (ctypes.c_uint32,)
+    graphics.CGDisplayIsAsleep.restype = ctypes.c_bool
+    if display_id is None:
+        target = graphics.CGMainDisplayID()
+    else:
+        target = display_id.id if isinstance(display_id, Display) else display_id
+    return bool(graphics.CGDisplayIsAsleep(target))

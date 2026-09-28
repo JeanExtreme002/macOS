@@ -1132,3 +1132,15 @@ def test_microphone_volume_and_mute():
         return
     macos.audio.mute_input(muted)
     assert macos.audio.input_muted() == muted
+
+
+def test_true_tone_lock_and_sleep_state():
+    try:
+        on = macos.screen.true_tone()
+    except macos.NotSupportedError:
+        on = None
+    if on is not None:
+        macos.screen.set_true_tone(on)  # the same state: nothing changes
+        assert macos.screen.true_tone() == on
+    assert isinstance(macos.screen.is_locked(), bool)
+    assert macos.screen.is_asleep() is False  # the tests run on a display that is on
