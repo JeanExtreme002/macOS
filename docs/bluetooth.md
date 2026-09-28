@@ -6,9 +6,11 @@ with their battery levels, and connects and disconnects them.
 ```python
 import macos
 
-macos.bluetooth.power()                  # True
+macos.bluetooth.power()   # True
+
 for device in macos.bluetooth.devices():
     print(device.name, device.connected, device.battery)
+
 # AirPods Pro True {'left': 90, 'right': 85, 'case': 40}
 # Magic Mouse False {}
 ```
@@ -58,8 +60,9 @@ macos.bluetooth.set_power(True)
 ```
 
 It waits until Bluetooth is really on or off. Careful on a desktop Mac:
-turning it off disconnects a wireless keyboard and mouse. Switching the power
-uses a private macOS framework, since there's no public one.
+turning it off disconnects a wireless keyboard and mouse.
+
+Switching the power uses a private macOS framework, since there's no public one.
 
 ## Reference
 

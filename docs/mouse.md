@@ -6,11 +6,13 @@ scrolls.
 ```python
 import macos
 
-macos.mouse.position()                     # (512.0, 384.0)
+macos.mouse.position()                       # (512.0, 384.0)
 macos.mouse.move(100, 200)
-macos.mouse.click()                        # where the pointer is
+
+macos.mouse.click()                          # where the pointer is
 macos.mouse.click(300, 400, button="right")
-macos.mouse.scroll(5)                      # 5 lines down
+
+macos.mouse.scroll(5)                        # 5 lines down
 ```
 
 Positions are in points from the top-left corner of the main display, the

@@ -65,16 +65,17 @@ macos.keyboard.type("Written by Python")
 On Macs with a backlit keyboard:
 
 ```python
-macos.keyboard.brightness()             # 0.4, from 0.0 (off) to 1.0
+macos.keyboard.brightness()                # 0.4, from 0.0 (off) to 1.0
 macos.keyboard.set_brightness(1.0)
-macos.keyboard.auto_brightness()        # True: follows the room's light
+macos.keyboard.auto_brightness()           # True: follows the room's light
 macos.keyboard.set_auto_brightness(False)
 ```
 
 With automatic brightness on, macOS keeps adjusting the backlight after
 {func}`~macos.keyboard.set_brightness`. On a Mac without a backlit keyboard
-these functions raise {class}`~macos.NotSupportedError`. They use a private
-macOS framework, since there's no public one.
+these functions raise {class}`~macos.NotSupportedError`.
+
+They use a private macOS framework, since there's no public one.
 
 ## Reference
 
