@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Information about the Mac: macOS version, model, name, uptime and idle time.
+Information about the Mac: macOS version, model, name, uptime, idle time, disks and fonts.
 
 ::
 
@@ -41,6 +41,7 @@ __all__ = [
     "idle_time",
     "volumes",
     "eject",
+    "fonts",
     "Volume",
 ]
 
@@ -276,3 +277,20 @@ def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
     if not chosen.is_ejectable:
         raise ValueError("{} can't be ejected".format(chosen.name))
     run(["diskutil", "eject", str(chosen.path)])
+
+
+def fonts() -> List[str]:
+    """
+    Return the font families installed on the Mac, sorted: ``['Arial', 'Avenir', ...]``.
+
+    The names are the ones apps show in their font menus, including fonts the
+    user installed. Handy to check a font exists before using it in a plot or
+    an image.
+    """
+    framework("AppKit")
+    with _objc.autorelease_pool():
+        manager = _objc.send(_objc.cls("NSFontManager"), "sharedFontManager")
+        families = _objc.nsarray(_objc.send(manager, "availableFontFamilies"))
+        names = [_objc.pystring(family) or "" for family in families]
+    # Hidden system families (".SF NS", ".Apple Color Emoji UI"...) can't be picked by name.
+    return sorted((name for name in names if name and not name.startswith(".")), key=str.casefold)

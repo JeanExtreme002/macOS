@@ -1,6 +1,6 @@
 # pymacos
 
-**A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps, Keychain, speech, screenshots, battery, volume, Shortcuts, Finder, Spotlight, dialogs, system info, OCR, background removal, images, PDFs, audio devices and language tools, all from one import with zero dependencies.
+**A Pythonic interface to macOS.** Notifications, clipboard, dark mode, apps, Keychain, speech, screenshots, battery, volume, Shortcuts, Finder, Spotlight, dialogs, system info, OCR, document scanning, background removal, duplicate photos, images, PDFs, audio devices and language tools, all from one import with zero dependencies.
 
 <table>
     <tr>

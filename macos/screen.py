@@ -27,7 +27,16 @@ from . import _objc
 from ._system import framework, run
 from .errors import MacOSError, PermissionDeniedError
 
-__all__ = ["screenshot", "has_permission", "request_permission", "displays", "Display", "wallpaper", "set_wallpaper"]
+__all__ = [
+    "screenshot",
+    "has_permission",
+    "request_permission",
+    "displays",
+    "Display",
+    "wallpaper",
+    "set_wallpaper",
+    "start_screensaver",
+]
 
 _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tiff": "tiff", ".gif": "gif", ".pdf": "pdf"}
 
@@ -303,3 +312,13 @@ def set_wallpaper(path: Union[str, "os.PathLike[str]"], *, display_id: Union[int
             if not ok:
                 message = _objc.error_message(error) or "not an image macOS can show"
                 raise MacOSError("could not set the wallpaper: {}".format(message))
+
+
+def start_screensaver() -> None:
+    """
+    Start the screen saver now, like a hot corner does.
+
+    If *Require password after screen saver begins* is on (System Settings ›
+    Lock Screen), this also locks the Mac once the password delay passes.
+    """
+    run(["open", "-a", "ScreenSaverEngine"])

@@ -35,6 +35,11 @@ __all__ = [
     "faces",
     "animals",
     "remove_background",
+    "scan_document",
+    "image_distance",
+    "duplicates",
+    "best_shot",
+    "smart_crop",
     "TextLine",
     "Barcode",
     "Animal",
@@ -321,18 +326,242 @@ def remove_background(image: Image, *, crop: bool = False) -> Optional[bytes]:
         if not buffer:
             raise _error(error, "the background could not be removed")
 
-        # Pixel buffer -> Core Image -> CGImage -> PNG.
+        # Pixel buffer -> Core Image -> PNG.
         picture = _objc.send(_objc.cls("CIImage"), "imageWithCVPixelBuffer:", buffer, argtypes=(ctypes.c_void_p,))
-        context = _objc.send(_objc.cls("CIContext"), "contextWithOptions:", None, argtypes=(_objc.id,))
+        return _objc.ciimage_png(picture)
+
+
+def scan_document(image: Image) -> Optional[bytes]:
+    """
+    Turn a photo of a document (a page, a receipt, a card) into a flat, straight scan, as PNG bytes.
+
+    Finds the document's edges, crops the rest of the photo away and corrects
+    the perspective, like the scanner in Notes. Returns ``None`` when no
+    document is found::
+
+        scan = macos.vision.scan_document("receipt_photo.jpg")
+        macos.vision.text(scan)                          # read it
+        macos.pdf.from_images([scan], "receipt.pdf")     # or file it
+    """
+    _load()
+    with _objc.autorelease_pool():
+        picture = _objc.ciimage(image)
         extent = _objc.send(picture, "extent", restype=_objc.CGRect)
-        rendered = _objc.send(
-            context,
-            "createCGImage:fromRect:",
-            picture,
-            extent,
-            argtypes=(_objc.id, _objc.CGRect),
-            restype=ctypes.c_void_p,
+        width, height = extent.size.width, extent.size.height
+
+        # Detect on the upright pixels, so the corners match `picture`.
+        png = _objc.ciimage_png(picture)
+        request = _objc.new("VNDetectDocumentSegmentationRequest")
+        observations = _perform(png, request)
+        # The detector always returns a quadrilateral; on anything but a
+        # document its confidence is 0 (measured: 0.99 for a photographed page).
+        if not observations or _objc.send(observations[0], "confidence", restype=ctypes.c_float) < 0.5:
+            return None
+        document = observations[0]
+
+        correction = _objc.send(
+            _objc.cls("CIFilter"), "filterWithName:", _objc.nsstring("CIPerspectiveCorrection"), argtypes=(_objc.id,)
         )
-        if not rendered:
-            raise MacOSError("the cut-out could not be drawn")
-        return _objc.cgimage_png(rendered)
+        _objc.send(
+            correction, "setValue:forKey:", picture, _objc.nsstring("inputImage"), argtypes=(_objc.id, _objc.id), restype=None
+        )
+        for corner, key in (
+            ("topLeft", "inputTopLeft"),
+            ("topRight", "inputTopRight"),
+            ("bottomLeft", "inputBottomLeft"),
+            ("bottomRight", "inputBottomRight"),
+        ):
+            # Vision and Core Image both measure from the bottom-left corner;
+            # Vision in fractions, Core Image in pixels.
+            point = _objc.send(document, corner, restype=_objc.CGPoint)
+            vector = _objc.send(
+                _objc.cls("CIVector"),
+                "vectorWithX:Y:",
+                point.x * width,
+                point.y * height,
+                argtypes=(ctypes.c_double, ctypes.c_double),
+            )
+            _objc.send(correction, "setValue:forKey:", vector, _objc.nsstring(key), argtypes=(_objc.id, _objc.id), restype=None)
+        flat = _objc.send(correction, "valueForKey:", _objc.nsstring("outputImage"), argtypes=(_objc.id,))
+        if not flat:
+            raise MacOSError("the perspective could not be corrected")
+        return _objc.ciimage_png(flat)
+
+
+def _feature_print(image: Image) -> int:
+    """A retained ``VNFeaturePrintObservation`` (+1) for ``image``."""
+    with _objc.autorelease_pool():
+        observations = _perform(image, _objc.new("VNGenerateImageFeaturePrintRequest"))
+        if not observations:
+            raise MacOSError("no feature print for this image")
+        return _objc.send(observations[0], "retain")
+
+
+def _distance(first: int, second: int) -> float:
+    value = ctypes.c_float()
+    error = ctypes.c_void_p()
+    ok = _objc.send(
+        first,
+        "computeDistance:toFeaturePrintObservation:error:",
+        ctypes.byref(value),
+        second,
+        ctypes.byref(error),
+        argtypes=(ctypes.c_void_p, _objc.id, ctypes.c_void_p),
+        restype=BOOL,
+    )
+    if not ok:
+        raise _error(error, "the images could not be compared")
+    return round(float(value.value), 4)
+
+
+def image_distance(first: Image, second: Image) -> float:
+    """
+    How different two images look: 0.0 for the same picture, growing as they differ.
+
+    Measured on photos, a resized or re-compressed copy scores below 0.15 and
+    unrelated photos around 0.7 to 0.9. Very small images (a few hundred
+    pixels) score less reliably. See :func:`duplicates` to group a whole folder.
+    """
+    _load()
+    one, two = _feature_print(first), _feature_print(second)
+    try:
+        return _distance(one, two)
+    finally:
+        _objc.send(one, "release", restype=None)
+        _objc.send(two, "release", restype=None)
+
+
+def duplicates(images: Sequence[Image], *, threshold: float = 0.3) -> List[List[Image]]:
+    """
+    Group images that look like the same picture: copies, resized or re-saved versions, burst shots.
+
+    Returns only the groups with two or more images, each in the order given.
+    Two images are grouped when their :func:`image_distance` is below
+    ``threshold``; raise it to also group similar (not identical) shots::
+
+        from pathlib import Path
+
+        photos = sorted(Path("~/Pictures/Trip").expanduser().glob("*.jpg"))
+        for group in macos.vision.duplicates(photos):
+            print("Same picture:", [photo.name for photo in group])
+
+    Every image is compared with every other, so thousands of images take a while.
+    """
+    if threshold <= 0:
+        raise ValueError("threshold must be positive, not {}".format(threshold))
+    _load()
+    prints: List[int] = []
+    try:
+        for image in images:
+            prints.append(_feature_print(image))
+        parent = list(range(len(images)))
+
+        def root(index: int) -> int:
+            while parent[index] != index:
+                parent[index] = parent[parent[index]]
+                index = parent[index]
+            return index
+
+        for first in range(len(images)):
+            for second in range(first + 1, len(images)):
+                if _distance(prints[first], prints[second]) < threshold:
+                    parent[root(second)] = root(first)
+    finally:
+        for observation in prints:
+            _objc.send(observation, "release", restype=None)
+
+    groups: dict = {}
+    for index, image in enumerate(images):
+        groups.setdefault(root(index), []).append(image)
+    return [group for group in groups.values() if len(group) > 1]
+
+
+def _face_quality(image: Image) -> Optional[float]:
+    """The mean capture quality of the faces in ``image`` (0.0 to 1.0), or ``None`` without faces."""
+    with _objc.autorelease_pool():
+        scores = []
+        for face in _perform(image, _objc.new("VNDetectFaceCaptureQualityRequest")):
+            quality = _objc.send(face, "faceCaptureQuality")
+            if quality:
+                scores.append(float(_objc.send(quality, "floatValue", restype=ctypes.c_float)))
+    return sum(scores) / len(scores) if scores else None
+
+
+def best_shot(images: Sequence[Image]) -> Optional[Image]:
+    """
+    Pick the photo where the faces look best: sharp, well lit, eyes open, facing the camera.
+
+    Returns one of ``images``, or ``None`` when none has a face. With several
+    people in a photo, their faces count equally. Pairs well with
+    :func:`duplicates`, to keep one photo of each burst::
+
+        for group in macos.vision.duplicates(photos):
+            keep = macos.vision.best_shot(group) or group[0]
+    """
+    if not images:
+        raise ValueError("best_shot() needs at least one image")
+    _load()
+    best: Optional[Image] = None
+    best_score = -1.0
+    for image in images:
+        score = _face_quality(image)
+        if score is not None and score > best_score:
+            best, best_score = image, score
+    return best
+
+
+def smart_crop(image: Image, width: int, height: int) -> bytes:
+    """
+    Crop and scale an image to ``width`` x ``height`` pixels, keeping its most interesting part.
+
+    Vision finds where the eye goes (a face, an animal, the main object) and the
+    crop is centred there, instead of on the middle of the picture. Useful for
+    thumbnails and avatars::
+
+        Path("thumb.png").write_bytes(macos.vision.smart_crop("portrait.jpg", 300, 300))
+
+    The image is never scaled up: when the crop is smaller than ``width`` x
+    ``height``, the result keeps the crop's own size, with the same proportions.
+    """
+    if width <= 0 or height <= 0:
+        raise ValueError("width and height must be positive, not {} x {}".format(width, height))
+    _load()
+    with _objc.autorelease_pool():
+        picture = _objc.ciimage(image)
+        extent = _objc.send(picture, "extent", restype=_objc.CGRect)
+        full_width, full_height = extent.size.width, extent.size.height
+
+        # Where to centre the crop: the salient objects' bounding box, or the
+        # middle of the picture when nothing stands out.
+        center_x, center_y = 0.5, 0.5
+        observations = _perform(_objc.ciimage_png(picture), _objc.new("VNGenerateAttentionBasedSaliencyImageRequest"))
+        if observations:
+            boxes = [
+                _objc.send(item, "boundingBox", restype=_objc.CGRect)
+                for item in _objc.nsarray(_objc.send(observations[0], "salientObjects"))
+            ]
+            if boxes:
+                left = min(box.origin.x for box in boxes)
+                right = max(box.origin.x + box.size.width for box in boxes)
+                bottom = min(box.origin.y for box in boxes)
+                top = max(box.origin.y + box.size.height for box in boxes)
+                center_x, center_y = (left + right) / 2, (bottom + top) / 2
+
+        # The largest crop with the requested proportions that fits the image.
+        ratio = width / height
+        crop_width = min(full_width, full_height * ratio)
+        crop_height = crop_width / ratio
+        x = min(max(center_x * full_width - crop_width / 2, 0.0), full_width - crop_width)
+        y = min(max(center_y * full_height - crop_height / 2, 0.0), full_height - crop_height)
+        rect = _objc.CGRect(_objc.CGPoint(extent.origin.x + x, extent.origin.y + y), _objc.CGSize(crop_width, crop_height))
+        cropped = _objc.send(picture, "imageByCroppingToRect:", rect, argtypes=(_objc.CGRect,))
+
+        scale = min(width / crop_width, 1.0)
+        # Move the crop to the origin, then scale it.
+        moved = _objc.send(
+            cropped,
+            "imageByApplyingTransform:",
+            _objc.CGAffineTransform(scale, 0, 0, scale, -rect.origin.x * scale, -rect.origin.y * scale),
+            argtypes=(_objc.CGAffineTransform,),
+        )
+        return _objc.ciimage_png(moved)

@@ -1,7 +1,8 @@
 # Images
 
-{mod}`macos.image` reads, converts and resizes images, including the HEIC
-photos from iPhones, and generates QR codes. It uses ImageIO, the framework
+{mod}`macos.image` reads, converts, resizes and edits images, including the
+HEIC photos from iPhones, reads and changes their metadata, and generates QR
+codes. It uses ImageIO, the framework
 behind Preview and Photos, so there's no Pillow or C library to install.
 
 ```python
@@ -51,11 +52,105 @@ Photos taken in portrait are turned upright first, following their EXIF
 orientation. The metadata (date, camera, location, DPI) is kept. Images are
 only scaled down: a size larger than the original keeps the original size.
 
+## Cropping, rotating and flipping
+
+```python
+macos.image.crop("screenshot.png", "button.png", (40, 120, 200, 60))   # x, y, width, height
+macos.image.rotate("scan.jpg", "upright.jpg", 90)                      # clockwise
+macos.image.flip("selfie.jpg", "mirrored.jpg")                         # left and right swapped
+macos.image.flip("photo.jpg", "upside-down.jpg", direction="vertical")
+```
+
+The crop box is in pixels from the top-left corner. {func}`~macos.image.rotate`
+turns by 90, 180 or 270 degrees; negative values turn counter-clockwise. As
+with {func}`~macos.image.resize`, photos are turned upright first, the
+metadata is kept, and the output's extension sets the format.
+
+## Hiding faces
+
+{func}`~macos.image.blur_faces` saves a copy with every face pixelated, for
+sharing a photo of people who didn't agree to be in it:
+
+```python
+macos.image.blur_faces("street.jpg", "street-safe.jpg")
+```
+
+Faces are found with {func}`macos.vision.faces`. Combine it with
+{func}`~macos.image.strip_metadata` to also remove the location.
+
+## Main colors
+
+{func}`~macos.image.dominant_colors` returns the main colors of an image, the
+most present first:
+
+```python
+macos.image.dominant_colors("cover.jpg")   # ['#1d3557', '#f1faee', '#e63946', '#457b9d', '#a8dadc']
+macos.image.dominant_colors("logo.png", count=2)
+```
+
+Transparent pixels are left out, and an image with fewer colors returns
+fewer.
+
 ## Image details
 
 {func}`~macos.image.info` returns an {class}`~macos.image.ImageInfo` with the
 `width` and `height` in pixels, the `format` (`'jpeg'`, `'png'`, `'heic'`...),
 whether it `has_alpha` (transparency), the EXIF `orientation` and the `dpi`.
+
+## Metadata
+
+{func}`~macos.image.taken_at` and {func}`~macos.image.location` read when and
+where a photo was taken, from its EXIF and GPS data:
+
+```python
+macos.image.taken_at("IMG_0042.heic")   # datetime.datetime(2024, 5, 1, 10, 30)
+macos.image.location("IMG_0042.heic")   # (-22.9519, -43.2105): latitude, longitude
+```
+
+Both return `None` when the image doesn't record it, as with screenshots and
+most images from the web. The date is the camera's clock; it carries a time
+zone when the photo records one, as iPhones do. {func}`~macos.image.metadata` returns everything the file records, as
+nested dictionaries (`'{Exif}'`, `'{GPS}'`, `'{TIFF}'`...):
+
+```python
+macos.image.metadata("IMG_0042.heic")["{TIFF}"]["Model"]   # 'iPhone 15 Pro'
+```
+
+## Changing the date and location
+
+{func}`~macos.image.set_taken_at` and {func}`~macos.image.set_location`
+change when and where a photo was taken. Photos and other apps sort and map
+photos with these values, so this fixes a camera with the wrong clock, or
+adds a location to photos taken without GPS:
+
+```python
+from datetime import datetime, timedelta
+
+macos.image.set_taken_at("IMG_0042.jpg", datetime(2024, 5, 1, 10, 30))
+macos.image.set_location("IMG_0042.jpg", -22.9519, -43.2105)
+
+# The camera was 3 hours behind for the whole trip:
+for photo in Path("~/Pictures/Trip").expanduser().glob("*.jpg"):
+    macos.image.set_taken_at(photo, macos.image.taken_at(photo) + timedelta(hours=3))
+```
+
+They change the file itself, or save a copy with `output=`. JPEG, PNG and
+TIFF keep their pixels untouched; HEIC photos may be saved again. A
+`datetime` with a time zone records it too, and {func}`~macos.image.taken_at`
+returns it.
+
+## Removing metadata
+
+iPhone photos record where they were taken. Before sharing one,
+{func}`~macos.image.strip_metadata` saves a copy without the location, the
+date, the camera or the editing software:
+
+```python
+macos.image.strip_metadata("IMG_0042.heic", "share.jpg")
+```
+
+Only the orientation is kept, so the picture still shows upright. As with
+{func}`~macos.image.convert`, the output's extension sets the format.
 
 ## QR codes
 
@@ -74,7 +169,18 @@ default), `"Q"` or `"H"`. To read QR codes, see {func}`macos.vision.barcodes`.
 ## Reference
 
 - {func}`macos.image.info`
+- {func}`macos.image.metadata`
+- {func}`macos.image.taken_at`
+- {func}`macos.image.location`
+- {func}`macos.image.strip_metadata`
+- {func}`macos.image.set_taken_at`
+- {func}`macos.image.set_location`
 - {func}`macos.image.convert`
 - {func}`macos.image.resize`
+- {func}`macos.image.crop`
+- {func}`macos.image.rotate`
+- {func}`macos.image.flip`
+- {func}`macos.image.blur_faces`
+- {func}`macos.image.dominant_colors`
 - {func}`macos.image.qr_code`
 - {class}`macos.image.ImageInfo`

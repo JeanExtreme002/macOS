@@ -46,6 +46,7 @@ explain how to use each part.
 .. autofunction:: macos.appearance.is_dark
 .. autofunction:: macos.appearance.mode
 .. autofunction:: macos.appearance.is_auto
+.. autofunction:: macos.appearance.accent_color
 .. autofunction:: macos.appearance.wait_for_change
 ```
 
@@ -156,6 +157,11 @@ explain how to use each part.
 .. autofunction:: macos.vision.faces
 .. autofunction:: macos.vision.remove_background
 .. autofunction:: macos.vision.animals
+.. autofunction:: macos.vision.scan_document
+.. autofunction:: macos.vision.smart_crop
+.. autofunction:: macos.vision.image_distance
+.. autofunction:: macos.vision.duplicates
+.. autofunction:: macos.vision.best_shot
 .. autoclass:: macos.vision.Animal
 ```
 
@@ -165,8 +171,19 @@ explain how to use each part.
 .. module:: macos.image
 
 .. autofunction:: macos.image.info
+.. autofunction:: macos.image.metadata
+.. autofunction:: macos.image.taken_at
+.. autofunction:: macos.image.location
+.. autofunction:: macos.image.strip_metadata
+.. autofunction:: macos.image.set_taken_at
+.. autofunction:: macos.image.set_location
 .. autofunction:: macos.image.convert
 .. autofunction:: macos.image.resize
+.. autofunction:: macos.image.crop
+.. autofunction:: macos.image.rotate
+.. autofunction:: macos.image.flip
+.. autofunction:: macos.image.blur_faces
+.. autofunction:: macos.image.dominant_colors
 .. autofunction:: macos.image.qr_code
 .. autoclass:: macos.image.ImageInfo
 ```
@@ -178,9 +195,14 @@ explain how to use each part.
 
 .. autofunction:: macos.pdf.page_count
 .. autofunction:: macos.pdf.text
+.. autofunction:: macos.pdf.metadata
 .. autofunction:: macos.pdf.merge
 .. autofunction:: macos.pdf.extract
+.. autofunction:: macos.pdf.rotate
+.. autofunction:: macos.pdf.encrypt
 .. autofunction:: macos.pdf.render
+.. autofunction:: macos.pdf.from_images
+.. autoclass:: macos.pdf.Metadata
 ```
 
 ## macos.language
@@ -246,6 +268,7 @@ explain how to use each part.
 .. autoclass:: macos.screen.Display
 .. autofunction:: macos.screen.wallpaper
 .. autofunction:: macos.screen.set_wallpaper
+.. autofunction:: macos.screen.start_screensaver
 ```
 
 ## macos.dialog
@@ -278,6 +301,7 @@ explain how to use each part.
 .. autofunction:: macos.system.idle_time
 .. autofunction:: macos.system.volumes
 .. autofunction:: macos.system.eject
+.. autofunction:: macos.system.fonts
 .. autoclass:: macos.system.Volume
 ```
 

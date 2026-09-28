@@ -230,3 +230,74 @@ def _core_foundation() -> ctypes.CDLL:
     cf.CFRelease.argtypes = (ctypes.c_void_p,)
     cf.CFRelease.restype = None
     return cf
+
+
+class CGAffineTransform(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_double) for name in ("a", "b", "c", "d", "tx", "ty")]
+
+
+def ciimage(image: "bytes | bytearray | os.PathLike[str] | str") -> int:
+    """
+    An autoreleased ``CIImage`` of an image file or its bytes, turned upright.
+
+    The EXIF orientation is applied, so a portrait photo comes out standing.
+    Loads AppKit and CoreImage.
+    """
+    framework("AppKit")
+    core_image = framework("CoreImage")
+    options = send(
+        cls("NSDictionary"),
+        "dictionaryWithObject:forKey:",
+        send(cls("NSNumber"), "numberWithBool:", True, argtypes=(BOOL,)),
+        ctypes.c_void_p.in_dll(core_image, "kCIImageApplyOrientationProperty").value,
+        argtypes=(id, id),
+    )
+    if isinstance(image, (bytes, bytearray)):
+        picture = send(cls("CIImage"), "imageWithData:options:", nsdata(bytes(image)), options, argtypes=(id, id))
+        label = "the image"
+    else:
+        path = os.path.abspath(os.path.expanduser(os.fspath(image)))
+        if not os.path.exists(path):
+            raise FileNotFoundError(path)
+        picture = send(cls("CIImage"), "imageWithContentsOfURL:options:", file_url(path), options, argtypes=(id, id))
+        label = path
+    if not picture:
+        raise ValueError("{} is not an image macOS can read".format(label))
+    return picture
+
+
+def ciimage_cgimage(image: int) -> int:
+    """
+    Render a ``CIImage`` into an owned ``CGImage``.
+
+    RGB pixels keep the image's own color space (Display P3 for iPhone
+    photos, for example) instead of being squeezed into sRGB.
+    """
+    context = send(cls("CIContext"), "contextWithOptions:", None, argtypes=(id,))
+    extent = send(image, "extent", restype=CGRect)
+    space = send(image, "colorSpace", restype=ctypes.c_void_p)
+    graphics = framework("CoreGraphics")
+    graphics.CGColorSpaceGetModel.argtypes = (ctypes.c_void_p,)
+    graphics.CGColorSpaceGetModel.restype = ctypes.c_int
+    if space and graphics.CGColorSpaceGetModel(space) == 1:  # kCGColorSpaceModelRGB
+        rgba8 = ctypes.c_int.in_dll(framework("CoreImage"), "kCIFormatRGBA8").value
+        rendered = send(
+            context,
+            "createCGImage:fromRect:format:colorSpace:",
+            image,
+            extent,
+            rgba8,
+            space,
+            argtypes=(id, CGRect, ctypes.c_int, ctypes.c_void_p),
+            restype=ctypes.c_void_p,
+        )
+    else:
+        rendered = send(context, "createCGImage:fromRect:", image, extent, argtypes=(id, CGRect), restype=ctypes.c_void_p)
+    if not rendered:
+        raise ValueError("the image could not be drawn")
+    return int(rendered)
+
+
+def ciimage_png(image: int) -> bytes:
+    """Render a Core Image ``CIImage`` into PNG bytes. Needs AppKit and CoreImage loaded."""
+    return cgimage_png(ciimage_cgimage(image))

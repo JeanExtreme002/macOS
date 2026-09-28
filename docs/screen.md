@@ -88,6 +88,16 @@ macos.screen.set_wallpaper("mountains.jpg", display_id=display.id)  # only one
 picture file, such as a solid color. macOS keeps using the file you pass to
 {func}`~macos.screen.set_wallpaper`, so don't delete it afterwards.
 
+## Screen saver
+
+```python
+macos.screen.start_screensaver()
+```
+
+It starts the screen saver right away, like a hot corner. When the Mac asks
+for the password after the screen saver begins (System Settings › Lock Screen),
+this also locks it.
+
 ## Reference
 
 - {func}`macos.screenshot`
@@ -97,3 +107,4 @@ picture file, such as a solid color. macOS keeps using the file you pass to
 - {class}`macos.screen.Display`
 - {func}`macos.screen.wallpaper`
 - {func}`macos.screen.set_wallpaper`
+- {func}`macos.screen.start_screensaver`

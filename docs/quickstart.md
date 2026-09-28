@@ -124,6 +124,20 @@ image = macos.vision.remove_background("dog.jpg")
 Path("cutout.png").write_bytes(image)
 ```
 
+## Scan a document
+
+```python
+scan = macos.vision.scan_document("receipt.jpg")   # a photo of the receipt
+macos.pdf.from_images([scan], "receipt.pdf")
+```
+
+## Find duplicate photos
+
+```python
+photos = sorted(Path("~/Pictures").expanduser().glob("*.jpg"))
+macos.vision.duplicates(photos)   # [[PosixPath('IMG_1.jpg'), PosixPath('IMG_1 copy.jpg')]]
+```
+
 ## Switch the audio output
 
 ```python

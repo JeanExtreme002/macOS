@@ -52,9 +52,20 @@ def test_clipboard_clear():
 
 
 def test_appearance():
+    import re
+
     assert macos.appearance.mode() in ("dark", "light")
     assert macos.appearance.is_dark() == (macos.appearance.mode() == "dark")
     assert isinstance(macos.appearance.is_auto(), bool)
+    assert re.fullmatch(r"#[0-9a-f]{6}", macos.appearance.accent_color())
+
+
+def test_fonts():
+    families = macos.system.fonts()
+
+    assert "Helvetica" in families
+    assert families == sorted(families, key=str.casefold)
+    assert not any(name.startswith(".") for name in families)
 
 
 def test_keychain_round_trip():
@@ -161,17 +172,22 @@ def test_running_apps_from_a_worker_thread():
     assert {app.pid for app in in_thread} & {app.pid for app in macos.apps.running(include_background=True)}
 
 
-def _png(width=4, height=4):
-    """A small valid PNG, so the image tests don't depend on screen access."""
+def _rgb_png(width, height, pixel):
+    """A PNG whose color at (x, y) is ``pixel(x, y)``."""
     import struct
     import zlib
 
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
 
-    rows = b"".join(b"\x00" + b"\xff\x00\x00" * width for _ in range(height))
+    rows = b"".join(b"\x00" + b"".join(bytes(pixel(x, y)) for x in range(width)) for y in range(height))
     header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+def _png(width=4, height=4):
+    """A small valid PNG, so the image tests don't depend on screen access."""
+    return _rgb_png(width, height, lambda x, y: (255, 0, 0))
 
 
 _PIXEL_PNG = _png()
@@ -653,6 +669,235 @@ def test_pdf_passwords(tmp_path):
     merged = macos.pdf.merge([locked, document], tmp_path / "merged.pdf", password="1234")
     assert macos.pdf.page_count(merged) == 2
     assert macos.pdf.text(merged).startswith("Secret page")  # the result isn't encrypted
+
+
+def _paper_photo(angle=12):
+    """A 300x420 sheet with lines of "text", turned by ``angle`` degrees, on a dark desk."""
+    import math
+
+    cos, sin = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+
+    def pixel(x, y):
+        # (u, v): the point in the sheet's own coordinates, from its centre.
+        u = (x - 240) * cos + (y - 320) * sin
+        v = -(x - 240) * sin + (y - 320) * cos
+        if abs(u) < 150 and abs(v) < 210:
+            is_text = -120 < u < 110 and v < 150 and int(v + 180) % 30 < 8
+            return (40, 40, 40) if is_text else (245, 245, 240)
+        return (70, 45, 30)
+
+    return _rgb_png(480, 640, pixel)
+
+
+def _size(png):
+    import struct
+
+    return struct.unpack(">II", png[16:24])
+
+
+def test_scan_document():
+    scan = macos.vision.scan_document(_paper_photo())
+
+    assert scan is not None
+    width, height = _size(scan)
+    assert abs(width - 300) < 15 and abs(height - 420) < 15  # the sheet alone, straightened
+    assert macos.vision.scan_document(macos.image.qr_code("not a sheet of paper")) is None
+
+
+def test_smart_crop():
+    photo = _paper_photo()
+
+    assert _size(macos.vision.smart_crop(photo, 200, 100)) == (200, 100)
+    assert _size(macos.vision.smart_crop(photo, 100, 300)) == (100, 300)
+    # Never scaled up: the largest 2:1 crop of a 480x640 image is 480x240.
+    assert _size(macos.vision.smart_crop(photo, 2000, 1000)) == (480, 240)
+
+
+def test_image_distance_and_duplicates(tmp_path):
+    # Feature prints need real, detailed photos: use the wallpapers.
+    pictures = sorted(Path("/System/Library/Desktop Pictures").glob("*.heic"))
+    if len(pictures) < 2:
+        pytest.skip("the desktop pictures aren't installed")
+    first, other = pictures[0], pictures[-1]
+    copy = macos.image.resize(first, tmp_path / "copy.jpg", width=1200)
+
+    assert macos.vision.image_distance(first, copy) < 0.3 < macos.vision.image_distance(first, other)
+    assert macos.vision.duplicates([first, other, copy]) == [[first, copy]]
+
+
+def test_image_metadata_round_trip(tmp_path):
+    from macos import _cf
+
+    source = tmp_path / "plain.png"
+    source.write_bytes(_png(40, 20))
+    photo = tmp_path / "photo.jpg"
+    properties = {
+        "Orientation": 6,
+        "{Exif}": {"DateTimeOriginal": "2024:05:01 10:30:00"},
+        "{GPS}": {"Latitude": 22.95, "LatitudeRef": "S", "Longitude": 43.21, "LongitudeRef": "W"},
+    }
+    io = macos.image._io()
+    with _cf.owned(macos.image._source(source)) as image_source, _cf.owned(_cf.from_python(properties)) as options:
+        macos.image._write(photo, "public.jpeg", lambda d: io.CGImageDestinationAddImageFromSource(d, image_source, 0, options))
+
+    assert macos.image.metadata(photo)["{GPS}"]["LatitudeRef"] == "S"
+    assert macos.image.taken_at(photo).isoformat() == "2024-05-01T10:30:00"
+    latitude, longitude = macos.image.location(photo)
+    assert (round(latitude, 2), round(longitude, 2)) == (-22.95, -43.21)
+
+    clean = macos.image.strip_metadata(photo, tmp_path / "clean.jpg")
+    assert macos.image.location(clean) is None
+    assert macos.image.taken_at(clean) is None
+    assert "{GPS}" not in macos.image.metadata(clean)
+    assert macos.image.info(clean).orientation == 6  # still shows upright
+
+    assert macos.image.taken_at(source) is None and macos.image.location(source) is None
+
+
+def test_pdf_from_images(tmp_path, capfd):
+    import ctypes
+
+    from macos import _cf
+
+    photo = tmp_path / "photo.png"
+    photo.write_bytes(_png(40, 20))
+    # The same picture, stored sideways with EXIF orientation 6, as phones do.
+    portrait = tmp_path / "portrait.jpg"
+    io = macos.image._io()
+    with _cf.owned(macos.image._source(photo)) as source, _cf.owned(_cf.from_python({"Orientation": 6})) as options:
+        macos.image._write(portrait, "public.jpeg", lambda d: io.CGImageDestinationAddImageFromSource(d, source, 0, options))
+    url = "https://github.com/JeanExtreme002/pymacos"
+
+    document = macos.pdf.from_images([photo, portrait, macos.image.qr_code(url, size=300)], tmp_path / "scan.pdf")
+
+    assert macos.pdf.page_count(document) == 3
+    with macos.pdf._open(document) as opened:
+        sizes = []
+        for number in (1, 2):
+            bounds = _objc.send(
+                macos.pdf._page(opened, number), "boundsForBox:", 0, argtypes=(ctypes.c_long,), restype=_objc.CGRect
+            )
+            sizes.append((bounds.size.width, bounds.size.height))
+    assert sizes == [(40, 20), (20, 40)]  # each page is its picture, upright
+    found = macos.vision.barcodes(macos.pdf.render(document, page=3))
+    assert [code.payload for code in found] == [url]
+    # PDFKit logged "CoreGraphics PDF has logged an error" for images without an orientation.
+    assert "CoreGraphics" not in capfd.readouterr().err
+    with pytest.raises(ValueError):
+        macos.pdf.from_images([b"not an image"], tmp_path / "junk.pdf")
+    assert not (tmp_path / "junk.pdf").exists()
+
+
+def _halves(tmp_path):
+    """A 40x20 PNG: red on the left half, blue on the right."""
+    path = tmp_path / "halves.png"
+    path.write_bytes(_rgb_png(40, 20, lambda x, y: (255, 0, 0) if x < 20 else (0, 0, 255)))
+    return path
+
+
+def _corner_color(path, tmp_path, box):
+    corner = macos.image.crop(path, tmp_path / "corner.png", box)
+    return macos.image.dominant_colors(corner, count=1)[0]
+
+
+def test_image_edits(tmp_path):
+    image = _halves(tmp_path)
+    red, blue = "#ff0000", "#0000ff"
+
+    assert set(macos.image.dominant_colors(image)) == {red, blue}
+    assert _corner_color(image, tmp_path, (0, 0, 5, 5)) == red
+
+    right = macos.image.crop(image, tmp_path / "right.png", (25, 5, 10, 10))
+    assert (macos.image.info(right).width, macos.image.info(right).height) == (10, 10)
+    assert macos.image.dominant_colors(right) == [blue]
+    with pytest.raises(ValueError, match="doesn't fit"):
+        macos.image.crop(image, tmp_path / "out.png", (30, 0, 20, 5))
+
+    # A quarter turn clockwise puts the left (red) half on top.
+    turned = macos.image.rotate(image, tmp_path / "turned.png", 90)
+    assert (macos.image.info(turned).width, macos.image.info(turned).height) == (20, 40)
+    assert _corner_color(turned, tmp_path, (0, 0, 5, 5)) == red
+    back = macos.image.rotate(turned, tmp_path / "back.png", -90)
+    assert _corner_color(back, tmp_path, (0, 0, 5, 5)) == red
+
+    mirrored = macos.image.flip(image, tmp_path / "mirrored.png")
+    assert _corner_color(mirrored, tmp_path, (0, 0, 5, 5)) == blue
+    upside_down = macos.image.flip(image, tmp_path / "upside-down.png", direction="vertical")
+    assert _corner_color(upside_down, tmp_path, (0, 0, 5, 5)) == red
+
+
+def test_image_edits_work_on_the_upright_picture(tmp_path):
+    from macos import _cf
+
+    # The red/blue image stored as is, but tagged with EXIF orientation 6: it
+    # shows turned a quarter clockwise (20x40, red on top), as phone photos do.
+    portrait = tmp_path / "portrait.png"
+    io = macos.image._io()
+    with _cf.owned(macos.image._source(_halves(tmp_path))) as source, _cf.owned(
+        _cf.from_python({"Orientation": 6})
+    ) as options:
+        macos.image._write(portrait, "public.png", lambda d: io.CGImageDestinationAddImageFromSource(d, source, 0, options))
+
+    mirrored = macos.image.flip(portrait, tmp_path / "mirrored.png")
+    assert (macos.image.info(mirrored).width, macos.image.info(mirrored).height) == (20, 40)
+    assert macos.image.info(mirrored).orientation == 1
+    assert _corner_color(mirrored, tmp_path, (0, 0, 5, 5)) == "#ff0000"
+    assert _size(macos.vision.smart_crop(portrait, 20, 40)) == (20, 40)
+
+
+def test_blur_faces_and_best_shot_without_faces(tmp_path):
+    image = _halves(tmp_path)
+
+    copy = macos.image.blur_faces(image, tmp_path / "copy.png")
+
+    assert (macos.image.info(copy).width, macos.image.info(copy).height) == (40, 20)
+    assert set(macos.image.dominant_colors(copy)) == {"#ff0000", "#0000ff"}  # nothing to blur
+    assert macos.vision.best_shot([image, copy]) is None
+
+
+@pytest.mark.parametrize("extension", [".jpg", ".heic"])
+def test_set_taken_at_and_location(tmp_path, extension):
+    from datetime import datetime, timedelta, timezone
+
+    photo = macos.image.convert(_halves(tmp_path), tmp_path / ("photo" + extension))
+    when = datetime(2024, 5, 1, 10, 30, tzinfo=timezone(timedelta(hours=-3)))
+
+    assert macos.image.set_taken_at(photo, when) == photo
+    macos.image.set_location(photo, -22.95, -43.21)
+
+    assert macos.image.taken_at(photo) == when
+    latitude, longitude = macos.image.location(photo)
+    assert (round(latitude, 2), round(longitude, 2)) == (-22.95, -43.21)
+    assert macos.image.info(photo).width == 40
+
+    copy = macos.image.set_location(photo, 48.85, 2.35, output=tmp_path / ("copy" + extension))
+    assert macos.image.location(photo)[0] < 0  # the original is left alone
+    assert macos.image.location(copy)[0] > 0
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted(["halves.png", "photo" + extension, "copy" + extension])
+
+
+def test_pdf_metadata_rotate_and_encrypt(tmp_path):
+    import ctypes
+
+    document = _text_pdf(tmp_path, ["Page one says hello", "Page two says ola"])
+
+    details = macos.pdf.metadata(document)
+    assert details.created is not None and details.created.tzinfo is not None
+    assert details.keywords == []
+
+    # Rotating in place is safe: the output replaces the input only once written.
+    assert macos.pdf.rotate(document, 90, document, pages=[2]) == document
+    macos.pdf.rotate(document, -180, document)
+    with macos.pdf._open(document) as opened:
+        rotations = [_objc.send(macos.pdf._page(opened, n), "rotation", restype=ctypes.c_long) for n in (1, 2)]
+    assert rotations == [180, 270]
+
+    locked = macos.pdf.encrypt(document, tmp_path / "locked.pdf", "s3cret")
+    with pytest.raises(macos.PermissionDeniedError):
+        macos.pdf.text(locked)
+    assert macos.pdf.text(locked, password="s3cret", pages=[1]) == "Page one says hello"
+    changed = macos.pdf.encrypt(locked, tmp_path / "changed.pdf", "other", current_password="s3cret")
+    assert macos.pdf.page_count(changed, password="other") == 2
 
 
 _PARROT = Path("/Library/User Pictures/Animals/Parrot.heic")

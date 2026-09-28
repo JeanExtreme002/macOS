@@ -38,6 +38,16 @@ SD cards) or `is_ejectable`.
 {func}`~macos.system.eject` only accepts ejectable
 volumes; when two share a name, pass the path.
 
+## Fonts
+
+{func}`~macos.system.fonts` lists the installed font families, sorted, as apps
+show them in their font menus:
+
+```python
+families = macos.system.fonts()   # ['Academy Engraved LET', 'American Typewriter', ...]
+font = "Avenir" if "Avenir" in families else "Helvetica"
+```
+
 ## Running while the user is away
 
 {func}`~macos.system.idle_time` is the time since the last keyboard, mouse or
@@ -67,4 +77,5 @@ while True:
 - {func}`macos.system.idle_time`
 - {func}`macos.system.volumes`
 - {func}`macos.system.eject`
+- {func}`macos.system.fonts`
 - {class}`macos.system.Volume`
