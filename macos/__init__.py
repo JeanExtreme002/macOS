@@ -3,10 +3,10 @@
 """
 pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
-Notifications, clipboard, appearance, apps, Keychain, speech, screenshots,
-power, Shortcuts, Finder, volume, Spotlight, dialogs, system info, OCR,
-document scanning, images, PDFs and language detection in one import, with no
-dependencies::
+Notifications, clipboard, keyboard and mouse, appearance, apps, Keychain,
+speech, screenshots, power, Shortcuts, Finder, volume, Spotlight, dialogs,
+system info, Bluetooth, OCR, document scanning, images, PDFs and language
+detection in one import, with no dependencies::
 
     import macos
 
@@ -32,6 +32,9 @@ dependencies::
     macos.vision.remove_background("photo.jpg")
     macos.vision.scan_document("receipt.jpg")
     macos.audio.set_output("AirPods")
+    macos.keyboard.press("cmd+c")
+    macos.mouse.click(300, 400)
+    macos.bluetooth.devices()
 
 The package imports on any platform (so it can sit in cross-platform code and
 docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
@@ -43,12 +46,15 @@ from . import (
     appearance,
     apps,
     audio,
+    bluetooth,
     clipboard,
     dialog,
     finder,
     image,
+    keyboard,
     keychain,
     language,
+    mouse,
     network,
     notifications,
     pdf,
@@ -80,12 +86,15 @@ __all__ = [
     "appearance",
     "apps",
     "audio",
+    "bluetooth",
     "clipboard",
     "dialog",
     "finder",
     "image",
+    "keyboard",
     "keychain",
     "language",
+    "mouse",
     "network",
     "notifications",
     "pdf",

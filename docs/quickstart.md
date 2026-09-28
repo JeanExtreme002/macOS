@@ -144,6 +144,23 @@ macos.vision.duplicates(photos)   # [[PosixPath('IMG_1.jpg'), PosixPath('IMG_1 c
 macos.audio.set_output("AirPods")
 ```
 
+## Type and click
+
+```python
+macos.keyboard.type("Hello from Python")
+macos.keyboard.press("cmd+s")
+macos.mouse.click(300, 400)
+```
+
+These need the [Accessibility permission](permissions.md#accessibility).
+
+## Check your AirPods' battery
+
+```python
+for device in macos.bluetooth.devices():
+    print(device.name, device.battery)   # AirPods Pro {'left': 90, 'right': 85, 'case': 40}
+```
+
 ## Open a file with an app
 
 ```python

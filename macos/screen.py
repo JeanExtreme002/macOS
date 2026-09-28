@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 from . import _objc
-from ._system import framework, run
-from .errors import MacOSError, PermissionDeniedError
+from ._system import framework, private_framework, run
+from .errors import MacOSError, NotSupportedError, PermissionDeniedError
 
 __all__ = [
     "screenshot",
@@ -36,6 +36,8 @@ __all__ = [
     "wallpaper",
     "set_wallpaper",
     "start_screensaver",
+    "brightness",
+    "set_brightness",
 ]
 
 _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tiff": "tiff", ".gif": "gif", ".pdf": "pdf"}
@@ -322,3 +324,68 @@ def start_screensaver() -> None:
     Lock Screen), this also locks the Mac once the password delay passes.
     """
     run(["open", "-a", "ScreenSaverEngine"])
+
+
+@lru_cache(maxsize=None)
+def _display_services() -> ctypes.CDLL:
+    # DisplayServices is private: the public API (IOKit's IODisplay) doesn't
+    # reach the built-in displays of Apple silicon Macs.
+    services = private_framework("DisplayServices")
+    for name in ("DisplayServicesCanChangeBrightness", "DisplayServicesGetBrightness", "DisplayServicesSetBrightness"):
+        if not hasattr(services, name):
+            raise NotSupportedError("this version of macOS doesn't expose the display brightness")
+    services.DisplayServicesCanChangeBrightness.argtypes = (ctypes.c_uint32,)
+    services.DisplayServicesCanChangeBrightness.restype = ctypes.c_bool
+    services.DisplayServicesGetBrightness.argtypes = (ctypes.c_uint32, ctypes.POINTER(ctypes.c_float))
+    services.DisplayServicesGetBrightness.restype = ctypes.c_int
+    services.DisplayServicesSetBrightness.argtypes = (ctypes.c_uint32, ctypes.c_float)
+    services.DisplayServicesSetBrightness.restype = ctypes.c_int
+    return services
+
+
+def _dimmable(display_id: Union[int, Display, None]) -> int:
+    """The display whose brightness to use: ``display_id``, or the first one macOS can dim."""
+    services = _display_services()
+    if display_id is not None:
+        wanted = display_id.id if isinstance(display_id, Display) else display_id
+        if not services.DisplayServicesCanChangeBrightness(wanted):
+            raise NotSupportedError("macOS can't change the brightness of display {}".format(wanted))
+        return wanted
+    for display in displays():
+        if services.DisplayServicesCanChangeBrightness(display.id):
+            return display.id
+    raise NotSupportedError(
+        "no display here has a brightness macOS controls (external monitors usually set it with their own buttons)"
+    )
+
+
+def brightness(display_id: Union[int, Display, None] = None) -> float:
+    """
+    The display brightness, from 0.0 to 1.0, as the slider in Control Center.
+
+    By default, of the built-in display (or an Apple display). ``display_id``
+    works as in :func:`wallpaper`. Most external monitors set their brightness
+    with their own buttons, so they raise :class:`~macos.errors.NotSupportedError`.
+    """
+    target = _dimmable(display_id)
+    value = ctypes.c_float()
+    status = _display_services().DisplayServicesGetBrightness(target, ctypes.byref(value))
+    if status != 0:
+        raise MacOSError("could not read the brightness of display {} (error {})".format(target, status))
+    return round(float(value.value), 3)
+
+
+def set_brightness(value: float, *, display_id: Union[int, Display, None] = None) -> None:
+    """
+    Set the display brightness, from 0.0 (darkest, not off) to 1.0.
+
+    ``display_id`` works as in :func:`brightness`. With *Automatically adjust
+    brightness* on (System Settings › Displays), macOS keeps adapting it to
+    the room's light afterwards.
+    """
+    if not 0.0 <= value <= 1.0:
+        raise ValueError("brightness must be from 0.0 to 1.0, not {}".format(value))
+    target = _dimmable(display_id)
+    status = _display_services().DisplayServicesSetBrightness(target, float(value))
+    if status != 0:
+        raise MacOSError("could not change the brightness of display {} (error {})".format(target, status))

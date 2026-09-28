@@ -65,6 +65,35 @@ explain how to use each part.
 .. autofunction:: macos.apps.default_browser
 ```
 
+## macos.keyboard
+
+```{eval-rst}
+.. module:: macos.keyboard
+
+.. autofunction:: macos.keyboard.type
+.. autofunction:: macos.keyboard.press
+.. autofunction:: macos.keyboard.has_permission
+.. autofunction:: macos.keyboard.request_permission
+.. autofunction:: macos.keyboard.brightness
+.. autofunction:: macos.keyboard.set_brightness
+.. autofunction:: macos.keyboard.auto_brightness
+.. autofunction:: macos.keyboard.set_auto_brightness
+```
+
+## macos.mouse
+
+```{eval-rst}
+.. module:: macos.mouse
+
+.. autofunction:: macos.mouse.position
+.. autofunction:: macos.mouse.move
+.. autofunction:: macos.mouse.click
+.. autofunction:: macos.mouse.drag
+.. autofunction:: macos.mouse.scroll
+.. autofunction:: macos.mouse.has_permission
+.. autofunction:: macos.mouse.request_permission
+```
+
 ## macos.keychain
 
 ```{eval-rst}
@@ -235,6 +264,19 @@ explain how to use each part.
 .. autoclass:: macos.audio.Device
 ```
 
+## macos.bluetooth
+
+```{eval-rst}
+.. module:: macos.bluetooth
+
+.. autofunction:: macos.bluetooth.power
+.. autofunction:: macos.bluetooth.set_power
+.. autofunction:: macos.bluetooth.devices
+.. autofunction:: macos.bluetooth.connect
+.. autofunction:: macos.bluetooth.disconnect
+.. autoclass:: macos.bluetooth.Device
+```
+
 ## macos.sound
 
 ```{eval-rst}
@@ -269,6 +311,8 @@ explain how to use each part.
 .. autofunction:: macos.screen.wallpaper
 .. autofunction:: macos.screen.set_wallpaper
 .. autofunction:: macos.screen.start_screensaver
+.. autofunction:: macos.screen.brightness
+.. autofunction:: macos.screen.set_brightness
 ```
 
 ## macos.dialog

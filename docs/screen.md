@@ -88,6 +88,20 @@ macos.screen.set_wallpaper("mountains.jpg", display_id=display.id)  # only one
 picture file, such as a solid color. macOS keeps using the file you pass to
 {func}`~macos.screen.set_wallpaper`, so don't delete it afterwards.
 
+## Brightness
+
+```python
+macos.screen.brightness()          # 0.75, from 0.0 to 1.0
+macos.screen.set_brightness(0.4)
+```
+
+It works on the built-in display and on Apple displays, like the slider in
+Control Center. Most external monitors set their brightness with their own
+buttons, so they raise {class}`~macos.NotSupportedError`. `display_id` picks a
+display, as for the wallpaper. With *Automatically adjust brightness* on
+(System Settings › Displays), macOS keeps adapting it to the room's light
+afterwards. It uses a private macOS framework, since there's no public one.
+
 ## Screen saver
 
 ```python
@@ -108,3 +122,5 @@ this also locks it.
 - {func}`macos.screen.wallpaper`
 - {func}`macos.screen.set_wallpaper`
 - {func}`macos.screen.start_screensaver`
+- {func}`macos.screen.brightness`
+- {func}`macos.screen.set_brightness`

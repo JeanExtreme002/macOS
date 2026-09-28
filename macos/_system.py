@@ -45,3 +45,19 @@ def framework(name: str) -> ctypes.CDLL:
     """Load a system framework (e.g. ``"AppKit"``) once and cache the handle."""
     require_macos()
     return ctypes.CDLL("/System/Library/Frameworks/{0}.framework/{0}".format(name))
+
+
+@lru_cache(maxsize=None)
+def private_framework(name: str) -> ctypes.CDLL:
+    """
+    Load one of Apple's private frameworks, raising :class:`NotSupportedError` when this macOS lacks it.
+
+    Private frameworks (brightness, keyboard backlight...) have no public
+    alternative, but Apple may change them in any release: callers check
+    what they need exists before using it.
+    """
+    require_macos()
+    try:
+        return ctypes.CDLL("/System/Library/PrivateFrameworks/{0}.framework/{0}".format(name))
+    except OSError:
+        raise NotSupportedError("this version of macOS doesn't have {}".format(name)) from None

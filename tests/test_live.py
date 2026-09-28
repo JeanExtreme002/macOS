@@ -1012,3 +1012,60 @@ def test_keywords():
     assert macos.language.keywords("   ") == []
     with pytest.raises(macos.NotSupportedError):
         macos.language.keywords("東京でティム・クックに会いました", language="ja")
+
+
+def test_mouse_position_is_on_a_display():
+    x, y = macos.mouse.position()
+
+    assert isinstance(x, float) and isinstance(y, float)
+    left = min(display.x for display in macos.screen.displays())
+    top = min(display.y for display in macos.screen.displays())
+    right = max(display.x + display.width for display in macos.screen.displays())
+    bottom = max(display.y + display.height for display in macos.screen.displays())
+    assert left <= x <= right and top <= y <= bottom
+
+
+def test_keyboard_and_mouse_permission():
+    if macos.mouse.has_permission():
+        # Moving the pointer where it already is changes nothing.
+        macos.mouse.move(*macos.mouse.position())
+    else:
+        # The events would be dropped silently: better to say so.
+        with pytest.raises(macos.PermissionDeniedError):
+            macos.keyboard.press("shift")
+        with pytest.raises(macos.PermissionDeniedError):
+            macos.mouse.move(*macos.mouse.position())
+    assert macos.keyboard.has_permission() == macos.mouse.has_permission()
+
+
+def test_display_brightness():
+    try:
+        current = macos.screen.brightness()
+    except macos.NotSupportedError:
+        pytest.skip("no display with a brightness macOS controls")
+    assert 0.0 <= current <= 1.0
+    macos.screen.set_brightness(current)  # the same value: nothing changes
+    assert abs(macos.screen.brightness() - current) < 0.01
+
+
+def test_keyboard_backlight():
+    try:
+        current = macos.keyboard.brightness()
+    except macos.NotSupportedError:
+        pytest.skip("no keyboard backlight")
+    automatic = macos.keyboard.auto_brightness()
+    assert 0.0 <= current <= 1.0
+    macos.keyboard.set_brightness(current)
+    macos.keyboard.set_auto_brightness(automatic)
+    assert macos.keyboard.auto_brightness() == automatic
+
+
+def test_bluetooth():
+    try:
+        on = macos.bluetooth.power()
+    except macos.NotSupportedError:
+        pytest.skip("no Bluetooth")
+    assert isinstance(on, bool)
+    found = macos.bluetooth.devices()
+    assert all(isinstance(device, macos.bluetooth.Device) and device.address for device in found)
+    assert len({device.address for device in found}) == len(found)
