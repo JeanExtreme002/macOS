@@ -20,12 +20,13 @@ import ctypes
 import os
 import tempfile
 from contextlib import contextmanager
+from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Sequence, Union
+from typing import Callable, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
-from . import _objc
+from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
 from ._system import framework
 from .errors import MacOSError, PermissionDeniedError
@@ -159,32 +160,43 @@ def metadata(path: PathLike, *, password: Optional[str] = None) -> Metadata:
         )
 
 
-def _save(document: int, output: PathLike, options: Optional[int] = None) -> Path:
+def _write_atomically(output: PathLike, write: Callable[[str], bool]) -> Path:
+    """
+    Call ``write`` with a temporary path next to ``output``, then move the file in place.
+
+    The output may be one of the inputs, which PDFKit reads lazily while
+    writing; and a failure never leaves a half-written file behind.
+    """
     target = Path(output).expanduser().absolute()
     target.parent.mkdir(parents=True, exist_ok=True)
-    # Write next to the target, then move it in place: the output may be one
-    # of the inputs, which PDFKit reads lazily while writing.
     handle, name = tempfile.mkstemp(dir=str(target.parent), suffix=".pdf")
     os.close(handle)
     try:
-        if options:
-            written = _objc.send(
-                document,
-                "writeToFile:withOptions:",
-                _objc.nsstring(name),
-                options,
-                argtypes=(_objc.id, _objc.id),
-                restype=BOOL,
-            )
-        else:
-            written = _objc.send(document, "writeToFile:", _objc.nsstring(name), argtypes=(_objc.id,), restype=BOOL)
-        if not written:
+        if not write(name):
             raise MacOSError("could not write {}".format(target))
         os.replace(name, str(target))
     finally:
         if os.path.exists(name):
             os.unlink(name)
     return target
+
+
+def _save(document: int, output: PathLike, options: Optional[int] = None) -> Path:
+    def write(name: str) -> bool:
+        if options:
+            return bool(
+                _objc.send(
+                    document,
+                    "writeToFile:withOptions:",
+                    _objc.nsstring(name),
+                    options,
+                    argtypes=(_objc.id, _objc.id),
+                    restype=BOOL,
+                )
+            )
+        return bool(_objc.send(document, "writeToFile:", _objc.nsstring(name), argtypes=(_objc.id,), restype=BOOL))
+
+    return _write_atomically(output, write)
 
 
 def _new_document() -> int:
@@ -316,43 +328,119 @@ def render(path: PathLike, page: int = 1, *, size: int = 1024, password: Optiona
         return _objc.png(rep)
 
 
+@lru_cache(maxsize=None)
+def _graphics() -> ctypes.CDLL:
+    graphics = framework("CoreGraphics")
+    pointer = ctypes.c_void_p
+    rect = ctypes.POINTER(_objc.CGRect)
+    signatures = {
+        "CGPDFContextCreateWithURL": ((pointer, rect, pointer), pointer),
+        "CGContextBeginPage": ((pointer, rect), None),
+        "CGContextEndPage": ((pointer,), None),
+        "CGPDFContextClose": ((pointer,), None),
+        "CGContextRelease": ((pointer,), None),
+        "CGContextSaveGState": ((pointer,), None),
+        "CGContextRestoreGState": ((pointer,), None),
+        "CGContextConcatCTM": ((pointer, _objc.CGAffineTransform), None),
+        "CGContextDrawImage": ((pointer, _objc.CGRect, pointer), None),
+        "CGImageGetWidth": ((pointer,), ctypes.c_size_t),
+        "CGImageGetHeight": ((pointer,), ctypes.c_size_t),
+    }
+    for name, (argtypes, restype) in signatures.items():
+        function = getattr(graphics, name)
+        function.argtypes = argtypes
+        function.restype = restype
+    return graphics
+
+
+def _upright_transform(orientation: int, width: float, height: float) -> Tuple[float, ...]:
+    """
+    The transform that draws a ``width`` x ``height`` image stored with EXIF ``orientation`` upright.
+
+    Core Graphics measures from the bottom-left corner, with y going up.
+    """
+    return {
+        2: (-1, 0, 0, 1, width, 0),  # mirrored left to right
+        3: (-1, 0, 0, -1, width, height),  # upside down
+        4: (1, 0, 0, -1, 0, height),  # mirrored top to bottom
+        5: (0, -1, -1, 0, height, width),  # transposed
+        6: (0, -1, 1, 0, 0, width),  # needs a quarter turn clockwise
+        7: (0, 1, 1, 0, 0, 0),  # transversed
+        8: (0, 1, -1, 0, height, 0),  # needs a quarter turn counter-clockwise
+    }.get(orientation, (1, 0, 0, 1, 0, 0))
+
+
+def _image_source(image: Union[PathLike, bytes]) -> Tuple[int, str]:
+    """An owned ``CGImageSource`` for a path or image bytes, and how to name it in errors."""
+    from . import image as images
+
+    if isinstance(image, (bytes, bytearray)):
+        with _cf.owned(_cf.data(bytes(image))) as payload:
+            source = images._io().CGImageSourceCreateWithData(payload, None)
+        if not source or not images._io().CGImageSourceGetCount(source):
+            _cf.release(source)
+            raise ValueError("the bytes are not an image macOS can read")
+        return source, "image bytes"
+    return images._source(image), str(Path(image).expanduser().absolute())
+
+
 def from_images(images: Sequence[Union[PathLike, bytes]], output: PathLike) -> Path:
     """
     Make a PDF with one page per image, in order, and return its path.
 
     Any format macOS opens works (JPEG, PNG, HEIC...). Each page takes the size
-    of its image, so photos of documents become the pages of a scan::
+    of its image, turned upright, so photos of documents become the pages of a
+    scan::
 
         pages = [macos.vision.scan_document(photo) for photo in photos]
         macos.pdf.from_images(pages, "scan.pdf")
 
     ``images`` may also hold PNG/JPEG bytes, such as :func:`macos.vision.scan_document` returns.
+    JPEG photos are embedded as they are, without compressing them again.
     """
     if not images:
         raise ValueError("from_images() needs at least one image")
-    framework("PDFKit")
-    framework("AppKit")
-    with _objc.autorelease_pool():
-        document = _new_document()
+    from . import image as image_module
+
+    io = image_module._io()
+    graphics = _graphics()
+    # Read every image first, so a bad one fails before anything is written.
+    pictures = []
+    try:
         for image in images:
-            picture = _objc.send(_objc.cls("NSImage"), "alloc")
-            if isinstance(image, (bytes, bytearray)):
-                picture = _objc.send(picture, "initWithData:", _objc.nsdata(bytes(image)), argtypes=(_objc.id,))
-                label = "image bytes"
-            else:
-                path = Path(image).expanduser().absolute()
-                if not path.exists():
-                    raise FileNotFoundError(str(path))
-                picture = _objc.send(picture, "initWithContentsOfFile:", _objc.nsstring(str(path)), argtypes=(_objc.id,))
-                label = str(path)
+            source, label = _image_source(image)
+            with _cf.owned(source):
+                orientation = image_module._describe(source).orientation
+                picture = io.CGImageSourceCreateImageAtIndex(source, 0, None)
             if not picture:
                 raise ValueError("{} is not an image macOS can read".format(label))
-            _objc.send(picture, "autorelease")
-            page = _objc.send(_objc.send(_objc.cls("PDFPage"), "alloc"), "initWithImage:", picture, argtypes=(_objc.id,))
-            if not page:
-                raise MacOSError("{} could not be turned into a page".format(label))
-            _objc.send(page, "autorelease")
-            _objc.send(
-                document, "insertPage:atIndex:", page, _count(document), argtypes=(_objc.id, NSUInteger), restype=None
-            )
-        return _save(document, output)
+            pictures.append((picture, orientation))
+
+        def write(name: str) -> bool:
+            with _cf.owned(_cf.file_url(name)) as url:
+                context = graphics.CGPDFContextCreateWithURL(url, None, None)
+            if not context:
+                return False
+            try:
+                for picture, orientation in pictures:
+                    width, height = float(graphics.CGImageGetWidth(picture)), float(graphics.CGImageGetHeight(picture))
+                    upright = (height, width) if orientation in (5, 6, 7, 8) else (width, height)
+                    page = _objc.CGRect(_objc.CGPoint(0, 0), _objc.CGSize(*upright))
+                    graphics.CGContextBeginPage(context, ctypes.byref(page))
+                    graphics.CGContextSaveGState(context)
+                    graphics.CGContextConcatCTM(
+                        context, _objc.CGAffineTransform(*_upright_transform(orientation, width, height))
+                    )
+                    area = _objc.CGRect(_objc.CGPoint(0, 0), _objc.CGSize(width, height))
+                    graphics.CGContextDrawImage(context, area, picture)
+                    graphics.CGContextRestoreGState(context)
+                    graphics.CGContextEndPage(context)
+                graphics.CGPDFContextClose(context)
+            finally:
+                graphics.CGContextRelease(context)
+            return True
+
+        return _write_atomically(output, write)
+    finally:
+        for picture, _ in pictures:
+            _cf.release(picture)

@@ -106,6 +106,7 @@ def _io() -> ctypes.CDLL:
     pointer = ctypes.c_void_p
     signatures = {
         "CGImageSourceCreateWithURL": ((pointer, pointer), pointer),
+        "CGImageSourceCreateWithData": ((pointer, pointer), pointer),
         "CGImageSourceGetType": ((pointer,), pointer),
         "CGImageSourceGetCount": ((pointer,), ctypes.c_size_t),
         "CGImageSourceCopyPropertiesAtIndex": ((pointer, ctypes.c_size_t, pointer), pointer),

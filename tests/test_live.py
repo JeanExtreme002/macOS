@@ -754,18 +754,38 @@ def test_image_metadata_round_trip(tmp_path):
     assert macos.image.taken_at(source) is None and macos.image.location(source) is None
 
 
-def test_pdf_from_images(tmp_path):
+def test_pdf_from_images(tmp_path, capfd):
+    import ctypes
+
+    from macos import _cf
+
     photo = tmp_path / "photo.png"
     photo.write_bytes(_png(40, 20))
+    # The same picture, stored sideways with EXIF orientation 6, as phones do.
+    portrait = tmp_path / "portrait.jpg"
+    io = macos.image._io()
+    with _cf.owned(macos.image._source(photo)) as source, _cf.owned(_cf.from_python({"Orientation": 6})) as options:
+        macos.image._write(portrait, "public.jpeg", lambda d: io.CGImageDestinationAddImageFromSource(d, source, 0, options))
     url = "https://github.com/JeanExtreme002/pymacos"
 
-    document = macos.pdf.from_images([photo, macos.image.qr_code(url, size=300)], tmp_path / "scan.pdf")
+    document = macos.pdf.from_images([photo, portrait, macos.image.qr_code(url, size=300)], tmp_path / "scan.pdf")
 
-    assert macos.pdf.page_count(document) == 2
-    found = macos.vision.barcodes(macos.pdf.render(document, page=2))
+    assert macos.pdf.page_count(document) == 3
+    with macos.pdf._open(document) as opened:
+        sizes = []
+        for number in (1, 2):
+            bounds = _objc.send(
+                macos.pdf._page(opened, number), "boundsForBox:", 0, argtypes=(ctypes.c_long,), restype=_objc.CGRect
+            )
+            sizes.append((bounds.size.width, bounds.size.height))
+    assert sizes == [(40, 20), (20, 40)]  # each page is its picture, upright
+    found = macos.vision.barcodes(macos.pdf.render(document, page=3))
     assert [code.payload for code in found] == [url]
+    # PDFKit logged "CoreGraphics PDF has logged an error" for images without an orientation.
+    assert "CoreGraphics" not in capfd.readouterr().err
     with pytest.raises(ValueError):
         macos.pdf.from_images([b"not an image"], tmp_path / "junk.pdf")
+    assert not (tmp_path / "junk.pdf").exists()
 
 
 def _halves(tmp_path):
