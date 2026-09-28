@@ -493,6 +493,7 @@ def _filtered(path: PathLike, output: PathLike, name: str, password: Optional[st
         )
         encrypted = bool(_objc.send(document, "isEncrypted", restype=BOOL))
         source = Path(path).expanduser().absolute()
+        target = Path(output).expanduser().absolute()
         if encrypted:
             # PDFKit keeps the encryption when it writes an unlocked
             # document: copy its pages into a new, unencrypted one.
@@ -500,12 +501,29 @@ def _filtered(path: PathLike, output: PathLike, name: str, password: Optional[st
             for number in range(1, _count(document) + 1):
                 _append(plain, _page(document, number))
             document = plain
-        target = _save(document, output, options)
-    # Rewriting a PDF can make it bigger (PDFKit writes less compactly than
-    # some tools do), and the filter only shrinks images: keep the original
-    # then. Not for an encrypted one, whose copy would still be encrypted.
-    if keep_smaller and not encrypted and target.stat().st_size >= source.stat().st_size and target != source:
-        _write_atomically(target, lambda name: bool(shutil.copyfile(str(source), name)))
+        if not keep_smaller or encrypted:
+            return _save(document, output, options)
+        # Rewriting a PDF can make it bigger (PDFKit writes less compactly
+        # than some tools do), and the filter only shrinks images: write it
+        # aside first, and keep the original when it isn't smaller. That also
+        # protects the original when the output is the input itself.
+        handle, name = tempfile.mkstemp(dir=str(target.parent) if target.parent.is_dir() else None, suffix=".pdf")
+        os.close(handle)
+        candidate = Path(name)
+        try:
+            _save(document, candidate, options)
+            smaller = candidate.stat().st_size < source.stat().st_size
+        except BaseException:
+            candidate.unlink(missing_ok=True)
+            raise
+    try:
+        if smaller:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(str(candidate), str(target))
+        elif target != source:
+            _write_atomically(target, lambda name: bool(shutil.copyfile(str(source), name)))
+    finally:
+        candidate.unlink(missing_ok=True)
     return target
 
 

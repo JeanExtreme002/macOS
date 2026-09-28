@@ -1405,8 +1405,14 @@ def test_pdf_watermark_and_compress(tmp_path):
     assert macos.pdf.page_count(smaller) == 1
 
     # Only text: nothing to shrink, and rewriting it would make it bigger.
+    original = document.read_bytes()
     text_only = macos.pdf.compress(document, tmp_path / "text.pdf")
-    assert text_only.read_bytes() == document.read_bytes()
+    assert text_only.read_bytes() == original
+    assert macos.pdf.compress(document, document).read_bytes() == original  # in place too
+    in_place = tmp_path / "in-place.pdf"
+    in_place.write_bytes(photos.read_bytes())
+    macos.pdf.compress(in_place, in_place)
+    assert in_place.stat().st_size < photos.stat().st_size / 2
 
     locked = macos.pdf.encrypt(photos, tmp_path / "locked.pdf", "s3cret")
     opened = macos.pdf.compress(locked, tmp_path / "opened.pdf", password="s3cret")

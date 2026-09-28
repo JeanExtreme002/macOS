@@ -33,7 +33,8 @@ macos.music.play(app="Spotify")
 ```
 
 Without `app`, they control the player that's playing, or the one running.
-With none running, {func}`~macos.music.play` opens Music.
+With none running, {func}`~macos.music.play` opens Music, and the others raise
+{class}`~macos.MacOSError` instead of opening a player just to pause it.
 
 ## Volume and position
 

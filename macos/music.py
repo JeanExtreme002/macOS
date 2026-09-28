@@ -136,8 +136,9 @@ def now_playing(app: Optional[str] = None) -> Optional[Track]:
     return found[0] if found else None
 
 
-def _command(command: str, app: Optional[str]) -> None:
-    player = _player(app)
+def _command(command: str, app: Optional[str], *, may_open: bool = False) -> None:
+    # Only play() may open a player: pausing or skipping in one that isn't running makes no sense.
+    player = _player(app) if may_open else _running_player(app)
     _osascript(player, 'tell application "{}" to {}'.format(player, command))
 
 
@@ -147,11 +148,16 @@ def play(app: Optional[str] = None) -> None:
 
     With no player running, it opens Music.
     """
-    _command("play", app)
+    _command("play", app, may_open=True)
 
 
 def pause(app: Optional[str] = None) -> None:
-    """Pause the player that is playing, or ``app``."""
+    """
+    Pause the player that is playing, or ``app``.
+
+    Like the other controls but :func:`play`, it never opens a player:
+    with none running, it raises :class:`~macos.errors.MacOSError`.
+    """
     _command("pause", app)
 
 

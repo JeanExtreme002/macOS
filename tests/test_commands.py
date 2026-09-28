@@ -1915,6 +1915,15 @@ def test_player_volume_and_seek(players):
     assert players.commands == [("Spotify", "set sound volume to 30"), ("Music", "set player position to 62.5")]
 
 
+def test_player_controls_never_open_a_player(players):
+    players.running = []
+
+    for control in (macos.music.pause, macos.music.play_pause, macos.music.next, macos.music.previous):
+        with pytest.raises(macos.MacOSError, match="isn't running"):
+            control()
+    assert players.commands == []  # nothing was sent: Music stays closed
+
+
 def test_player_volume_needs_a_running_player(players):
     players.running = ["Music"]
 

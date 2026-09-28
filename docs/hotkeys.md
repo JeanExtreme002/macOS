@@ -29,10 +29,10 @@ macos.hotkeys.register("ctrl+option+q", macos.hotkeys.stop)   # a shortcut to qu
 macos.hotkeys.run()
 ```
 
-{func}`~macos.hotkeys.run` calls the callbacks on its own thread, one at a
-time, until {func}`~macos.hotkeys.stop` or `timeout` seconds. Holding the keys
-down doesn't repeat the call. {func}`~macos.hotkeys.unregister` removes a
-shortcut.
+{func}`~macos.hotkeys.run` calls the callbacks on the thread that called it,
+one at a time, until {func}`~macos.hotkeys.stop` or `timeout` seconds. Holding
+the keys down doesn't repeat the call. {func}`~macos.hotkeys.unregister`
+removes a shortcut.
 
 ## Waiting for a shortcut
 
