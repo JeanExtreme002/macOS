@@ -1121,6 +1121,9 @@ def test_hardware_argument_checks():
         macos.keyboard.press("cmd+launch")
     with pytest.raises(ValueError, match="at least one key"):
         macos.keyboard.hold().__enter__()
+    # Rejected before switching anything.
+    with pytest.raises(ValueError, match="timeout"):
+        macos.bluetooth.set_power(False, timeout=0)
     with pytest.raises(ValueError, match="'dark' or 'light'"):
         macos.appearance.set_mode("blue")
 
@@ -1292,6 +1295,10 @@ _BLUETOOTH = {
                 {"Magic Mouse": {"device_address": "AA:BB:CC:DD:EE:02", "device_minorType": "Mouse"}},
                 {"Magic Mouse": {"device_address": "AA:BB:CC:DD:EE:02", "device_minorType": "Mouse"}},
                 {"Magic Keyboard": {"device_address": "AA:BB:CC:DD:EE:03", "device_batteryLevelMain": "n/a"}},
+                # A flat entry, as other macOS versions may write, and junk to skip.
+                {"device_name": "Speaker", "device_address": "AA:BB:CC:DD:EE:05", "device_minorType": "Speaker"},
+                {"Broken": "not a dictionary"},
+                "not an entry",
             ],
         }
     ]
@@ -1311,6 +1318,7 @@ def test_bluetooth_devices(commands):
         ),
         macos.bluetooth.Device("Magic Mouse", "AA:BB:CC:DD:EE:02", False, "mouse", {}),
         macos.bluetooth.Device("Magic Keyboard", "AA:BB:CC:DD:EE:03", False, "unknown", {}),
+        macos.bluetooth.Device("Speaker", "AA:BB:CC:DD:EE:05", False, "speaker", {}),
     ]
     assert commands.calls[-1] == ["system_profiler", "SPBluetoothDataType", "-json"]
 
@@ -1327,7 +1335,7 @@ def test_bluetooth_device_matching(commands):
     with pytest.raises(ValueError, match="several"):
         find("Magic")
     with pytest.raises(ValueError, match="no paired"):
-        find("Speaker")
+        find("Headset")
 
 
 def test_bluetooth_without_devices(commands):
@@ -1453,3 +1461,33 @@ def test_set_mode_without_the_automation_permission(fake_run):
     fake_run.stderr = "execution error: something else (-1)"
     with pytest.raises(macos.CommandError):
         macos.appearance.set_mode("dark")
+
+
+def test_shortcuts_off_the_main_thread_use_a_us_keyboard():
+    import threading
+
+    parsed = []
+    worker = threading.Thread(target=lambda: parsed.extend(macos.keyboard._parse(keys) for keys in ("cmd+plus", "?", "a")))
+    worker.start()
+    worker.join()
+
+    cmd = [(1 << 20, 55)]
+    assert parsed == [(cmd, 24, True), ([], 44, True), ([], 0, False)]  # Shift+= types "+"
+
+
+def test_missing_private_classes_are_not_supported(monkeypatch):
+    from contextlib import nullcontext
+
+    def missing(name):
+        raise LookupError("Objective-C class {!r} is not loaded".format(name))
+
+    monkeypatch.setattr(macos._objc, "cls", missing)
+    monkeypatch.setattr(macos._objc, "autorelease_pool", nullcontext)
+    for module in (macos.keyboard, macos.screen):
+        monkeypatch.setattr(module, "private_framework", lambda name: None)
+        monkeypatch.setattr(module, "framework", lambda name: None)
+
+    with pytest.raises(macos.NotSupportedError, match="keyboard backlight"):
+        macos.keyboard.brightness()
+    with pytest.raises(macos.NotSupportedError, match="Night Shift"):
+        macos.screen.night_shift()

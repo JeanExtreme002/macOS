@@ -22,7 +22,7 @@ import json
 import time
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from . import _objc
 from ._system import framework, run
@@ -91,6 +91,8 @@ def set_power(on: bool, *, timeout: float = 10.0) -> None:
     and mouse. Raises :class:`~macos.errors.MacOSError` if the switch hasn't
     happened within ``timeout`` seconds.
     """
+    if timeout <= 0:
+        raise ValueError("timeout must be positive, not {}".format(timeout))
     bluetooth = _bluetooth()
     _require_controller()
     bluetooth.IOBluetoothPreferenceSetControllerPowerState(1 if on else 0)
@@ -123,6 +125,20 @@ def _device(name: str, properties: Dict[str, Any], connected: bool) -> Device:
     )
 
 
+def _entries(entry: Any) -> List[Tuple[str, Dict[str, Any]]]:
+    """
+    The ``(name, properties)`` pairs of one item of a device list.
+
+    macOS 14 and 15 write ``{"AirPods Pro": {...}}``; accept a flat
+    ``{"device_name": ..., ...}`` too, and skip anything else.
+    """
+    if not isinstance(entry, dict):
+        return []
+    if isinstance(entry.get("device_name"), str):
+        return [(entry["device_name"], entry)]
+    return [(name, properties) for name, properties in entry.items() if isinstance(properties, dict)]
+
+
 def devices() -> List[Device]:
     """
     Return the devices paired with this Mac, connected ones first.
@@ -141,8 +157,8 @@ def devices() -> List[Device]:
     for section in sections:
         for key, connected in (("device_connected", True), ("device_not_connected", False)):
             for entry in section.get(key) or []:
-                for name, properties in entry.items():
-                    device = _device(name, properties or {}, connected)
+                for name, properties in _entries(entry):
+                    device = _device(name, properties, connected)
                     if device.address not in seen:
                         seen.add(device.address)
                         found.append(device)

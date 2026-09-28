@@ -80,6 +80,9 @@ _US_LAYOUT = {
     ".": 47, "`": 50,
 }  # fmt: skip
 
+# What Shift types on those keys.
+_US_SHIFTED = dict(zip('~!@#$%^&*()_+{}|:"<>?', "`1234567890-=[]\\;',./"))
+
 # Modifier keys: their flag (kCGEventFlagMask*) and key code.
 _MODIFIERS = {
     "cmd": (1 << 20, 55),
@@ -145,6 +148,7 @@ def _layout() -> Dict[str, Tuple[int, bool]]:
     when the layout can't be read: macOS only allows it on the main thread.
     """
     fallback = {char: (code, False) for char, code in _US_LAYOUT.items()}
+    fallback.update({char: (_US_LAYOUT[base], True) for char, base in _US_SHIFTED.items()})
     if threading.current_thread() is not threading.main_thread():
         return fallback
     carbon = _text_input()
@@ -444,9 +448,10 @@ def _backlight() -> Tuple[int, int]:
     """The ``KeyboardBrightnessClient`` (autoreleased) and the backlit keyboard's ID. Call inside a pool."""
     private_framework("CoreBrightness")
     framework("Foundation")
-    client_class = _objc.cls("KeyboardBrightnessClient")
-    if not client_class:
-        raise NotSupportedError("this version of macOS doesn't expose the keyboard backlight")
+    try:
+        _objc.cls("KeyboardBrightnessClient")
+    except LookupError:
+        raise NotSupportedError("this version of macOS doesn't expose the keyboard backlight") from None
     client = _objc.new("KeyboardBrightnessClient")
     ids = [
         int(_objc.send(number, "unsignedLongLongValue", restype=ctypes.c_uint64))

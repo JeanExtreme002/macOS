@@ -415,8 +415,10 @@ def _night_shift_client() -> int:
     """An autoreleased ``CBBlueLightClient``. Call inside an autorelease pool."""
     private_framework("CoreBrightness")
     framework("Foundation")
-    if not _objc.cls("CBBlueLightClient"):
-        raise NotSupportedError("this version of macOS doesn't expose Night Shift")
+    try:
+        _objc.cls("CBBlueLightClient")
+    except LookupError:
+        raise NotSupportedError("this version of macOS doesn't expose Night Shift") from None
     return _objc.new("CBBlueLightClient")
 
 
