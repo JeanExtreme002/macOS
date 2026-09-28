@@ -1218,6 +1218,22 @@ def test_press_holds_the_modifiers_around_the_key(fake_events):
     ]
 
 
+def test_press_a_modifier_alone_sets_its_flag(fake_events):
+    macos.keyboard.press("shift")
+    macos.keyboard.press("cmd+option")
+
+    keys = [(event["code"], event["down"], event["flags"]) for event in fake_events.posted]
+    shift, cmd, option = 1 << 17, 1 << 20, 1 << 19
+    assert keys == [
+        (56, True, shift),
+        (56, False, 0),
+        (55, True, cmd),
+        (58, True, cmd | option),
+        (58, False, cmd),
+        (55, False, 0),
+    ]
+
+
 def test_press_adds_shift_for_shifted_characters(fake_events):
     macos.keyboard.press("cmd++")
     macos.keyboard.press("C")  # letters are keys: no Shift
@@ -1532,6 +1548,9 @@ class _FakeCoreAudio:
         self.writes = []
 
     def property(self, target, selector, scope=None, element=0):
+        if selector == "slay":  # the stream configuration: one buffer with this many channels
+            channels = self.values.get((target, "channels"), 0)
+            return self.pack("II", 1, 0) + self.pack("IIQ", channels, 0, 0)
         value = self.values.get((target, selector, element))
         if value is None:
             return None
@@ -1551,7 +1570,10 @@ def fake_audio(monkeypatch):
     from macos import audio
 
     microphone = audio.Device(7, "USB Mic", "usb-mic", "usb", False, True)
-    fake = _FakeCoreAudio({(7, "volm", 1): 0.5, (7, "volm", 2): 0.7, (7, "mute", 0): 0})
+    # Ten channels, each with its own volume: more than the 8 once assumed.
+    values = {(7, "channels"): 10, (7, "mute", 0): 0}
+    values.update({(7, "volm", channel): 0.5 if channel < 10 else 0.9 for channel in range(1, 11)})
+    fake = _FakeCoreAudio(values)
     monkeypatch.setattr(audio, "_property", fake.property)
     monkeypatch.setattr(audio, "_core_audio", lambda: fake)
     monkeypatch.setattr(audio, "default_input", lambda: microphone)
@@ -1561,10 +1583,10 @@ def fake_audio(monkeypatch):
 
 def test_input_volume_per_channel(fake_audio):
     # This microphone has no main volume, only one per channel.
-    assert macos.audio.input_volume() == 0.6
+    assert macos.audio.input_volume() == 0.54
     macos.audio.set_input_volume(0.25, device="USB")
 
-    assert fake_audio.writes == [(7, "volm", 1, 0.25), (7, "volm", 2, 0.25)]
+    assert fake_audio.writes == [(7, "volm", channel, 0.25) for channel in range(1, 11)]
     assert macos.audio.input_volume() == 0.25
 
 

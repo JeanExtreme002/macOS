@@ -98,6 +98,7 @@ _MODIFIERS = {
 }
 
 _SHIFT = _MODIFIERS["shift"]
+_MODIFIER_FLAGS = {code: flag for flag, code in _MODIFIERS.values()}
 
 # Names for the characters "+" can't spell in a shortcut.
 _ALIASES = {"plus": "+", "minus": "-"}
@@ -254,19 +255,18 @@ def press(keys: str, *, times: int = 1) -> None:
     if shifted and _SHIFT not in modifiers:
         modifiers.append(_SHIFT)
     _events.require_permission()
+    # A modifier pressed alone ("shift") sets its own flag while it's down.
+    own = _MODIFIER_FLAGS.get(code, 0)
     for _ in range(times):
         flags = 0
         for flag, modifier in modifiers:
             flags |= flag
             _events.post(_key_event(modifier, True, flags))
-        _events.post(_key_event(code, True, flags))
+        _events.post(_key_event(code, True, flags | own))
         _events.post(_key_event(code, False, flags))
         for flag, modifier in reversed(modifiers):
             flags &= ~flag
             _events.post(_key_event(modifier, False, flags))
-
-
-_MODIFIER_FLAGS = {code: flag for flag, code in _MODIFIERS.values()}
 
 
 @contextmanager

@@ -246,11 +246,23 @@ def _input_device(device: Union[str, Device, None]) -> Device:
     return _find(device, inputs(), "input")
 
 
+def _input_channels(device: Device) -> int:
+    """How many input channels the device has, from its stream configuration (an AudioBufferList)."""
+    raw = _property(device.id, "slay", _INPUT) or b""
+    if len(raw) < 4:
+        return 0
+    buffers = struct.unpack("I", raw[:4])[0]
+    # Each AudioBuffer is 16 bytes (channels, byte size, data pointer), after 8 bytes of header.
+    offsets = [8 + 16 * index for index in range(buffers) if len(raw) >= 24 + 16 * index]
+    return sum(struct.unpack("I", raw[offset : offset + 4])[0] for offset in offsets)
+
+
 def _elements(device: Device, selector: str) -> List[int]:
-    """The elements that have ``selector`` on the input side: the main one, or each channel."""
+    """The elements that have ``selector`` on the input side: the main one, or each of the device's channels."""
     if _property(device.id, selector, _INPUT, 0) is not None:
         return [0]
-    return [channel for channel in range(1, 9) if _property(device.id, selector, _INPUT, channel) is not None]
+    channels = range(1, _input_channels(device) + 1)
+    return [channel for channel in channels if _property(device.id, selector, _INPUT, channel) is not None]
 
 
 def _set_input(device: Device, selector: str, elements: List[int], value: ctypes._SimpleCData) -> None:
