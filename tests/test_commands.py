@@ -1693,3 +1693,5 @@ def test_make_alias_checks_its_paths(tmp_path):
         macos.finder.make_alias(original, tmp_path)  # the folder's "report.pdf alias" too
     with pytest.raises(FileNotFoundError):
         macos.finder.make_alias(original, tmp_path / "no" / "folder" / "alias")
+    with pytest.raises(ValueError, match="no folder around it"):
+        macos.finder.make_alias("/")  # a disk has nothing next to it

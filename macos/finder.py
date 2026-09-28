@@ -339,6 +339,16 @@ def resolve_alias(path: PathLike) -> Path:
     raise MacOSError("{} is part of a loop of aliases".format(path))
 
 
+def _display_name(path: Path) -> str:
+    """The name Finder shows, e.g. ``'Macintosh HD'`` for ``/``, which has no name of its own."""
+    with _objc.autorelease_pool():
+        manager = _objc.send(_objc.cls("NSFileManager"), "defaultManager")
+        name = _objc.pystring(
+            _objc.send(manager, "displayNameAtPath:", _objc.nsstring(str(path)), argtypes=(_objc.id,))
+        )
+    return name or "Disk"
+
+
 def make_alias(target: PathLike, alias: Optional[PathLike] = None) -> Path:
     """
     Create a Finder alias of ``target``, like *File › Make Alias*, and return its path.
@@ -351,14 +361,19 @@ def make_alias(target: PathLike, alias: Optional[PathLike] = None) -> Path:
         macos.finder.make_alias("report.pdf", "~/Desktop/Report")  # named Report
 
     Raises :class:`FileExistsError` if something already has the alias's path.
+    The alias of a disk (``"/"``) is named after it (``"Macintosh HD alias"``)
+    and needs ``alias``, since nothing is next to it.
     """
     original = _existing(target)
+    if alias is None and original.parent == original:
+        raise ValueError("pass where to create the alias of {}: there's no folder around it".format(original))
+    name = "{} alias".format(original.name or _display_name(original))
     if alias is None:
-        destination = original.with_name("{} alias".format(original.name))
+        destination = original.with_name(name)
     else:
         destination = Path(alias).expanduser().absolute()
         if destination.is_dir() and not destination.is_symlink():
-            destination = destination / "{} alias".format(original.name)
+            destination = destination / name
     if os.path.lexists(destination):
         raise FileExistsError(str(destination))
     if not destination.parent.is_dir():

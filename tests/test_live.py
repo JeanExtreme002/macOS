@@ -1169,6 +1169,11 @@ def test_finder_aliases(tmp_path):
     assert not macos.finder.is_alias(link)
     assert macos.finder.resolve_alias(link).name == "report.pdf"
 
+    # A disk has no name of its own: the alias takes the one Finder shows.
+    disk = macos.finder.make_alias("/", tmp_path)
+    assert disk.name.endswith(" alias") and disk.name != " alias"
+    assert macos.finder.resolve_alias(disk) == Path("/")
+
     # An alias follows its original when it's moved and renamed...
     original.rename(folder / "moved.pdf")
     assert macos.finder.resolve_alias(alias).name == "moved.pdf"
