@@ -161,6 +161,7 @@ explain how to use each part.
 .. autofunction:: macos.vision.smart_crop
 .. autofunction:: macos.vision.image_distance
 .. autofunction:: macos.vision.duplicates
+.. autofunction:: macos.vision.best_shot
 .. autoclass:: macos.vision.Animal
 ```
 
@@ -174,8 +175,15 @@ explain how to use each part.
 .. autofunction:: macos.image.taken_at
 .. autofunction:: macos.image.location
 .. autofunction:: macos.image.strip_metadata
+.. autofunction:: macos.image.set_taken_at
+.. autofunction:: macos.image.set_location
 .. autofunction:: macos.image.convert
 .. autofunction:: macos.image.resize
+.. autofunction:: macos.image.crop
+.. autofunction:: macos.image.rotate
+.. autofunction:: macos.image.flip
+.. autofunction:: macos.image.blur_faces
+.. autofunction:: macos.image.dominant_colors
 .. autofunction:: macos.image.qr_code
 .. autoclass:: macos.image.ImageInfo
 ```
@@ -187,10 +195,14 @@ explain how to use each part.
 
 .. autofunction:: macos.pdf.page_count
 .. autofunction:: macos.pdf.text
+.. autofunction:: macos.pdf.metadata
 .. autofunction:: macos.pdf.merge
 .. autofunction:: macos.pdf.extract
+.. autofunction:: macos.pdf.rotate
+.. autofunction:: macos.pdf.encrypt
 .. autofunction:: macos.pdf.render
 .. autofunction:: macos.pdf.from_images
+.. autoclass:: macos.pdf.Metadata
 ```
 
 ## macos.language

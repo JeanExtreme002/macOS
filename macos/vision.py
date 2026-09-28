@@ -38,6 +38,7 @@ __all__ = [
     "scan_document",
     "image_distance",
     "duplicates",
+    "best_shot",
     "smart_crop",
     "TextLine",
     "Barcode",
@@ -330,33 +331,6 @@ def remove_background(image: Image, *, crop: bool = False) -> Optional[bytes]:
         return _objc.ciimage_png(picture)
 
 
-def _upright(image: Image) -> int:
-    """A ``CIImage`` of ``image`` with its EXIF orientation applied (autoreleased)."""
-    framework("AppKit")
-    framework("CoreImage")
-    options = _objc.send(
-        _objc.cls("NSDictionary"),
-        "dictionaryWithObject:forKey:",
-        _objc.send(_objc.cls("NSNumber"), "numberWithBool:", True, argtypes=(BOOL,)),
-        _objc.nsstring("kCIImageApplyOrientationProperty"),
-        argtypes=(_objc.id, _objc.id),
-    )
-    if isinstance(image, (bytes, bytearray)):
-        picture = _objc.send(
-            _objc.cls("CIImage"), "imageWithData:options:", _objc.nsdata(bytes(image)), options, argtypes=(_objc.id, _objc.id)
-        )
-    else:
-        path = Path(image).expanduser().absolute()
-        if not path.exists():
-            raise FileNotFoundError(str(path))
-        picture = _objc.send(
-            _objc.cls("CIImage"), "imageWithContentsOfURL:options:", _objc.file_url(path), options, argtypes=(_objc.id, _objc.id)
-        )
-    if not picture:
-        raise MacOSError("the image could not be read")
-    return picture
-
-
 def scan_document(image: Image) -> Optional[bytes]:
     """
     Turn a photo of a document (a page, a receipt, a card) into a flat, straight scan, as PNG bytes.
@@ -371,7 +345,7 @@ def scan_document(image: Image) -> Optional[bytes]:
     """
     _load()
     with _objc.autorelease_pool():
-        picture = _upright(image)
+        picture = _objc.ciimage(image)
         extent = _objc.send(picture, "extent", restype=_objc.CGRect)
         width, height = extent.size.width, extent.size.height
 
@@ -502,8 +476,38 @@ def duplicates(images: Sequence[Image], *, threshold: float = 0.3) -> List[List[
     return [group for group in groups.values() if len(group) > 1]
 
 
-class _CGAffineTransform(ctypes.Structure):
-    _fields_ = [(name, ctypes.c_double) for name in ("a", "b", "c", "d", "tx", "ty")]
+def _face_quality(image: Image) -> Optional[float]:
+    """The mean capture quality of the faces in ``image`` (0.0 to 1.0), or ``None`` without faces."""
+    with _objc.autorelease_pool():
+        scores = []
+        for face in _perform(image, _objc.new("VNDetectFaceCaptureQualityRequest")):
+            quality = _objc.send(face, "faceCaptureQuality")
+            if quality:
+                scores.append(float(_objc.send(quality, "floatValue", restype=ctypes.c_float)))
+    return sum(scores) / len(scores) if scores else None
+
+
+def best_shot(images: Sequence[Image]) -> Optional[Image]:
+    """
+    Pick the photo where the faces look best: sharp, well lit, eyes open, facing the camera.
+
+    Returns one of ``images``, or ``None`` when none has a face. With several
+    people in a photo, their faces count equally. Pairs well with
+    :func:`duplicates`, to keep one photo of each burst::
+
+        for group in macos.vision.duplicates(photos):
+            keep = macos.vision.best_shot(group) or group[0]
+    """
+    if not images:
+        raise ValueError("best_shot() needs at least one image")
+    _load()
+    best: Optional[Image] = None
+    best_score = -1.0
+    for image in images:
+        score = _face_quality(image)
+        if score is not None and score > best_score:
+            best, best_score = image, score
+    return best
 
 
 def smart_crop(image: Image, width: int, height: int) -> bytes:
@@ -523,7 +527,7 @@ def smart_crop(image: Image, width: int, height: int) -> bytes:
         raise ValueError("width and height must be positive, not {} x {}".format(width, height))
     _load()
     with _objc.autorelease_pool():
-        picture = _upright(image)
+        picture = _objc.ciimage(image)
         extent = _objc.send(picture, "extent", restype=_objc.CGRect)
         full_width, full_height = extent.size.width, extent.size.height
 
@@ -557,7 +561,7 @@ def smart_crop(image: Image, width: int, height: int) -> bytes:
         moved = _objc.send(
             cropped,
             "imageByApplyingTransform:",
-            _CGAffineTransform(scale, 0, 0, scale, -rect.origin.x * scale, -rect.origin.y * scale),
-            argtypes=(_CGAffineTransform,),
+            _objc.CGAffineTransform(scale, 0, 0, scale, -rect.origin.x * scale, -rect.origin.y * scale),
+            argtypes=(_objc.CGAffineTransform,),
         )
         return _objc.ciimage_png(moved)

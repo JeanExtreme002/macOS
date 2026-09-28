@@ -184,6 +184,23 @@ macos.vision.image_distance("IMG_1.jpg", "IMG_1_edited.jpg")   # 0.06
 Small images (a few hundred pixels) carry less detail, so their distances are
 less reliable.
 
+## The best shot
+
+{func}`~macos.vision.best_shot` picks the photo where the faces look best:
+sharp, well lit, eyes open, facing the camera. With
+{func}`~macos.vision.duplicates`, it keeps one photo of each burst:
+
+```python
+for group in macos.vision.duplicates(photos):
+    keep = macos.vision.best_shot(group) or group[0]
+    for photo in group:
+        if photo != keep:
+            macos.finder.trash(photo)
+```
+
+It returns `None` when no photo has a face. In a group photo, every face
+counts equally.
+
 ## Reference
 
 - {func}`macos.vision.text`
@@ -201,3 +218,4 @@ less reliable.
 - {func}`macos.vision.smart_crop`
 - {func}`macos.vision.image_distance`
 - {func}`macos.vision.duplicates`
+- {func}`macos.vision.best_shot`

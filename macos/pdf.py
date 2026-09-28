@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Read, merge and split PDFs.
+Read, merge, split, rotate and encrypt PDFs, or make them from images.
 
 ::
 
@@ -10,6 +10,7 @@ Read, merge and split PDFs.
     macos.pdf.text("report.pdf", pages=[1])         # just the first page
     macos.pdf.merge(["a.pdf", "b.pdf"], "both.pdf")
     macos.pdf.extract("report.pdf", [1, 3], "summary.pdf")
+    macos.pdf.encrypt("report.pdf", "locked.pdf", password="1234")
 
 Uses PDFKit, the framework behind Preview. Page numbers start at 1, like in
 Preview.
@@ -17,21 +18,52 @@ Preview.
 
 import ctypes
 import os
+import tempfile
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Iterator, Optional, Sequence, Union
+from typing import Iterable, Iterator, List, Optional, Sequence, Union
 
 from . import _objc
 from ._objc import BOOL, NSUInteger
 from ._system import framework
 from .errors import MacOSError, PermissionDeniedError
 
-__all__ = ["page_count", "text", "merge", "extract", "render", "from_images"]
+__all__ = [
+    "page_count",
+    "text",
+    "metadata",
+    "merge",
+    "extract",
+    "rotate",
+    "encrypt",
+    "render",
+    "from_images",
+    "Metadata",
+]
 
 PathLike = Union[str, "os.PathLike[str]"]
 
 _MAX_RENDER = 4096
 _MEDIA_BOX = 0  # kPDFDisplayBoxMediaBox
+
+
+@dataclass(frozen=True)
+class Metadata:
+    """The information a PDF records about itself, as in Preview's *Tools › Show Inspector*."""
+
+    title: Optional[str]
+    author: Optional[str]
+    subject: Optional[str]
+    keywords: List[str]
+    creator: Optional[str]
+    """The app the document was made in, such as ``'Microsoft Word'``."""
+    producer: Optional[str]
+    """The software that wrote the PDF, such as ``'macOS Version 15.6 Quartz PDFContext'``."""
+    created: Optional[datetime]
+    """In the local time zone."""
+    modified: Optional[datetime]
 
 
 @contextmanager
@@ -88,11 +120,70 @@ def text(path: PathLike, pages: Optional[Iterable[int]] = None, *, password: Opt
         return "\n".join(part.rstrip("\n") for part in parts)
 
 
-def _save(document: int, output: PathLike) -> Path:
+def _attribute_text(attributes: int, key: str) -> Optional[str]:
+    value = _objc.send(attributes, "objectForKey:", _objc.nsstring(key), argtypes=(_objc.id,))
+    if not value or not _objc.send(value, "isKindOfClass:", _objc.cls("NSString"), argtypes=(_objc.id,), restype=BOOL):
+        return None
+    return (_objc.pystring(value) or "").strip() or None
+
+
+def _attribute_date(attributes: int, key: str) -> Optional[datetime]:
+    value = _objc.send(attributes, "objectForKey:", _objc.nsstring(key), argtypes=(_objc.id,))
+    if not value or not _objc.send(value, "isKindOfClass:", _objc.cls("NSDate"), argtypes=(_objc.id,), restype=BOOL):
+        return None
+    return datetime.fromtimestamp(_objc.send(value, "timeIntervalSince1970", restype=ctypes.c_double)).astimezone()
+
+
+def metadata(path: PathLike, *, password: Optional[str] = None) -> Metadata:
+    """Return the title, author, keywords, dates and the apps that made a PDF."""
+    with _open(path, password) as document:
+        attributes = _objc.send(document, "documentAttributes")
+        if not attributes:
+            return Metadata(None, None, None, [], None, None, None, None)
+        words = _objc.send(attributes, "objectForKey:", _objc.nsstring("Keywords"), argtypes=(_objc.id,))
+        keywords: List[str] = []
+        if words and _objc.send(words, "isKindOfClass:", _objc.cls("NSArray"), argtypes=(_objc.id,), restype=BOOL):
+            keywords = [text for text in (_objc.pystring(word) for word in _objc.nsarray(words)) if text]
+        elif words:
+            # Some PDFs store the keywords as a single string.
+            keywords = [word.strip() for word in (_objc.pystring(words) or "").split(",") if word.strip()]
+        return Metadata(
+            title=_attribute_text(attributes, "Title"),
+            author=_attribute_text(attributes, "Author"),
+            subject=_attribute_text(attributes, "Subject"),
+            keywords=keywords,
+            creator=_attribute_text(attributes, "Creator"),
+            producer=_attribute_text(attributes, "Producer"),
+            created=_attribute_date(attributes, "CreationDate"),
+            modified=_attribute_date(attributes, "ModDate"),
+        )
+
+
+def _save(document: int, output: PathLike, options: Optional[int] = None) -> Path:
     target = Path(output).expanduser().absolute()
     target.parent.mkdir(parents=True, exist_ok=True)
-    if not _objc.send(document, "writeToFile:", _objc.nsstring(str(target)), argtypes=(_objc.id,), restype=BOOL):
-        raise MacOSError("could not write {}".format(target))
+    # Write next to the target, then move it in place: the output may be one
+    # of the inputs, which PDFKit reads lazily while writing.
+    handle, name = tempfile.mkstemp(dir=str(target.parent), suffix=".pdf")
+    os.close(handle)
+    try:
+        if options:
+            written = _objc.send(
+                document,
+                "writeToFile:withOptions:",
+                _objc.nsstring(name),
+                options,
+                argtypes=(_objc.id, _objc.id),
+                restype=BOOL,
+            )
+        else:
+            written = _objc.send(document, "writeToFile:", _objc.nsstring(name), argtypes=(_objc.id,), restype=BOOL)
+        if not written:
+            raise MacOSError("could not write {}".format(target))
+        os.replace(name, str(target))
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
     return target
 
 
@@ -139,6 +230,58 @@ def extract(path: PathLike, pages: Iterable[int], output: PathLike, *, password:
         for number in numbers:
             _append(result, _page(document, number))
         return _save(result, output)
+
+
+def rotate(
+    path: PathLike,
+    degrees: int,
+    output: PathLike,
+    *,
+    pages: Optional[Iterable[int]] = None,
+    password: Optional[str] = None,
+) -> Path:
+    """
+    Turn pages clockwise by ``degrees`` (90, 180 or 270; negative turns counter-clockwise) and save to ``output``.
+
+    Every page turns, or only ``pages`` (numbered from 1). Handy for scans
+    that came out sideways::
+
+        macos.pdf.rotate("scan.pdf", 90, "scan.pdf", pages=[2])
+    """
+    if degrees % 90:
+        raise ValueError("degrees must be a multiple of 90, not {}".format(degrees))
+    with _open(path, password) as document:
+        numbers = list(pages) if pages is not None else list(range(1, _count(document) + 1))
+        for number in numbers:
+            page = _page(document, number)
+            current = _objc.send(page, "rotation", restype=ctypes.c_long)
+            _objc.send(page, "setRotation:", (current + degrees) % 360, argtypes=(ctypes.c_long,), restype=None)
+        return _save(document, output)
+
+
+def _pdfkit_string(name: str) -> int:
+    return ctypes.c_void_p.in_dll(framework("PDFKit"), name).value or 0
+
+
+def encrypt(path: PathLike, output: PathLike, password: str, *, current_password: Optional[str] = None) -> Path:
+    """
+    Save a copy of a PDF that asks for ``password`` to open, and return its path.
+
+    Preview, Acrobat and browsers all ask for it. ``current_password`` opens a
+    PDF that is already encrypted, to change its password. To read or change
+    an encrypted PDF with this module, pass ``password=`` to the other
+    functions.
+    """
+    if not password:
+        raise ValueError("the password can't be empty")
+    with _open(path, current_password) as document:
+        secret = _objc.nsstring(password)
+        options = _objc.send(_objc.cls("NSMutableDictionary"), "dictionary")
+        for key in ("PDFDocumentUserPasswordOption", "PDFDocumentOwnerPasswordOption"):
+            _objc.send(
+                options, "setObject:forKey:", secret, _pdfkit_string(key), argtypes=(_objc.id, _objc.id), restype=None
+            )
+        return _save(document, output, options)
 
 
 def render(path: PathLike, page: int = 1, *, size: int = 1024, password: Optional[str] = None) -> bytes:

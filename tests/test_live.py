@@ -768,6 +768,99 @@ def test_pdf_from_images(tmp_path):
         macos.pdf.from_images([b"not an image"], tmp_path / "junk.pdf")
 
 
+def _halves(tmp_path):
+    """A 40x20 PNG: red on the left half, blue on the right."""
+    path = tmp_path / "halves.png"
+    path.write_bytes(_rgb_png(40, 20, lambda x, y: (255, 0, 0) if x < 20 else (0, 0, 255)))
+    return path
+
+
+def _corner_color(path, tmp_path, box):
+    corner = macos.image.crop(path, tmp_path / "corner.png", box)
+    return macos.image.dominant_colors(corner, count=1)[0]
+
+
+def test_image_edits(tmp_path):
+    image = _halves(tmp_path)
+    red, blue = "#ff0000", "#0000ff"
+
+    assert set(macos.image.dominant_colors(image)) == {red, blue}
+    assert _corner_color(image, tmp_path, (0, 0, 5, 5)) == red
+
+    right = macos.image.crop(image, tmp_path / "right.png", (25, 5, 10, 10))
+    assert (macos.image.info(right).width, macos.image.info(right).height) == (10, 10)
+    assert macos.image.dominant_colors(right) == [blue]
+    with pytest.raises(ValueError, match="doesn't fit"):
+        macos.image.crop(image, tmp_path / "out.png", (30, 0, 20, 5))
+
+    # A quarter turn clockwise puts the left (red) half on top.
+    turned = macos.image.rotate(image, tmp_path / "turned.png", 90)
+    assert (macos.image.info(turned).width, macos.image.info(turned).height) == (20, 40)
+    assert _corner_color(turned, tmp_path, (0, 0, 5, 5)) == red
+    back = macos.image.rotate(turned, tmp_path / "back.png", -90)
+    assert _corner_color(back, tmp_path, (0, 0, 5, 5)) == red
+
+    mirrored = macos.image.flip(image, tmp_path / "mirrored.png")
+    assert _corner_color(mirrored, tmp_path, (0, 0, 5, 5)) == blue
+    upside_down = macos.image.flip(image, tmp_path / "upside-down.png", direction="vertical")
+    assert _corner_color(upside_down, tmp_path, (0, 0, 5, 5)) == red
+
+
+def test_blur_faces_and_best_shot_without_faces(tmp_path):
+    image = _halves(tmp_path)
+
+    copy = macos.image.blur_faces(image, tmp_path / "copy.png")
+
+    assert (macos.image.info(copy).width, macos.image.info(copy).height) == (40, 20)
+    assert set(macos.image.dominant_colors(copy)) == {"#ff0000", "#0000ff"}  # nothing to blur
+    assert macos.vision.best_shot([image, copy]) is None
+
+
+@pytest.mark.parametrize("extension", [".jpg", ".heic"])
+def test_set_taken_at_and_location(tmp_path, extension):
+    from datetime import datetime, timedelta, timezone
+
+    photo = macos.image.convert(_halves(tmp_path), tmp_path / ("photo" + extension))
+    when = datetime(2024, 5, 1, 10, 30, tzinfo=timezone(timedelta(hours=-3)))
+
+    assert macos.image.set_taken_at(photo, when) == photo
+    macos.image.set_location(photo, -22.95, -43.21)
+
+    assert macos.image.taken_at(photo) == when
+    latitude, longitude = macos.image.location(photo)
+    assert (round(latitude, 2), round(longitude, 2)) == (-22.95, -43.21)
+    assert macos.image.info(photo).width == 40
+
+    copy = macos.image.set_location(photo, 48.85, 2.35, output=tmp_path / ("copy" + extension))
+    assert macos.image.location(photo)[0] < 0  # the original is left alone
+    assert macos.image.location(copy)[0] > 0
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted(["halves.png", "photo" + extension, "copy" + extension])
+
+
+def test_pdf_metadata_rotate_and_encrypt(tmp_path):
+    import ctypes
+
+    document = _text_pdf(tmp_path, ["Page one says hello", "Page two says ola"])
+
+    details = macos.pdf.metadata(document)
+    assert details.created is not None and details.created.tzinfo is not None
+    assert details.keywords == []
+
+    # Rotating in place is safe: the output replaces the input only once written.
+    assert macos.pdf.rotate(document, 90, document, pages=[2]) == document
+    macos.pdf.rotate(document, -180, document)
+    with macos.pdf._open(document) as opened:
+        rotations = [_objc.send(macos.pdf._page(opened, n), "rotation", restype=ctypes.c_long) for n in (1, 2)]
+    assert rotations == [180, 270]
+
+    locked = macos.pdf.encrypt(document, tmp_path / "locked.pdf", "s3cret")
+    with pytest.raises(macos.PermissionDeniedError):
+        macos.pdf.text(locked)
+    assert macos.pdf.text(locked, password="s3cret", pages=[1]) == "Page one says hello"
+    changed = macos.pdf.encrypt(locked, tmp_path / "changed.pdf", "other", current_password="s3cret")
+    assert macos.pdf.page_count(changed, password="other") == 2
+
+
 _PARROT = Path("/Library/User Pictures/Animals/Parrot.heic")
 
 
