@@ -70,7 +70,8 @@ window.set_fullscreen()       # like its green button
 window.set_fullscreen(False)
 ```
 
-macOS animates it into a Space of its own, which takes about a second.
+macOS animates it into a Space of its own; {meth}`~macos.windows.Window.set_fullscreen`
+returns once that's done, after a second or two.
 Windows whose app doesn't allow full screen raise {class}`~macos.MacOSError`.
 
 ## Reference

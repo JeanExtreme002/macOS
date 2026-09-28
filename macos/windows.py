@@ -21,6 +21,7 @@ need.
 
 import builtins
 import ctypes
+import time
 from functools import lru_cache
 from typing import Any, Optional, Tuple, Union
 
@@ -37,6 +38,8 @@ _INVALID_ELEMENT = -25202  # kAXErrorInvalidUIElement: the window is gone
 _CANNOT_COMPLETE = -25204  # kAXErrorCannotComplete: the app didn't answer, or quit
 _POINT, _SIZE = 1, 2  # kAXValueCGPointType, kAXValueCGSizeType
 _TIMEOUT = 2.0  # seconds to wait for an app that doesn't answer
+_FULL_SCREEN_TIMEOUT = 10.0
+_FULL_SCREEN_ANIMATION = 1.0
 
 
 @lru_cache(maxsize=None)
@@ -209,16 +212,25 @@ class Window:
         """
         Enter full screen (or leave it with ``on=False``), like its green button.
 
-        macOS animates the change into a Space of its own, which takes about
-        a second. Windows that can't go full screen raise
-        :class:`~macos.errors.MacOSError`.
+        macOS animates the change into a Space of its own; this returns once
+        it's done, after a second or two. Windows that can't go full screen
+        raise :class:`~macos.errors.MacOSError`.
         """
+        what = "{} full screen".format("enter" if on else "leave")
         try:
-            self._set_flag("AXFullScreen", on, "{} full screen".format("enter" if on else "leave"))
+            self._set_flag("AXFullScreen", on, what)
         except MacOSError as error:
             if on and "AXError -25200" in str(error):  # kAXErrorFailure
                 raise MacOSError("this window can't go full screen: its app doesn't allow it") from None
             raise
+        deadline = time.monotonic() + _FULL_SCREEN_TIMEOUT
+        while self.fullscreen != bool(on):
+            if time.monotonic() > deadline:
+                raise MacOSError("could not {} within {} seconds".format(what, _FULL_SCREEN_TIMEOUT))
+            time.sleep(0.1)
+        # The state changes as the animation starts, and macOS ignores a new
+        # request until it ends: let it finish.
+        time.sleep(_FULL_SCREEN_ANIMATION)
 
     def move(self, x: float, y: float) -> None:
         """Move its top-left corner to ``(x, y)``."""
