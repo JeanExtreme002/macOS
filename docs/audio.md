@@ -64,6 +64,34 @@ switch raise {class}`~macos.NotSupportedError`; set their volume to 0
 instead. To know whether an app is recording, see
 {func}`macos.system.microphone_in_use`.
 
+## Recording the microphone
+
+{func}`~macos.audio.record` records the default input into a file, and returns
+when the recording ends:
+
+```python
+macos.audio.record("memo.m4a", 30)             # AAC, small
+macos.audio.record("take.wav", 10, channels=2)  # uncompressed, stereo
+```
+
+The extension sets the format: `.m4a`, `.wav`, `.aiff` or `.caf`. To record
+another microphone, switch to it first with {func}`~macos.audio.set_input`.
+
+{func}`~macos.audio.input_level` tells how loud the microphone hears it right
+now, from 0.0 (silence) to 1.0: about 0.01 in a quiet room, 0.1 to 0.3 for
+someone talking nearby.
+
+```python
+import time
+
+while macos.audio.input_level() > 0.05:   # wait for quiet
+    time.sleep(1)
+```
+
+Both need the [Microphone permission](permissions.md#camera-and-microphone),
+which macOS asks for the first time. They keep nothing but the file you ask
+for.
+
 ## Reference
 
 - {func}`macos.audio.devices`
@@ -77,4 +105,8 @@ instead. To know whether an app is recording, see
 - {func}`macos.audio.set_input_volume`
 - {func}`macos.audio.input_muted`
 - {func}`macos.audio.mute_input`
+- {func}`macos.audio.record`
+- {func}`macos.audio.input_level`
+- {func}`macos.audio.has_permission`
+- {func}`macos.audio.request_permission`
 - {class}`macos.audio.Device`

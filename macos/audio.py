@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-List audio devices and switch the default output and input.
+List audio devices, switch the default output and input, and record the microphone.
 
 ::
 
@@ -10,18 +10,25 @@ List audio devices and switch the default output and input.
     macos.audio.set_output("AirPods Pro")
     macos.audio.set_input("MacBook Pro Microphone")
     macos.audio.mute_input()                              # mute the microphone
+    macos.audio.record("memo.m4a", seconds=10)            # record it
 
 Talks to CoreAudio directly, like the Sound settings do. Switching needs no
-permission.
+permission; recording needs the *Microphone* one, which macOS asks for the
+first time.
 """
 
 import ctypes
+import math
+import os
 import struct
+import tempfile
+import time
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional, Union
 
-from . import _cf
+from . import _capture, _cf, _objc
 from ._system import framework
 from .errors import MacOSError, NotSupportedError
 
@@ -38,6 +45,10 @@ __all__ = [
     "set_input_volume",
     "input_muted",
     "mute_input",
+    "record",
+    "input_level",
+    "has_permission",
+    "request_permission",
 ]
 
 
@@ -326,3 +337,148 @@ def mute_input(on: bool = True, *, device: Union[str, Device, None] = None) -> N
     if not elements:
         raise NotSupportedError("{!r} can't be muted; use set_input_volume(0.0)".format(chosen.name))
     _set_input(chosen, "mute", elements, ctypes.c_uint32(1 if on else 0))
+
+
+# Recording the microphone, through AVFoundation's AVAudioRecorder.
+
+
+def has_permission() -> bool:
+    """Whether this process may record the microphone, without prompting the user."""
+    return _capture.has_permission(_capture.AUDIO)
+
+
+def request_permission() -> bool:
+    """
+    Ask for the Microphone permission, showing the system prompt the first time; return whether it's granted.
+
+    macOS asks only once: after that, the user must allow the app running
+    Python (your terminal or IDE) in System Settings › Privacy & Security ›
+    Microphone, and restart it.
+    """
+    return _capture.request_permission(_capture.AUDIO)
+
+
+def _four_char(text: str) -> int:
+    return int.from_bytes(text.encode("ascii"), "big")
+
+
+# The format each extension records in: AAC for .m4a, uncompressed PCM for the others.
+_RECORD_FORMATS = {
+    ".m4a": {"AVFormatIDKey": _four_char("aac "), "AVEncoderAudioQualityKey": 96},  # AVAudioQualityHigh
+    ".wav": {"AVFormatIDKey": _four_char("lpcm"), "AVLinearPCMBitDepthKey": 16, "AVLinearPCMIsBigEndianKey": 0},
+    ".aiff": {"AVFormatIDKey": _four_char("lpcm"), "AVLinearPCMBitDepthKey": 16, "AVLinearPCMIsBigEndianKey": 1},
+    ".aif": {"AVFormatIDKey": _four_char("lpcm"), "AVLinearPCMBitDepthKey": 16, "AVLinearPCMIsBigEndianKey": 1},
+    ".caf": {"AVFormatIDKey": _four_char("lpcm"), "AVLinearPCMBitDepthKey": 16, "AVLinearPCMIsBigEndianKey": 0},
+}
+
+
+def _recorder(target: Path, channels: int, metering: bool = False) -> int:
+    """An autoreleased, prepared ``AVAudioRecorder`` writing to ``target``. Call inside an autorelease pool."""
+    framework("AVFoundation")
+    settings = dict(_RECORD_FORMATS[target.suffix.lower()], AVSampleRateKey=44100, AVNumberOfChannelsKey=channels)
+    number = lambda value: _objc.send(  # noqa: E731
+        _objc.cls("NSNumber"), "numberWithDouble:", float(value), argtypes=(ctypes.c_double,)
+    )
+    dictionary = _objc.send(
+        _objc.cls("NSDictionary"),
+        "dictionaryWithObjects:forKeys:",
+        _objc.nsarray_of([number(value) for value in settings.values()]),
+        _objc.nsarray_of([_objc.nsstring(key) for key in settings]),
+        argtypes=(_objc.id, _objc.id),
+    )
+    error = ctypes.c_void_p()
+    recorder = _objc.send(
+        _objc.send(_objc.cls("AVAudioRecorder"), "alloc"),
+        "initWithURL:settings:error:",
+        _objc.file_url(target),
+        dictionary,
+        ctypes.byref(error),
+        argtypes=(_objc.id, _objc.id, ctypes.c_void_p),
+    )
+    if not recorder:
+        raise MacOSError("could not record to {}: {}".format(target, _objc.error_message(error) or "unknown error"))
+    _objc.send(recorder, "autorelease")
+    _objc.send(recorder, "setMeteringEnabled:", metering, argtypes=(_objc.BOOL,), restype=None)
+    if not _objc.send(recorder, "prepareToRecord", restype=_objc.BOOL):
+        raise MacOSError("the microphone could not be prepared")
+    return recorder
+
+
+def record(path: Union[str, "os.PathLike[str]"], seconds: float, *, channels: int = 1) -> Path:
+    """
+    Record the microphone for ``seconds`` into ``path``, and return it when the recording ends.
+
+    ``path``'s extension sets the format: ``.m4a`` (AAC, small), ``.wav``,
+    ``.aiff`` or ``.caf`` (uncompressed). ``channels`` is 1 (mono) or 2
+    (stereo). It records the default input: switch it first with
+    :func:`set_input`. Needs the Microphone permission, which macOS asks for
+    the first time::
+
+        macos.audio.record("memo.m4a", 30)
+    """
+    if seconds <= 0:
+        raise ValueError("seconds must be positive, not {}".format(seconds))
+    if channels not in (1, 2):
+        raise ValueError("channels must be 1 or 2, not {}".format(channels))
+    target = Path(path).expanduser().absolute()
+    if target.suffix.lower() not in _RECORD_FORMATS:
+        raise ValueError(
+            "can't record {!r} files; use one of {}".format(target.suffix, ", ".join(sorted(_RECORD_FORMATS)))
+        )
+    _capture.require_permission(_capture.AUDIO)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with _objc.autorelease_pool():
+        recorder = _recorder(target, channels)
+        if not _objc.send(recorder, "record", restype=_objc.BOOL):
+            raise MacOSError("the microphone could not start recording")
+        # Not recordForDuration: its stop is a run loop timer, which a
+        # script never turns. Stop it ourselves, even on Ctrl-C.
+        try:
+            time.sleep(seconds)
+        finally:
+            _objc.send(recorder, "stop", restype=None)
+    if not target.exists():
+        raise MacOSError("the recording wasn't saved")
+    return target
+
+
+def input_level(seconds: float = 0.3) -> float:
+    """
+    How loud the microphone hears it right now, from 0.0 (silence) to 1.0 (the loudest it takes).
+
+    Listens for ``seconds`` and returns the average level: about 0.01 in a
+    quiet room, 0.1 to 0.3 for someone talking nearby. Handy to tell whether
+    someone is speaking, or to wait for quiet::
+
+        while macos.audio.input_level() > 0.05:
+            time.sleep(1)
+
+    Needs the Microphone permission, like :func:`record`. Nothing is kept.
+    """
+    if seconds <= 0:
+        raise ValueError("seconds must be positive, not {}".format(seconds))
+    _capture.require_permission(_capture.AUDIO)
+    handle, name = tempfile.mkstemp(suffix=".caf")
+    os.close(handle)
+    scratch = Path(name)
+    levels: List[float] = []
+    try:
+        with _objc.autorelease_pool():
+            recorder = _recorder(scratch, 1, metering=True)
+            if not _objc.send(recorder, "record", restype=_objc.BOOL):
+                raise MacOSError("the microphone could not start listening")
+            try:
+                end = time.monotonic() + seconds
+                while time.monotonic() < end:
+                    time.sleep(0.05)
+                    _objc.send(recorder, "updateMeters", restype=None)
+                    power = _objc.send(
+                        recorder, "averagePowerForChannel:", 0, argtypes=(_objc.NSUInteger,), restype=ctypes.c_float
+                    )
+                    levels.append(10 ** (float(power) / 20))  # decibels to a 0-1 amplitude
+            finally:
+                _objc.send(recorder, "stop", restype=None)
+    finally:
+        scratch.unlink(missing_ok=True)
+    level = sum(levels) / len(levels) if levels else 0.0
+    return round(min(max(level, 0.0), 1.0), 4) if not math.isnan(level) else 0.0

@@ -49,6 +49,8 @@ keywords = [
     "hotkeys",
     "video",
     "music",
+    "webcam",
+    "microphone",
     "appkit",
     "cocoa",
     "ctypes",

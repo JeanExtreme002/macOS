@@ -297,6 +297,15 @@ class _ImmediateThread:
         lambda: macos.music.volume(),
         lambda: macos.music.set_volume(50),
         lambda: macos.music.seek(10),
+        lambda: macos.camera.devices(),
+        lambda: macos.camera.photo(),
+        lambda: macos.camera.record("out.mov", 1),
+        lambda: macos.camera.has_permission(),
+        lambda: macos.camera.request_permission(),
+        lambda: macos.audio.record("out.m4a", 1),
+        lambda: macos.audio.input_level(),
+        lambda: macos.audio.has_permission(),
+        lambda: macos.audio.request_permission(),
         lambda: macos.system.volumes(),
         lambda: macos.system.eject("Backup"),
         lambda: macos.image.info(__file__),
@@ -1957,3 +1966,73 @@ def test_set_fullscreen_asks_again_when_macos_drops_the_request(monkeypatch):
     window.set_fullscreen(False)
 
     assert window.fullscreen is False and window.requests == 2
+
+
+def test_capture_argument_checks(tmp_path):
+    with pytest.raises(ValueError, match="can't save '.gif'"):
+        macos.camera.photo(tmp_path / "out.gif")
+    with pytest.raises(ValueError, match=".mov"):
+        macos.camera.record(tmp_path / "out.mp4", 1)
+    with pytest.raises(ValueError, match="positive"):
+        macos.camera.record(tmp_path / "out.mov", 0)
+    with pytest.raises(ValueError, match="positive"):
+        macos.audio.record(tmp_path / "out.m4a", 0)
+    with pytest.raises(ValueError, match="channels"):
+        macos.audio.record(tmp_path / "out.m4a", 1, channels=3)
+    with pytest.raises(ValueError, match="can't record '.mp3'"):
+        macos.audio.record(tmp_path / "out.mp3", 1)
+    with pytest.raises(ValueError, match="positive"):
+        macos.audio.input_level(0)
+
+
+def test_capture_permission_denied(monkeypatch):
+    from macos import _capture
+
+    monkeypatch.setattr(_capture, "request_permission", lambda media: False)
+
+    with pytest.raises(macos.PermissionDeniedError, match="Camera permission"):
+        _capture.require_permission(_capture.VIDEO)
+    with pytest.raises(macos.PermissionDeniedError, match="Microphone permission"):
+        _capture.require_permission(_capture.AUDIO)
+
+
+def test_temporary_photo_is_removed_on_failure(monkeypatch, tmp_path):
+    from macos import _capture
+
+    monkeypatch.setattr(macos.camera.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(_capture, "request_permission", lambda media: False)
+
+    with pytest.raises(macos.PermissionDeniedError):
+        macos.camera.photo()
+
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="calls the Objective-C runtime")
+def test_objc_blocks_and_classes():
+    import ctypes
+
+    from macos import _objc
+
+    seen = []
+    with _objc.autorelease_pool():
+        items = _objc.nsarray_of([_objc.nsstring(text) for text in ("a", "b")])
+        each = _objc.block(
+            lambda item, index, stop: seen.append((_objc.pystring(item), index)),
+            b"v@?@Q^c",
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.c_void_p,
+        )
+        _objc.send(items, "enumerateObjectsUsingBlock:", each, argtypes=(ctypes.c_void_p,), restype=None)
+    assert seen == [("a", 0), ("b", 1)]
+
+    echo = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+    made = _objc.define_class("PymacosTestEcho", {"echo:": ("@@:@", echo, lambda self, cmd, value: value)})
+    assert _objc.define_class("PymacosTestEcho", {}) == made  # made once
+    with _objc.autorelease_pool():
+        answer = _objc.send(_objc.new("PymacosTestEcho"), "echo:", _objc.nsstring("hi"), argtypes=(_objc.id,))
+        assert _objc.pystring(answer) == "hi"
+
+    assert _objc.run_until(lambda: True, 1) is True
+    assert _objc.run_until(lambda: False, 0.1) is False

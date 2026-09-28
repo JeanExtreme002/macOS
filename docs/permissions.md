@@ -9,6 +9,8 @@ itself, so a script can work in one terminal and not in another.
 | {func}`macos.screenshot` | Screen Recording | System Settings › Privacy & Security › Screen & System Audio Recording |
 | {func}`macos.notify` | Notifications for *Script Editor* | System Settings › Notifications › Script Editor |
 | {mod}`macos.keyboard` typing and keys, {mod}`macos.mouse` moving, clicking and scrolling | Accessibility | System Settings › Privacy & Security › Accessibility |
+| {func}`macos.camera.photo`, {func}`macos.camera.record` | Camera (asked the first time) | System Settings › Privacy & Security › Camera |
+| {func}`macos.audio.record`, {func}`~macos.audio.input_level`, videos with sound | Microphone (asked the first time) | System Settings › Privacy & Security › Microphone |
 | {mod}`macos.windows` | Accessibility | System Settings › Privacy & Security › Accessibility |
 | {mod}`macos.hotkeys` | Input Monitoring, and Accessibility to keep shortcuts from the app in front | System Settings › Privacy & Security › Input Monitoring |
 | {func}`macos.screen.record` | Screen Recording (and Microphone with `audio=True`) | System Settings › Privacy & Security › Screen & System Audio Recording |
@@ -35,6 +37,22 @@ macos.screen.request_permission()   # show the system prompt
 
 After granting it in System Settings, **restart the app running Python**; macOS
 only applies the change to newly started processes.
+
+## Camera and microphone
+
+The camera and the microphone need their own permission, which macOS asks for
+the first time a script uses them. Check or ask without taking anything:
+
+```python
+macos.camera.has_permission()
+macos.camera.request_permission()   # shows the prompt the first time
+macos.audio.has_permission()        # the microphone
+macos.audio.request_permission()
+```
+
+If the user denies it, {mod}`macos.camera` and {func}`macos.audio.record` raise
+{class}`~macos.PermissionDeniedError`; allow it again in System Settings ›
+Privacy & Security, then restart the app running Python.
 
 ## Accessibility
 

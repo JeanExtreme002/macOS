@@ -1,11 +1,11 @@
 # pymacos
 
-**A Pythonic interface to macOS.** Notifications, clipboard, keyboard and
-mouse, windows, global hotkeys, dark mode, apps, Keychain, speech, screenshots,
-battery, volume, Shortcuts, Finder, Spotlight, dialogs, system info, OCR,
-document scanning, background removal, duplicate photos, images, PDFs, videos,
-music control, audio devices, Bluetooth, brightness and language tools, all
-from one import with zero dependencies.
+**A Pythonic interface to macOS.** Notifications, clipboard, webcam and
+microphone, keyboard and mouse, windows, global hotkeys, dark mode, apps,
+Keychain, speech, screenshots, battery, volume, Shortcuts, Finder, Spotlight,
+dialogs, system info, OCR, document scanning, background removal, duplicate
+photos, images, PDFs, videos, music control, audio devices, Bluetooth,
+brightness and language tools, all from one import with zero dependencies.
 
 <table class="badge-table">
   <tr>
@@ -121,6 +121,7 @@ keychain
 appearance
 audio
 bluetooth
+camera
 network
 power
 screen

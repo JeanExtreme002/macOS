@@ -3,11 +3,11 @@
 """
 pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
-Notifications, clipboard, keyboard and mouse, windows, hotkeys, appearance,
-apps, Keychain, speech, screenshots, power, Shortcuts, Finder, volume,
-Spotlight, dialogs, system info, Bluetooth, music, OCR, document scanning,
-images, videos, PDFs and language detection in one import, with no
-dependencies::
+Notifications, clipboard, webcam and microphone, keyboard and mouse, windows,
+hotkeys, appearance, apps, Keychain, speech, screenshots, power, Shortcuts,
+Finder, volume, Spotlight, dialogs, system info, Bluetooth, music, OCR,
+document scanning, images, videos, PDFs and language detection in one import,
+with no dependencies::
 
     import macos
 
@@ -52,6 +52,7 @@ from . import (
     apps,
     audio,
     bluetooth,
+    camera,
     clipboard,
     dialog,
     finder,
@@ -96,6 +97,7 @@ __all__ = [
     "apps",
     "audio",
     "bluetooth",
+    "camera",
     "clipboard",
     "dialog",
     "finder",
