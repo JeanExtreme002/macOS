@@ -166,6 +166,7 @@ copies, resized or re-saved versions, burst shots:
 
 ```python
 photos = sorted(Path("~/Pictures/Trip").expanduser().glob("*.jpg"))
+
 for group in macos.vision.duplicates(photos):
     print("Same picture:", [photo.name for photo in group])
 ```
@@ -193,6 +194,7 @@ sharp, well lit, eyes open, facing the camera. With
 ```python
 for group in macos.vision.duplicates(photos):
     keep = macos.vision.best_shot(group) or group[0]
+
     for photo in group:
         if photo != keep:
             macos.finder.trash(photo)

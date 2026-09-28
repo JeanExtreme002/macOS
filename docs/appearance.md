@@ -6,9 +6,9 @@ and which accent color the user picked.
 ```python
 import macos
 
-macos.appearance.is_dark()   # True
-macos.appearance.mode()      # 'dark' or 'light'
-macos.appearance.is_auto()   # True if set to Auto
+macos.appearance.is_dark()        # True
+macos.appearance.mode()           # 'dark' or 'light'
+macos.appearance.is_auto()        # True if set to Auto
 macos.appearance.accent_color()   # '#007aff'
 ```
 
