@@ -117,8 +117,6 @@ macos.open_with("report.pdf", "Preview")
 macos.open_with("notes.md", "com.microsoft.VSCode")
 ```
 
-`macos.open_with` is also available as {func}`macos.apps.open_with`.
-
 The app can be a name, a bundle identifier or a path, as for
 {func}`~macos.apps.open`. Pass `background=True` to open without bringing the
 app to the front.
