@@ -9,7 +9,7 @@ Finder operations: reveal files, move them to the Trash, manage tags and aliases
     macos.finder.trash("old.log")                 # Path in ~/.Trash
     macos.finder.add_tags("report.pdf", "Work")
     macos.finder.tags("report.pdf")               # ['Work']
-    macos.finder.resolve_alias("calibre alias")   # PosixPath('/Applications/calibre.app')
+    macos.finder.resolve_alias("Projects alias")  # PosixPath('/Users/alice/Documents/Projects')
 
 Trash and tags go through Foundation (``NSFileManager``/``NSURL``), the same
 APIs Finder itself uses: a trashed file can be restored with *Put Back*, and

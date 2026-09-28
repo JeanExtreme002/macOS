@@ -47,8 +47,8 @@ follow it: `os.path.realpath()` and `Path.resolve()` return the alias itself.
 {func}`~macos.finder.resolve_alias` returns the original:
 
 ```python
-macos.finder.resolve_alias("calibre alias")   # PosixPath('/Applications/calibre.app')
-macos.finder.is_alias("calibre alias")        # True
+macos.finder.resolve_alias("Projects alias")   # PosixPath('/Users/alice/Documents/Projects')
+macos.finder.is_alias("Projects alias")        # True
 ```
 
 {func}`~macos.finder.resolve_alias` also follows symbolic links, and aliases
