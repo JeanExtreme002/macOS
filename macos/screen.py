@@ -38,6 +38,8 @@ __all__ = [
     "start_screensaver",
     "brightness",
     "set_brightness",
+    "night_shift",
+    "set_night_shift",
 ]
 
 _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tiff": "tiff", ".gif": "gif", ".pdf": "pdf"}
@@ -389,3 +391,67 @@ def set_brightness(value: float, *, display_id: Union[int, Display, None] = None
     status = _display_services().DisplayServicesSetBrightness(target, float(value))
     if status != 0:
         raise MacOSError("could not change the brightness of display {} (error {})".format(target, status))
+
+
+class _NightShiftTime(ctypes.Structure):
+    _fields_ = [("hour", ctypes.c_int), ("minute", ctypes.c_int)]
+
+
+class _NightShiftStatus(ctypes.Structure):
+    # CoreBrightness's private StatusData, as the Night Shift settings read it.
+    _fields_ = [
+        ("active", ctypes.c_bool),
+        ("enabled", ctypes.c_bool),
+        ("sun_schedule_permitted", ctypes.c_bool),
+        ("mode", ctypes.c_int),
+        ("start", _NightShiftTime),
+        ("end", _NightShiftTime),
+        ("disable_flags", ctypes.c_ulonglong),
+        ("available", ctypes.c_bool),
+    ]
+
+
+def _night_shift_client() -> int:
+    """An autoreleased ``CBBlueLightClient``. Call inside an autorelease pool."""
+    private_framework("CoreBrightness")
+    framework("Foundation")
+    if not _objc.cls("CBBlueLightClient"):
+        raise NotSupportedError("this version of macOS doesn't expose Night Shift")
+    return _objc.new("CBBlueLightClient")
+
+
+def _night_shift_status() -> _NightShiftStatus:
+    status = _NightShiftStatus()
+    with _objc.autorelease_pool():
+        ok = _objc.send(
+            _night_shift_client(), "getBlueLightStatus:", ctypes.byref(status), argtypes=(ctypes.c_void_p,), restype=_objc.BOOL
+        )
+    if not ok:
+        raise MacOSError("could not read the Night Shift status")
+    if not status.available:
+        raise NotSupportedError("Night Shift isn't available on this Mac's displays")
+    return status
+
+
+def night_shift() -> bool:
+    """
+    Whether Night Shift is on right now, making the display warmer (yellower).
+
+    It's on when turned on by hand or during its schedule (System Settings ›
+    Displays › Night Shift).
+    """
+    return bool(_night_shift_status().enabled)
+
+
+def set_night_shift(on: bool) -> None:
+    """
+    Turn Night Shift on or off now, like the switch in Control Center.
+
+    Its schedule, if any, still applies: it turns on or off again at the
+    scheduled times.
+    """
+    _night_shift_status()  # raises when unavailable
+    with _objc.autorelease_pool():
+        ok = _objc.send(_night_shift_client(), "setEnabled:", bool(on), argtypes=(_objc.BOOL,), restype=_objc.BOOL)
+    if not ok:
+        raise MacOSError("macOS refused to turn Night Shift {}".format("on" if on else "off"))

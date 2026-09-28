@@ -9,26 +9,32 @@ Type text, press keys and shortcuts, and control the keyboard backlight.
     macos.keyboard.press("enter")
     macos.keyboard.press("cmd+shift+4")        # the screenshot shortcut
     macos.keyboard.set_brightness(0.5)          # the keyboard backlight
+    macos.keyboard.set_layout("ABC")            # the input source
 
 Typing and pressing keys need the *Accessibility* permission for the app
 running Python (your terminal or IDE); without it macOS silently drops the
 keystrokes, so these functions raise :class:`~macos.errors.PermissionDeniedError`
-instead. The backlight needs no permission.
+instead. The backlight and the layouts need no permission.
 """
 
 import ctypes
 import threading
 import time
+from contextlib import contextmanager
 from functools import lru_cache
-from typing import Dict, List, Tuple
+from typing import Dict, Iterator, List, Tuple
 
-from . import _events, _objc
+from . import _cf, _events, _objc
 from ._system import framework, private_framework
 from .errors import MacOSError, NotSupportedError
 
 __all__ = [
     "type",
     "press",
+    "hold",
+    "layout",
+    "layouts",
+    "set_layout",
     "has_permission",
     "request_permission",
     "brightness",
@@ -122,6 +128,12 @@ def _text_input() -> ctypes.CDLL:
         ctypes.POINTER(ctypes.c_uint16),
     )
     carbon.UCKeyTranslate.restype = ctypes.c_int32
+    carbon.TISCopyCurrentKeyboardInputSource.argtypes = ()
+    carbon.TISCopyCurrentKeyboardInputSource.restype = pointer
+    carbon.TISCreateInputSourceList.argtypes = (pointer, ctypes.c_bool)
+    carbon.TISCreateInputSourceList.restype = pointer
+    carbon.TISSelectInputSource.argtypes = (pointer,)
+    carbon.TISSelectInputSource.restype = ctypes.c_int32
     return carbon
 
 
@@ -214,7 +226,7 @@ def _key_event(code: int, down: bool, flags: int) -> int:
     event = _events.graphics().CGEventCreateKeyboardEvent(None, code, down)
     if not event:
         raise MacOSError("could not create a keyboard event")
-    _events.graphics().CGEventSetFlags(event, flags)
+    _events.graphics().CGEventSetFlags(event, flags | _events.held_flags())
     return event
 
 
@@ -247,6 +259,51 @@ def press(keys: str, *, times: int = 1) -> None:
         for flag, modifier in reversed(modifiers):
             flags &= ~flag
             _events.post(_key_event(modifier, False, flags))
+
+
+_MODIFIER_FLAGS = {code: flag for flag, code in _MODIFIERS.values()}
+
+
+@contextmanager
+def hold(*keys: str) -> Iterator[None]:
+    """
+    Hold keys down while the ``with`` block runs, and release them at the end.
+
+    For Shift-clicks, Cmd-clicks, Option-drags, or a key held in a game::
+
+        with macos.keyboard.hold("shift"):
+            macos.mouse.click(100, 200)
+            macos.mouse.click(100, 400)      # selects the range in between
+
+        with macos.keyboard.hold("cmd", "option"):
+            macos.mouse.drag(600, 300)
+
+    Each key is written as for :func:`press` (``"cmd+shift"`` holds both).
+    The keys are released even when the block raises. Needs the
+    Accessibility permission.
+    """
+    if not keys:
+        raise ValueError("hold() needs at least one key, such as 'shift'")
+    presses: List[Tuple[int, int]] = []
+    for spec in keys:
+        modifiers, code, shifted = _parse(spec)
+        if shifted and _SHIFT not in modifiers:
+            modifiers.append(_SHIFT)
+        for entry in modifiers + [(_MODIFIER_FLAGS.get(code, 0), code)]:
+            if entry not in presses:
+                presses.append(entry)
+    _events.require_permission()
+    pressed: List[Tuple[int, int]] = []
+    try:
+        for flag, code in presses:
+            _events.HELD.append(flag)
+            pressed.append((flag, code))
+            _events.post(_key_event(code, True, 0))
+        yield
+    finally:
+        for flag, code in reversed(pressed):
+            _events.HELD.remove(flag)
+            _events.post(_key_event(code, False, 0))
 
 
 def _chunks(text: str, size: int) -> List[str]:
@@ -301,6 +358,83 @@ def type(text: str, *, interval: float = 0.0) -> None:
                 _events.post(event)
         if interval:
             time.sleep(interval)
+
+
+# Keyboard layouts (input sources), through Text Input Sources.
+
+
+def _tis_constant(name: str) -> int:
+    return ctypes.c_void_p.in_dll(_text_input(), name).value or 0
+
+
+def _source_property(source: int, name: str) -> str:
+    return _cf.to_str(_text_input().TISGetInputSourceProperty(source, _tis_constant(name))) or ""
+
+
+@contextmanager
+def _input_sources() -> Iterator[List[Tuple[int, str, str]]]:
+    """The enabled keyboard input sources, as ``(source, name, id)``, alive inside the ``with`` block."""
+    cf = _cf.lib()
+    wanted = _cf.dictionary(
+        {
+            _tis_constant("kTISPropertyInputSourceCategory"): _tis_constant("kTISCategoryKeyboardInputSource"),
+            _tis_constant("kTISPropertyInputSourceIsSelectCapable"): _cf.constant(cf, "kCFBooleanTrue"),
+        }
+    )
+    with _cf.owned(wanted):
+        found = _text_input().TISCreateInputSourceList(wanted, False)
+    with _cf.owned(found):
+        yield [
+            (
+                source,
+                _source_property(source, "kTISPropertyLocalizedName"),
+                _source_property(source, "kTISPropertyInputSourceID"),
+            )
+            for source in _cf.items(found)
+        ]
+
+
+def layouts() -> List[str]:
+    """
+    Return the keyboard layouts and input methods enabled in the menu bar's input menu: ``['ABC', 'Brazilian']``.
+
+    Add more in System Settings › Keyboard › Text Input.
+    """
+    with _input_sources() as sources:
+        return [name for _, name, _ in sources]
+
+
+def layout() -> str:
+    """Return the keyboard layout (input source) in use, such as ``'ABC'`` or ``'Brazilian'``."""
+    carbon = _text_input()
+    with _cf.owned(carbon.TISCopyCurrentKeyboardInputSource()) as source:
+        if not source:
+            raise MacOSError("could not read the keyboard layout")
+        return _source_property(source, "kTISPropertyLocalizedName")
+
+
+def set_layout(name: str) -> str:
+    """
+    Switch to one of the enabled keyboard layouts, like picking it in the input menu, and return its name.
+
+    ``name`` is as :func:`layouts` returns it, its identifier (such as
+    ``'com.apple.keylayout.ABC'``) or part of its name when that matches only
+    one layout.
+    """
+    with _input_sources() as sources:
+        exact = [entry for entry in sources if name in (entry[1], entry[2])]
+        loose = [entry for entry in sources if name.casefold() in entry[1].casefold()]
+        chosen = exact or loose
+        names = ", ".join(repr(entry[1]) for entry in sources)
+        if not chosen:
+            raise ValueError("no enabled keyboard layout matches {!r}; enabled: {}".format(name, names))
+        if len(chosen) > 1:
+            raise ValueError("{!r} matches several keyboard layouts ({}); use the full name".format(name, names))
+        source, found, _ = chosen[0]
+        status = _text_input().TISSelectInputSource(source)
+    if status != 0:
+        raise MacOSError("could not switch to {!r} (OSStatus {})".format(found, status))
+    return found
 
 
 # The keyboard backlight, through CoreBrightness (a private framework).

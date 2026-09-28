@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Information about the Mac: macOS version, model, name, uptime, idle time, disks and fonts.
+Information about the Mac: macOS version, model, name, uptime, idle time, disks, fonts, heat and lid.
 
 ::
 
@@ -27,7 +27,7 @@ from typing import List, Optional, Union
 
 from . import _cf, _objc
 from ._system import framework, require_macos, run
-from .errors import MacOSError
+from .errors import MacOSError, NotSupportedError
 
 __all__ = [
     "version",
@@ -42,6 +42,8 @@ __all__ = [
     "volumes",
     "eject",
     "fonts",
+    "thermal_state",
+    "lid_closed",
     "Volume",
 ]
 
@@ -294,3 +296,44 @@ def fonts() -> List[str]:
         names = [_objc.pystring(family) or "" for family in families]
     # Hidden system families (".SF NS", ".Apple Color Emoji UI"...) can't be picked by name.
     return sorted((name for name in names if name and not name.startswith(".")), key=str.casefold)
+
+
+_THERMAL_STATES = ("nominal", "fair", "serious", "critical")
+
+
+def thermal_state() -> str:
+    """
+    How hot the Mac is running: ``'nominal'``, ``'fair'``, ``'serious'`` or ``'critical'``.
+
+    At ``'serious'`` macOS slows the processor down to cool it; at
+    ``'critical'`` it's close to shutting down. A long job can check it and
+    pause::
+
+        while macos.system.thermal_state() in ("serious", "critical"):
+            time.sleep(60)
+    """
+    framework("Foundation")
+    with _objc.autorelease_pool():
+        info = _objc.send(_objc.cls("NSProcessInfo"), "processInfo")
+        state = int(_objc.send(info, "thermalState", restype=_objc.NSInteger))
+    return _THERMAL_STATES[state] if 0 <= state < len(_THERMAL_STATES) else "unknown"
+
+
+def lid_closed() -> bool:
+    """
+    Whether the MacBook's lid is closed, as when it runs with an external display (clamshell mode).
+
+    Raises :class:`~macos.errors.NotSupportedError` on a Mac without a lid.
+    """
+    io = _iokit()
+    service = io.IOServiceGetMatchingService(0, io.IOServiceMatching(b"IOPMrootDomain"))
+    if not service:
+        raise MacOSError("the IOPMrootDomain service is not available")
+    try:
+        with _cf.owned(_cf.string("AppleClamshellState")) as key:
+            with _cf.owned(io.IORegistryEntryCreateCFProperty(service, key, None, 0)) as value:
+                if not value:
+                    raise NotSupportedError("this Mac has no lid")
+                return _cf.to_bool(value)
+    finally:
+        io.IOObjectRelease(service)

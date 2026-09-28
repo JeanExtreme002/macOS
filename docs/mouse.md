@@ -29,7 +29,13 @@ macos.mouse.click(400, 300, count=2)       # double-click
 ```
 
 Apps see a real mouse: hover effects and tooltips react. `button` is `"left"`
-(the default), `"right"` or `"middle"`.
+(the default), `"right"` or `"middle"`. For a Shift-click or a Cmd-click, hold
+the key with {func}`macos.keyboard.hold`:
+
+```python
+with macos.keyboard.hold("cmd"):
+    macos.mouse.click(200, 300)
+```
 
 ## Dragging
 

@@ -9,6 +9,7 @@ itself, so a script can work in one terminal and not in another.
 | {func}`macos.screenshot` | Screen Recording | System Settings › Privacy & Security › Screen & System Audio Recording |
 | {func}`macos.notify` | Notifications for *Script Editor* | System Settings › Notifications › Script Editor |
 | {mod}`macos.keyboard` typing and keys, {mod}`macos.mouse` moving, clicking and scrolling | Accessibility | System Settings › Privacy & Security › Accessibility |
+| {func}`macos.appearance.set_mode` | Automation of *System Events* (asked the first time) | System Settings › Privacy & Security › Automation |
 | {func}`macos.bluetooth.connect`, {func}`~macos.bluetooth.disconnect` | Bluetooth (asked the first time) | System Settings › Privacy & Security › Bluetooth |
 
 The other features (clipboard, appearance, apps, Keychain, speech, power,
@@ -43,6 +44,14 @@ macos.keyboard.request_permission()   # show the system prompt
 ```
 
 As with Screen Recording, **restart the app running Python** after allowing it.
+
+## Automation
+
+{func}`macos.appearance.set_mode` asks System Events to switch the
+appearance, so the first time macOS asks whether the app running Python may
+control System Events. If that's denied, it raises
+{class}`~macos.PermissionDeniedError`; allow it again in System Settings ›
+Privacy & Security › Automation.
 
 ## Notifications
 

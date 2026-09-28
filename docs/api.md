@@ -45,6 +45,7 @@ explain how to use each part.
 
 .. autofunction:: macos.appearance.is_dark
 .. autofunction:: macos.appearance.mode
+.. autofunction:: macos.appearance.set_mode
 .. autofunction:: macos.appearance.is_auto
 .. autofunction:: macos.appearance.accent_color
 .. autofunction:: macos.appearance.wait_for_change
@@ -72,6 +73,10 @@ explain how to use each part.
 
 .. autofunction:: macos.keyboard.type
 .. autofunction:: macos.keyboard.press
+.. autofunction:: macos.keyboard.hold
+.. autofunction:: macos.keyboard.layouts
+.. autofunction:: macos.keyboard.layout
+.. autofunction:: macos.keyboard.set_layout
 .. autofunction:: macos.keyboard.has_permission
 .. autofunction:: macos.keyboard.request_permission
 .. autofunction:: macos.keyboard.brightness
@@ -313,6 +318,8 @@ explain how to use each part.
 .. autofunction:: macos.screen.start_screensaver
 .. autofunction:: macos.screen.brightness
 .. autofunction:: macos.screen.set_brightness
+.. autofunction:: macos.screen.night_shift
+.. autofunction:: macos.screen.set_night_shift
 ```
 
 ## macos.dialog
@@ -346,6 +353,8 @@ explain how to use each part.
 .. autofunction:: macos.system.volumes
 .. autofunction:: macos.system.eject
 .. autofunction:: macos.system.fonts
+.. autofunction:: macos.system.thermal_state
+.. autofunction:: macos.system.lid_closed
 .. autoclass:: macos.system.Volume
 ```
 

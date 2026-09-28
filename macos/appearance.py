@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 
 """
-Query the system appearance (Light / Dark mode) and the accent color.
+Read and switch the system appearance (Light / Dark mode), and read the accent color.
 
 ::
 
     if macos.appearance.is_dark():
         theme = "dark"
     macos.appearance.accent_color()      # '#007aff'
+    macos.appearance.set_mode("dark")
 
 The value is read fresh from the preferences daemon on every call, so it
 follows the user switching modes (or *Auto* switching at sunset) while your
@@ -19,9 +20,10 @@ import time
 from typing import Optional
 
 from . import _cf, _objc
-from ._system import framework
+from ._system import framework, run
+from .errors import CommandError, PermissionDeniedError
 
-__all__ = ["is_dark", "mode", "is_auto", "accent_color", "wait_for_change"]
+__all__ = ["is_dark", "mode", "set_mode", "is_auto", "accent_color", "wait_for_change"]
 
 
 def _read(key: str) -> Optional[int]:
@@ -43,6 +45,30 @@ def mode() -> str:
 def is_dark() -> bool:
     """Whether Dark mode is currently in effect."""
     return mode() == "dark"
+
+
+def set_mode(mode: str) -> None:
+    """
+    Switch the whole system to ``"dark"`` or ``"light"`` mode, like System Settings › Appearance.
+
+    Goes through System Events, so the first time macOS asks to allow the app
+    running Python (your terminal or IDE) to control it; if that's denied,
+    :class:`~macos.errors.PermissionDeniedError` is raised.
+    """
+    if mode not in ("dark", "light"):
+        raise ValueError("mode must be 'dark' or 'light', not {!r}".format(mode))
+    script = 'tell application "System Events" to tell appearance preferences to set dark mode to {}'.format(
+        "true" if mode == "dark" else "false"
+    )
+    try:
+        run(["osascript", "-e", script])
+    except CommandError as error:
+        if "-1743" in error.stderr:  # errAEEventNotPermitted
+            raise PermissionDeniedError(
+                "Automation permission is missing: allow the app running Python (your terminal or IDE) to control "
+                "System Events in System Settings › Privacy & Security › Automation"
+            ) from None
+        raise
 
 
 def is_auto() -> bool:

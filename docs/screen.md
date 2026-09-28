@@ -104,6 +104,19 @@ With *Automatically adjust brightness* on (System Settings › Displays), macOS
 keeps adapting it to the room's light afterwards. It uses a private macOS
 framework, since there's no public one.
 
+## Night Shift
+
+```python
+macos.screen.night_shift()          # False
+macos.screen.set_night_shift(True)  # warmer colors now
+```
+
+{func}`~macos.screen.night_shift` tells whether it's on right now, turned on
+by hand or by its schedule. {func}`~macos.screen.set_night_shift` works like
+the switch in Control Center: a schedule set in System Settings › Displays ›
+Night Shift still applies afterwards. It uses a private macOS framework,
+since there's no public one.
+
 ## Screen saver
 
 ```python
@@ -126,3 +139,5 @@ this also locks it.
 - {func}`macos.screen.start_screensaver`
 - {func}`macos.screen.brightness`
 - {func}`macos.screen.set_brightness`
+- {func}`macos.screen.night_shift`
+- {func}`macos.screen.set_night_shift`

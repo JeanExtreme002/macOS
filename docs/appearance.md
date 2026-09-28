@@ -24,6 +24,18 @@ import macos
 plt.style.use("dark_background" if macos.appearance.is_dark() else "default")
 ```
 
+## Switching modes
+
+{func}`~macos.appearance.set_mode` switches the whole system to `"dark"` or
+`"light"`:
+
+```python
+macos.appearance.set_mode("dark")
+```
+
+It goes through System Events, so the first time macOS asks to allow the app
+running Python to control it (see [Permissions](permissions.md#automation)).
+
 ## Accent color
 
 {func}`~macos.appearance.accent_color` returns the accent color chosen in
@@ -54,6 +66,7 @@ With `timeout`, it raises `TimeoutError` if nothing changes in time.
 
 - {func}`macos.appearance.is_dark`
 - {func}`macos.appearance.mode`
+- {func}`macos.appearance.set_mode`
 - {func}`macos.appearance.is_auto`
 - {func}`macos.appearance.accent_color`
 - {func}`macos.appearance.wait_for_change`

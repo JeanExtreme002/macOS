@@ -1,7 +1,8 @@
 # Keyboard
 
 {mod}`macos.keyboard` types text and presses keys and shortcuts in the app in
-front, as if typed on the keyboard. It also controls the keyboard backlight.
+front, as if typed on the keyboard. It also switches keyboard layouts and
+controls the keyboard backlight.
 
 ```python
 import macos
@@ -12,7 +13,7 @@ macos.keyboard.press("cmd+shift+4")   # the screenshot shortcut
 ```
 
 Typing and pressing keys need the [Accessibility permission](permissions.md#accessibility).
-The backlight needs none.
+Layouts and the backlight need none.
 
 ## Typing text
 
@@ -60,6 +61,37 @@ macos.keyboard.press("cmd+n")
 macos.keyboard.type("Written by Python")
 ```
 
+## Holding keys
+
+{func}`~macos.keyboard.hold` keeps keys down while a `with` block runs, for
+Shift-clicks, Cmd-clicks, Option-drags, or a key held in a game:
+
+```python
+with macos.keyboard.hold("shift"):
+    macos.mouse.click(100, 200)
+    macos.mouse.click(100, 400)   # selects everything in between
+
+with macos.keyboard.hold("cmd", "option"):
+    macos.mouse.drag(600, 300)
+```
+
+Keys are written as for {func}`~macos.keyboard.press`. They are released at
+the end of the block, even when it raises.
+
+## Keyboard layouts
+
+```python
+macos.keyboard.layouts()          # ['ABC', 'Brazilian']
+macos.keyboard.layout()           # 'Brazilian'
+macos.keyboard.set_layout("ABC")
+```
+
+{func}`~macos.keyboard.layouts` lists the layouts and input methods enabled in
+the menu bar's input menu; add more in System Settings › Keyboard › Text
+Input. {func}`~macos.keyboard.set_layout` takes a name from that list, its
+identifier (such as `'com.apple.keylayout.ABC'`), or part of its name when
+only one layout matches.
+
 ## Keyboard backlight
 
 On Macs with a backlit keyboard:
@@ -81,6 +113,10 @@ They use a private macOS framework, since there's no public one.
 
 - {func}`macos.keyboard.type`
 - {func}`macos.keyboard.press`
+- {func}`macos.keyboard.hold`
+- {func}`macos.keyboard.layouts`
+- {func}`macos.keyboard.layout`
+- {func}`macos.keyboard.set_layout`
 - {func}`macos.keyboard.has_permission`
 - {func}`macos.keyboard.request_permission`
 - {func}`macos.keyboard.brightness`

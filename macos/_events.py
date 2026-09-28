@@ -8,6 +8,7 @@ Quartz events and the Accessibility permission they need.
 import ctypes
 import time
 from functools import lru_cache
+from typing import List
 
 from ._objc import CGPoint
 from ._system import framework
@@ -15,6 +16,18 @@ from .errors import PermissionDeniedError
 
 HID_TAP = 0  # kCGHIDEventTap: as if the events came from the hardware
 PAUSE = 0.005  # between events, so apps see them in order
+
+# The modifier flags of the keys held down by macos.keyboard.hold(), one entry
+# per key: every event posted meanwhile carries them, so a click becomes a
+# Shift-click.
+HELD: List[int] = []
+
+
+def held_flags() -> int:
+    flags = 0
+    for flag in HELD:
+        flags |= flag
+    return flags
 
 
 @lru_cache(maxsize=None)

@@ -344,6 +344,15 @@ class _ImmediateThread:
         lambda: macos.bluetooth.devices(),
         lambda: macos.bluetooth.connect("AirPods"),
         lambda: macos.bluetooth.disconnect("AirPods"),
+        lambda: macos.keyboard.hold("shift").__enter__(),
+        lambda: macos.keyboard.layouts(),
+        lambda: macos.keyboard.layout(),
+        lambda: macos.keyboard.set_layout("ABC"),
+        lambda: macos.screen.night_shift(),
+        lambda: macos.screen.set_night_shift(True),
+        lambda: macos.appearance.set_mode("dark"),
+        lambda: macos.system.thermal_state(),
+        lambda: macos.system.lid_closed(),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -1110,6 +1119,10 @@ def test_hardware_argument_checks():
         macos.keyboard.press("cmd+")
     with pytest.raises(ValueError, match="unknown key"):
         macos.keyboard.press("cmd+launch")
+    with pytest.raises(ValueError, match="at least one key"):
+        macos.keyboard.hold().__enter__()
+    with pytest.raises(ValueError, match="'dark' or 'light'"):
+        macos.appearance.set_mode("blue")
 
 
 class _FakeEvents:
@@ -1135,7 +1148,7 @@ class _FakeEvents:
         self.events[event]["text"] = bytes(units)[: length * 2].decode("utf-16-le")
 
     def CGEventCreateMouseEvent(self, source, kind, point, button):
-        return self._new(kind=kind, x=point.x, y=point.y, button=button, clicks=0)
+        return self._new(kind=kind, x=point.x, y=point.y, button=button, clicks=0, flags=0)
 
     def CGEventSetIntegerValueField(self, event, field, value):
         self.events[event]["clicks"] = value
@@ -1388,3 +1401,55 @@ def test_bluetooth_connection_failures(fake_bluetooth, monkeypatch):
 
     with pytest.raises(ValueError, match="timeout"):
         macos.bluetooth.connect("JBL", timeout=0)
+
+
+def test_hold_keeps_modifiers_down_for_clicks_and_keys(fake_events):
+    shift, cmd = 1 << 17, 1 << 20
+
+    with macos.keyboard.hold("shift"):
+        macos.mouse.click(5, 5)
+        with macos.keyboard.hold("cmd"):
+            macos.keyboard.press("c")
+
+    posted = [(event["kind"], event.get("code"), event.get("down"), event["flags"]) for event in fake_events.posted]
+    assert posted == [
+        ("key", 56, True, shift),
+        (5, None, None, shift),  # the click and its move carry Shift
+        (1, None, None, shift),
+        (2, None, None, shift),
+        ("key", 55, True, shift | cmd),
+        ("key", 8, True, shift | cmd),
+        ("key", 8, False, shift | cmd),
+        ("key", 55, False, shift),
+        ("key", 56, False, 0),
+    ]
+    assert macos._events.HELD == []
+
+
+def test_hold_releases_the_keys_when_the_block_fails(fake_events):
+    with pytest.raises(RuntimeError):
+        with macos.keyboard.hold("cmd+shift"):
+            raise RuntimeError("boom")
+
+    released = [(event["code"], event["flags"]) for event in fake_events.posted if not event["down"]]
+    assert released == [(56, 1 << 20), (55, 0)]
+    assert macos._events.HELD == []
+
+
+def test_set_mode(fake_run):
+    macos.appearance.set_mode("light")
+
+    assert fake_run.args[:2] == ["osascript", "-e"]
+    assert fake_run.args[2].endswith("set dark mode to false")
+
+
+def test_set_mode_without_the_automation_permission(fake_run):
+    fake_run.returncode = 1
+    fake_run.stderr = "execution error: Not authorized to send Apple events to System Events. (-1743)"
+
+    with pytest.raises(macos.PermissionDeniedError, match="Automation"):
+        macos.appearance.set_mode("dark")
+
+    fake_run.stderr = "execution error: something else (-1)"
+    with pytest.raises(macos.CommandError):
+        macos.appearance.set_mode("dark")

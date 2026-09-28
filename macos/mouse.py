@@ -11,6 +11,9 @@ Read the pointer position, move it, click, drag and scroll.
     macos.mouse.click(300, 400, button="right")
     macos.mouse.scroll(5)                # 5 lines down
 
+    with macos.keyboard.hold("shift"):   # Shift-click
+        macos.mouse.click(300, 400)
+
 Positions are in points from the top-left corner of the main display, like
 :func:`macos.screenshot`'s ``region`` and :class:`macos.screen.Display`.
 
@@ -70,6 +73,8 @@ def _mouse_event(kind: int, x: float, y: float, button: int, clicks: int = 0) ->
         raise MacOSError("could not create a mouse event")
     if clicks:
         cg.CGEventSetIntegerValueField(event, _CLICK_STATE, clicks)
+    if _events.HELD:  # inside macos.keyboard.hold()
+        cg.CGEventSetFlags(event, _events.held_flags())
     return event
 
 

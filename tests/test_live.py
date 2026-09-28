@@ -1069,3 +1069,41 @@ def test_bluetooth():
     found = macos.bluetooth.devices()
     assert all(isinstance(device, macos.bluetooth.Device) and device.address for device in found)
     assert len({device.address for device in found}) == len(found)
+
+
+def test_keyboard_layouts():
+    enabled = macos.keyboard.layouts()
+    current = macos.keyboard.layout()
+
+    assert enabled and all(isinstance(name, str) and name for name in enabled)
+    if current in enabled:  # an input method can be current without being a layout
+        assert macos.keyboard.set_layout(current) == current  # the same layout: nothing changes
+        assert macos.keyboard.layout() == current
+    with pytest.raises(ValueError, match="no enabled keyboard layout"):
+        macos.keyboard.set_layout("No Such Layout {}".format(uuid.uuid4()))
+
+
+def test_night_shift():
+    try:
+        on = macos.screen.night_shift()
+    except macos.NotSupportedError:
+        pytest.skip("no Night Shift")
+    macos.screen.set_night_shift(on)  # the same state: nothing changes
+    assert macos.screen.night_shift() == on
+
+
+@pytest.mark.skipif(bool(os.environ.get("CI")), reason="the Automation prompt would block a CI runner")
+def test_set_mode_to_the_current_mode():
+    current = macos.appearance.mode()
+
+    macos.appearance.set_mode(current)
+
+    assert macos.appearance.mode() == current
+
+
+def test_thermal_state_and_lid():
+    assert macos.system.thermal_state() in ("nominal", "fair", "serious", "critical")
+    try:
+        assert isinstance(macos.system.lid_closed(), bool)
+    except macos.NotSupportedError:
+        pass  # a desktop Mac
