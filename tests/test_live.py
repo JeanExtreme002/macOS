@@ -1,6 +1,7 @@
 """Tests against the real system. Skipped outside macOS."""
 
 import os
+import time
 import uuid
 from pathlib import Path
 
@@ -1181,3 +1182,199 @@ def test_finder_aliases(tmp_path):
     (folder / "moved.pdf").unlink()
     with pytest.raises(FileNotFoundError, match="original of the alias"):
         macos.finder.resolve_alias(alias)
+
+
+_WALLPAPER_MOVIE = Path("/System/Library/Desktop Pictures/.wallpapers/Sequoia Sunrise/Sequoia Sunrise.mov")
+
+
+@pytest.fixture
+def movie():
+    if not _WALLPAPER_MOVIE.exists():
+        pytest.skip("the video wallpapers aren't installed")
+    return _WALLPAPER_MOVIE
+
+
+def test_video_info_frame_and_convert(movie, tmp_path):
+    import struct
+
+    details = macos.video.info(movie)
+    assert details.duration > 10 and details.width > details.height > 0 and details.codec
+
+    thumbnail = macos.video.frame(movie, at=2.0, size=320)
+    assert max(struct.unpack(">II", thumbnail[16:24])) == 320
+    with pytest.raises(ValueError, match="past the end"):
+        macos.video.frame(movie, at=details.duration + 10)
+
+    clip = macos.video.convert(movie, tmp_path / "clip.mp4", height=480, duration=1)
+    small = macos.video.info(clip)
+    assert (small.codec, round(small.duration)) == ("h264", 1)
+    assert small.width <= 640 and small.height <= 480
+    with pytest.raises(ValueError, match="no sound"):
+        macos.video.convert(clip, tmp_path / "sound.m4a")
+
+
+def test_video_convert_keeps_only_the_sound(tmp_path):
+    import subprocess
+
+    speech = tmp_path / "speech.aiff"
+    subprocess.run(["say", "-o", str(speech), "hello"], check=True)
+
+    sound = macos.video.convert(speech, tmp_path / "speech.m4a")
+
+    details = macos.video.info(sound)
+    assert details.has_audio and details.width == 0 and details.duration > 0
+
+
+def test_screen_record(tmp_path):
+    if not macos.screen.has_permission():
+        pytest.skip("no Screen Recording permission")
+    target = tmp_path / "screen.mov"
+    try:
+        macos.screen.record(target, 1, region=(0, 0, 160, 100))
+        details = macos.video.info(target)
+        assert details.duration > 0 and details.width >= 160
+    finally:
+        target.unlink(missing_ok=True)  # don't keep a picture of the screen around
+
+
+@pytest.fixture
+def test_window():
+    """A window of our own, in a helper process, to move around without touching the user's."""
+    import subprocess
+    import sys
+
+    if not macos.windows.has_permission():
+        pytest.skip("no Accessibility permission")
+    front = macos.windows.focused()
+    title = "pymacos test {}".format(uuid.uuid4().hex[:8])
+    helper = Path(__file__).with_name("_window_app.py")
+    process = subprocess.Popen([sys.executable, str(helper), title, "20"], stdout=subprocess.PIPE, text=True)
+    try:
+        process.stdout.readline()
+        app = next(app for app in macos.apps.running(include_background=True) if app.pid == process.pid)
+        for _ in range(20):
+            found = macos.windows.list(app, title=title)
+            if found:
+                break
+            time.sleep(0.1)
+        yield found[0]
+    finally:
+        process.kill()
+        process.wait()
+        if front is not None:
+            try:
+                front.focus()  # give the focus back
+            except macos.MacOSError:
+                pass
+
+
+def test_windows(test_window):
+    window = test_window
+
+    window.set_frame(60, 80, 420, 300)
+    time.sleep(0.2)
+    assert window.frame == (60, 80, 420, 300)
+    window.move(100, 120)
+    window.resize(360, 260)
+    time.sleep(0.2)
+    assert (window.position, window.size) == ((100, 120), (360, 260))
+
+    window.minimize()
+    time.sleep(0.8)
+    assert window.minimized
+    window.restore()
+    time.sleep(0.8)
+    assert not window.minimized
+
+    window.focus()
+    for _ in range(20):
+        if macos.windows.focused() == window:
+            break
+        time.sleep(0.1)
+    else:
+        # The user (or another app) may have taken the focus meanwhile: the
+        # window must at least be its app's main one.
+        from macos import _cf
+
+        main = window._read("AXMain")
+        with _cf.owned(main):
+            assert _cf.to_bool(main)
+    assert window in macos.windows.list()
+
+    window.close()
+    time.sleep(0.5)
+    with pytest.raises(macos.MacOSError):
+        window.title
+
+
+def test_hotkeys():
+    import threading
+
+    if not (macos.hotkeys.has_permission() and macos.keyboard.has_permission()):
+        pytest.skip("needs the Input Monitoring and Accessibility permissions")
+    combination = "ctrl+option+cmd+f19"  # no app uses it
+    calls = []
+
+    def press_twice():
+        for _ in range(2):
+            macos.keyboard.press(combination)
+            time.sleep(0.2)
+
+    macos.hotkeys.register(combination, lambda: calls.append(1))
+    try:
+        threading.Timer(0.3, press_twice).start()
+        macos.hotkeys.run(timeout=1.5)
+        assert calls == [1, 1]
+    finally:
+        macos.hotkeys.unregister(combination)
+
+    threading.Timer(0.3, lambda: macos.keyboard.press(combination)).start()
+    assert macos.hotkeys.wait(combination, timeout=3) is True
+    assert macos.hotkeys.wait(combination, timeout=0.3) is False
+
+
+def test_now_playing_never_opens_the_player():
+    running = {app.name for app in macos.apps.running()}
+
+    track = macos.music.now_playing()
+
+    assert track is None or track.app in macos.music.PLAYERS
+    assert {app.name for app in macos.apps.running()} & set(macos.music.PLAYERS) == running & set(macos.music.PLAYERS)
+
+
+def test_horizon_and_straighten(movie, tmp_path):
+    frame = tmp_path / "sunrise.png"
+    frame.write_bytes(macos.video.frame(movie, at=20))
+    tilt = macos.vision.horizon(frame)
+    if tilt is None:
+        pytest.skip("Vision doesn't see this frame's horizon here")
+
+    level = macos.image.straighten(frame, tmp_path / "level.png")
+
+    assert macos.vision.horizon(level) is None  # level now
+    original, fixed = macos.image.info(frame), macos.image.info(level)
+    assert fixed.width < original.width  # cropped, so no empty corners
+    assert abs(fixed.width / fixed.height - original.width / original.height) < 0.01
+    assert macos.vision.horizon(macos.image.qr_code("no horizon")) is None
+
+
+def test_pdf_watermark_and_compress(tmp_path):
+    document = _text_pdf(tmp_path, ["Page one says hello", "Page two says ola"])
+    macos.pdf.rotate(document, 90, document, pages=[2])
+
+    marked = macos.pdf.watermark(document, "CONFIDENTIAL", tmp_path / "marked.pdf", color="#d00000")
+
+    assert macos.pdf.page_count(marked) == 2
+    assert macos.pdf.text(marked, pages=[1]).split("\n") == ["Page one says hello", "CONFIDENTIAL"]
+    import struct
+
+    width, height = struct.unpack(">II", macos.pdf.render(marked, page=2, size=400)[16:24])
+    assert width > height  # the turned page still shows turned
+
+    # Noise: what a scan or photo looks like to a compressor.
+    noisy = tmp_path / "noise.png"
+    noisy.write_bytes(_rgb_png(800, 600, lambda x, y: ((x * 7919 + y * 104729) % 251, (x * y) % 247, (x + y * 31) % 241)))
+    photos = macos.pdf.from_images([noisy], tmp_path / "photo.pdf")
+    smaller = macos.pdf.compress(photos, tmp_path / "small.pdf")
+    assert smaller.stat().st_size < photos.stat().st_size / 2
+    assert macos.pdf.page_count(smaller) == 1

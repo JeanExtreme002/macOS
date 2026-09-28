@@ -15,6 +15,7 @@ Photos and Preview: nothing to install and no permission needed.
 """
 
 import ctypes
+import math
 import os
 from dataclasses import dataclass
 from functools import lru_cache
@@ -39,6 +40,7 @@ __all__ = [
     "image_distance",
     "duplicates",
     "best_shot",
+    "horizon",
     "smart_crop",
     "TextLine",
     "Barcode",
@@ -508,6 +510,27 @@ def best_shot(images: Sequence[Image]) -> Optional[Image]:
         if score is not None and score > best_score:
             best, best_score = image, score
     return best
+
+
+def horizon(image: Image) -> Optional[float]:
+    """
+    How tilted a photo's horizon is, in degrees: positive when it rises to the right (turned counter-clockwise).
+
+    Returns ``None`` when there's no horizon to find, when it's level (less
+    than about 1.5°), and when it's tilted too much to tell (more than about
+    10°). :func:`macos.image.straighten` levels the photo::
+
+        if macos.vision.horizon("beach.jpg"):
+            macos.image.straighten("beach.jpg", "beach-level.jpg")
+    """
+    _load()
+    with _objc.autorelease_pool():
+        observations = _perform(image, _objc.new("VNDetectHorizonRequest"))
+        if not observations:
+            return None
+        # Vision gives the angle that levels the photo: the tilt, the other way round.
+        angle = float(_objc.send(observations[0], "angle", restype=ctypes.c_double))
+    return round(-math.degrees(angle), 2)
 
 
 def smart_crop(image: Image, width: int, height: int) -> bytes:

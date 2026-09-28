@@ -29,6 +29,10 @@ def lib() -> ctypes.CDLL:
 
     cf.CFRelease.argtypes = (CFTypeRef,)
     cf.CFRelease.restype = None
+    cf.CFRetain.argtypes = (CFTypeRef,)
+    cf.CFRetain.restype = CFTypeRef
+    cf.CFEqual.argtypes = (CFTypeRef, CFTypeRef)
+    cf.CFEqual.restype = ctypes.c_bool
 
     cf.CFStringCreateWithBytes.argtypes = (CFTypeRef, ctypes.c_char_p, CFIndex, ctypes.c_uint32, ctypes.c_bool)
     cf.CFStringCreateWithBytes.restype = CFTypeRef
@@ -109,6 +113,12 @@ def constant(library: ctypes.CDLL, name: str) -> int:
 def release(ref: Optional[int]) -> None:
     if ref:
         lib().CFRelease(ref)
+
+
+def retain(ref: int) -> int:
+    """``CFRetain`` a borrowed reference, making it owned; returns it."""
+    lib().CFRetain(ref)
+    return ref
 
 
 @contextmanager

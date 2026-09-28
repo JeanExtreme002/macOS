@@ -44,6 +44,7 @@ __all__ = [
     "crop",
     "rotate",
     "flip",
+    "straighten",
     "blur_faces",
     "dominant_colors",
     "qr_code",
@@ -636,6 +637,43 @@ def flip(
     horizontal = direction == "horizontal"
     scale_x, scale_y = (-1, 1) if horizontal else (1, -1)
     return _edit(source, output, lambda picture: _to_origin(_transform(picture, scale_x, 0, 0, scale_y)), quality)
+
+
+def straighten(source: PathLike, output: PathLike, *, quality: Optional[float] = None) -> Path:
+    """
+    Level a photo whose horizon is tilted, and return ``output``.
+
+    The tilt comes from :func:`macos.vision.horizon`. The photo is turned
+    and cropped to the largest part with the same proportions, so no empty
+    corners show. A photo without a tilted horizon is saved unchanged. The
+    metadata is kept and ``output``'s extension sets the format.
+    """
+    from . import vision
+
+    tilt = vision.horizon(source)
+
+    def change(picture: int) -> int:
+        if not tilt:
+            return picture
+        picture = _to_origin(picture)
+        extent = _extent(picture)
+        width, height = extent.size.width, extent.size.height
+        # Turn it back by the tilt (Core Image turns counter-clockwise for positive angles).
+        angle = math.radians(-tilt)
+        cos, sin = math.cos(angle), math.sin(angle)
+        turned = _to_origin(_transform(picture, cos, sin, -sin, cos))
+        # The largest rectangle with the photo's proportions inside the turned photo.
+        cos, sin = abs(cos), abs(sin)
+        scale = min(width / (width * cos + height * sin), height / (width * sin + height * cos))
+        bounds = _extent(turned)
+        crop_width, crop_height = width * scale, height * scale
+        rect = _objc.CGRect(
+            _objc.CGPoint((bounds.size.width - crop_width) / 2, (bounds.size.height - crop_height) / 2),
+            _objc.CGSize(crop_width, crop_height),
+        )
+        return _objc.send(turned, "imageByCroppingToRect:", rect, argtypes=(_objc.CGRect,))
+
+    return _edit(source, output, change, quality)
 
 
 def _filter(name: str, image: int, **values: Any) -> int:

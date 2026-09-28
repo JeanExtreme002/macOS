@@ -203,6 +203,18 @@ for group in macos.vision.duplicates(photos):
 It returns `None` when no photo has a face. In a group photo, every face
 counts equally.
 
+## Horizon
+
+{func}`~macos.vision.horizon` tells how tilted a photo's horizon is, in degrees:
+positive when it rises to the right. It returns `None` when there's no horizon,
+when it's level (under about 1.5°), and when it's too tilted to tell (over
+about 10°). {func}`macos.image.straighten` levels the photo:
+
+```python
+macos.vision.horizon("beach.jpg")                      # 4.5
+macos.image.straighten("beach.jpg", "beach-level.jpg")
+```
+
 ## Reference
 
 - {func}`macos.vision.text`
@@ -221,3 +233,4 @@ counts equally.
 - {func}`macos.vision.image_distance`
 - {func}`macos.vision.duplicates`
 - {func}`macos.vision.best_shot`
+- {func}`macos.vision.horizon`

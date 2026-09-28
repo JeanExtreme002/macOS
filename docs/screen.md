@@ -73,6 +73,22 @@ unit `region` uses), its physical resolution (`pixel_width`, `pixel_height`),
 the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
 `is_main` or `is_builtin`.
 
+## Recording the screen
+
+{func}`~macos.screen.record` records the screen into a `.mov` video, and returns
+when the recording ends:
+
+```python
+macos.screen.record("demo.mov", 10)                           # 10 seconds
+macos.screen.record("part.mov", 5, region=(0, 0, 1280, 800))  # a region
+macos.screen.record("talk.mov", 60, audio=True, clicks=True)  # with the microphone and clicks
+```
+
+`region` and `display` work as for screenshots. `audio=True` also records the
+default microphone, and `clicks=True` shows mouse clicks. It needs the Screen
+Recording permission, like screenshots. To make it smaller or an `.mp4`, see
+{func}`macos.video.convert`.
+
 ## Wallpaper
 
 ```python
@@ -168,6 +184,7 @@ this also locks it.
 - {class}`macos.screen.Display`
 - {func}`macos.screen.wallpaper`
 - {func}`macos.screen.set_wallpaper`
+- {func}`macos.screen.record`
 - {func}`macos.screen.start_screensaver`
 - {func}`macos.screen.brightness`
 - {func}`macos.screen.set_brightness`

@@ -161,6 +161,34 @@ for device in macos.bluetooth.devices():
     print(device.name, device.battery)   # AirPods Pro {'left': 90, 'right': 85, 'case': 40}
 ```
 
+## Arrange windows
+
+```python
+window = macos.windows.focused()
+window.set_frame(0, 25, 1280, 800)
+```
+
+## React to a global shortcut
+
+```python
+macos.hotkeys.register("ctrl+option+s", lambda: macos.screenshot("shot.png"))
+macos.hotkeys.run()
+```
+
+## Record the screen and share it
+
+```python
+macos.screen.record("demo.mov", 10)
+macos.video.convert("demo.mov", "demo.mp4", quality="medium")
+```
+
+## Control the music
+
+```python
+macos.music.now_playing()   # Track(title='Imagine', artist='John Lennon', ...)
+macos.music.next()
+```
+
 ## Open a file with an app
 
 ```python
