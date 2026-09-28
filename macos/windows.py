@@ -40,6 +40,7 @@ _POINT, _SIZE = 1, 2  # kAXValueCGPointType, kAXValueCGSizeType
 _TIMEOUT = 2.0  # seconds to wait for an app that doesn't answer
 _FULL_SCREEN_TIMEOUT = 10.0
 _FULL_SCREEN_ANIMATION = 1.0
+_FULL_SCREEN_RETRY = 2.0  # seconds before asking again
 
 
 @lru_cache(maxsize=None)
@@ -217,16 +218,26 @@ class Window:
         raise :class:`~macos.errors.MacOSError`.
         """
         what = "{} full screen".format("enter" if on else "leave")
-        try:
-            self._set_flag("AXFullScreen", on, what)
-        except MacOSError as error:
-            if on and "AXError -25200" in str(error):  # kAXErrorFailure
-                raise MacOSError("this window can't go full screen: its app doesn't allow it") from None
-            raise
+
+        def request() -> None:
+            try:
+                self._set_flag("AXFullScreen", on, what)
+            except MacOSError as error:
+                if on and "AXError -25200" in str(error):  # kAXErrorFailure
+                    raise MacOSError("this window can't go full screen: its app doesn't allow it") from None
+                raise
+
+        request()
         deadline = time.monotonic() + _FULL_SCREEN_TIMEOUT
+        asked = time.monotonic()
         while self.fullscreen != bool(on):
-            if time.monotonic() > deadline:
+            now = time.monotonic()
+            if now > deadline:
                 raise MacOSError("could not {} within {} seconds".format(what, _FULL_SCREEN_TIMEOUT))
+            # macOS drops a request made while an earlier animation still runs: ask again.
+            if now - asked > _FULL_SCREEN_RETRY:
+                request()
+                asked = now
             time.sleep(0.1)
         # The state changes as the animation starts, and macOS ignores a new
         # request until it ends: let it finish.
