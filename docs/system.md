@@ -48,6 +48,47 @@ families = macos.system.fonts()   # ['Academy Engraved LET', 'American Typewrite
 font = "Avenir" if "Avenir" in families else "Helvetica"
 ```
 
+## Heat and lid
+
+```python
+macos.system.thermal_state()   # 'nominal', 'fair', 'serious' or 'critical'
+macos.system.lid_closed()      # True in clamshell mode
+```
+
+At `'serious'`, macOS slows the processor down to cool it, so a long job can
+wait for it to cool:
+
+```python
+import time
+
+while macos.system.thermal_state() in ("serious", "critical"):
+    time.sleep(60)
+```
+
+{func}`~macos.system.lid_closed` tells whether a MacBook runs with its lid
+closed, on an external display. On a Mac without a lid it raises
+{class}`~macos.NotSupportedError`.
+
+## Camera and microphone in use
+
+```python
+macos.system.camera_in_use()       # True during a video call
+macos.system.microphone_in_use()   # True while an app records
+```
+
+They match the green camera light and the orange microphone dot in the menu
+bar. They don't tell which app, and need no permission. An "on air" light in a
+few lines:
+
+```python
+import time
+
+while True:
+    busy = macos.system.camera_in_use() or macos.system.microphone_in_use()
+    set_light(busy)   # your smart plug, LED...
+    time.sleep(5)
+```
+
 ## Running while the user is away
 
 {func}`~macos.system.idle_time` is the time since the last keyboard, mouse or
@@ -78,4 +119,8 @@ while True:
 - {func}`macos.system.volumes`
 - {func}`macos.system.eject`
 - {func}`macos.system.fonts`
+- {func}`macos.system.thermal_state`
+- {func}`macos.system.lid_closed`
+- {func}`macos.system.camera_in_use`
+- {func}`macos.system.microphone_in_use`
 - {class}`macos.system.Volume`

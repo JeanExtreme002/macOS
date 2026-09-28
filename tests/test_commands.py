@@ -325,6 +325,47 @@ class _ImmediateThread:
         lambda: macos.pdf.metadata(__file__),
         lambda: macos.pdf.rotate(__file__, 90, "out.pdf"),
         lambda: macos.pdf.encrypt(__file__, "out.pdf", "secret"),
+        lambda: macos.keyboard.type("x"),
+        lambda: macos.keyboard.press("enter"),
+        lambda: macos.keyboard.has_permission(),
+        lambda: macos.keyboard.brightness(),
+        lambda: macos.keyboard.set_brightness(0.5),
+        lambda: macos.keyboard.auto_brightness(),
+        lambda: macos.keyboard.set_auto_brightness(True),
+        lambda: macos.mouse.position(),
+        lambda: macos.mouse.move(1, 1),
+        lambda: macos.mouse.click(),
+        lambda: macos.mouse.drag(1, 1),
+        lambda: macos.mouse.scroll(1),
+        lambda: macos.screen.brightness(),
+        lambda: macos.screen.set_brightness(0.5),
+        lambda: macos.bluetooth.power(),
+        lambda: macos.bluetooth.set_power(True),
+        lambda: macos.bluetooth.devices(),
+        lambda: macos.bluetooth.connect("AirPods"),
+        lambda: macos.bluetooth.disconnect("AirPods"),
+        lambda: macos.keyboard.hold("shift").__enter__(),
+        lambda: macos.keyboard.layouts(),
+        lambda: macos.keyboard.layout(),
+        lambda: macos.keyboard.set_layout("ABC"),
+        lambda: macos.screen.night_shift(),
+        lambda: macos.screen.set_night_shift(True),
+        lambda: macos.appearance.set_mode("dark"),
+        lambda: macos.system.thermal_state(),
+        lambda: macos.system.lid_closed(),
+        lambda: macos.system.camera_in_use(),
+        lambda: macos.system.microphone_in_use(),
+        lambda: macos.power.low_power_mode(),
+        lambda: macos.screen.lock(),
+        lambda: macos.screen.true_tone(),
+        lambda: macos.screen.set_true_tone(True),
+        lambda: macos.screen.is_locked(),
+        lambda: macos.screen.is_asleep(),
+        lambda: macos.keyboard.caps_lock(),
+        lambda: macos.audio.input_volume(),
+        lambda: macos.audio.set_input_volume(0.5),
+        lambda: macos.audio.input_muted(),
+        lambda: macos.audio.mute_input(),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -1065,3 +1106,572 @@ def test_appearance_wait_for_change(monkeypatch):
     monkeypatch.setattr(macos.appearance, "mode", lambda: next(modes))
 
     assert macos.appearance.wait_for_change(interval=0.001) == "dark"
+
+
+def test_hardware_argument_checks():
+    for set_brightness in (macos.screen.set_brightness, macos.keyboard.set_brightness):
+        with pytest.raises(ValueError, match="0.0 to 1.0"):
+            set_brightness(1.5)
+    with pytest.raises(ValueError, match="button"):
+        macos.mouse.click(button="side")
+    with pytest.raises(ValueError, match="count"):
+        macos.mouse.click(count=0)
+    with pytest.raises(ValueError, match="both x and y"):
+        macos.mouse.click(10)
+    with pytest.raises(ValueError, match="duration"):
+        macos.mouse.move(1, 1, duration=-1)
+    with pytest.raises(ValueError, match="interval"):
+        macos.keyboard.type("x", interval=-1)
+    with pytest.raises(ValueError, match="times"):
+        macos.keyboard.press("enter", times=0)
+    with pytest.raises(ValueError, match="needs a key"):
+        macos.keyboard.press("  ")
+    with pytest.raises(ValueError, match="not a modifier"):
+        macos.keyboard.press("hyper+c")
+    with pytest.raises(ValueError, match="no key after"):
+        macos.keyboard.press("cmd+")
+    with pytest.raises(ValueError, match="unknown key"):
+        macos.keyboard.press("cmd+launch")
+    with pytest.raises(ValueError, match="at least one key"):
+        macos.keyboard.hold().__enter__()
+    # Rejected before switching anything.
+    with pytest.raises(ValueError, match="timeout"):
+        macos.bluetooth.set_power(False, timeout=0)
+    with pytest.raises(ValueError, match="0.0 to 1.0"):
+        macos.audio.set_input_volume(1.5)
+    with pytest.raises(ValueError, match="'dark' or 'light'"):
+        macos.appearance.set_mode("blue")
+
+
+class _FakeEvents:
+    """Stands in for Core Graphics: records the events built and posted, in order."""
+
+    def __init__(self):
+        self.events = {}
+        self.posted = []
+        self.pointer = (10.0, 20.0)
+
+    def _new(self, **fields):
+        number = len(self.events) + 1
+        self.events[number] = fields
+        return number
+
+    def CGEventCreateKeyboardEvent(self, source, code, down):
+        return self._new(kind="key", code=code, down=down, flags=0, text=None)
+
+    def CGEventSetFlags(self, event, flags):
+        self.events[event]["flags"] = flags
+
+    def CGEventKeyboardSetUnicodeString(self, event, length, units):
+        self.events[event]["text"] = bytes(units)[: length * 2].decode("utf-16-le")
+
+    def CGEventCreateMouseEvent(self, source, kind, point, button):
+        return self._new(kind=kind, x=point.x, y=point.y, button=button, clicks=0, flags=0)
+
+    def CGEventSetIntegerValueField(self, event, field, value):
+        self.events[event]["clicks"] = value
+
+    def CGEventCreateScrollWheelEvent2(self, source, units, count, vertical, sideways, third):
+        return self._new(kind="scroll", vertical=vertical, sideways=sideways)
+
+    def CGEventCreate(self, source):
+        return self._new(kind="probe")
+
+    def CGEventGetLocation(self, event):
+        from macos._objc import CGPoint
+
+        return CGPoint(*self.pointer)
+
+    def CFRelease(self, event):
+        pass
+
+    flags_state = 0
+
+    def CGEventSourceFlagsState(self, state):
+        return self.flags_state
+
+
+@pytest.fixture
+def fake_events(monkeypatch):
+    from macos import _events
+
+    fake = _FakeEvents()
+    monkeypatch.setattr(_events, "graphics", lambda: fake)
+    monkeypatch.setattr(_events, "has_permission", lambda: True)
+    monkeypatch.setattr(_events, "post", lambda event: fake.posted.append(fake.events[event]))
+    monkeypatch.setattr(macos.keyboard, "_layout", lambda: {"c": (8, False), "?": (44, True), "+": (24, True)})
+    return fake
+
+
+def test_press_holds_the_modifiers_around_the_key(fake_events):
+    macos.keyboard.press("cmd+shift+c")
+
+    keys = [(event["code"], event["down"], event["flags"]) for event in fake_events.posted]
+    cmd, shift = 1 << 20, 1 << 17
+    assert keys == [
+        (55, True, cmd),
+        (56, True, cmd | shift),
+        (8, True, cmd | shift),
+        (8, False, cmd | shift),
+        (56, False, cmd),
+        (55, False, 0),
+    ]
+
+
+def test_press_a_modifier_alone_sets_its_flag(fake_events):
+    macos.keyboard.press("shift")
+    macos.keyboard.press("cmd+option")
+
+    keys = [(event["code"], event["down"], event["flags"]) for event in fake_events.posted]
+    shift, cmd, option = 1 << 17, 1 << 20, 1 << 19
+    assert keys == [
+        (56, True, shift),
+        (56, False, 0),
+        (55, True, cmd),
+        (58, True, cmd | option),
+        (58, False, cmd),
+        (55, False, 0),
+    ]
+
+
+def test_press_adds_shift_for_shifted_characters(fake_events):
+    macos.keyboard.press("cmd++")
+    macos.keyboard.press("C")  # letters are keys: no Shift
+
+    codes = [event["code"] for event in fake_events.posted if event["down"]]
+    assert codes == [55, 56, 24, 8]
+
+
+def test_type_sends_text_in_pieces_and_presses_enter_and_tab(fake_events):
+    macos.keyboard.type("héllo 😀\n\tok")
+
+    typed = [(event["code"], event["text"]) for event in fake_events.posted if event["down"]]
+    assert typed == [(0, "héllo 😀"), (36, None), (48, None), (0, "ok")]
+    assert [event["text"] for event in fake_events.posted if not event["down"]] == ["héllo 😀", None, None, "ok"]
+
+
+def test_type_one_character_at_a_time_with_an_interval(fake_events, monkeypatch):
+    monkeypatch.setattr(macos.keyboard.time, "sleep", lambda seconds: None)
+
+    macos.keyboard.type("a😀", interval=0.01)
+
+    assert [event["text"] for event in fake_events.posted if event["down"]] == ["a", "😀"]
+
+
+def test_typing_splits_long_text_without_breaking_characters():
+    pieces = macos.keyboard._chunks("ab😀" * 10, 5)
+
+    assert "".join(pieces) == "ab😀" * 10
+    assert all(len(piece.encode("utf-16-le")) // 2 <= 5 for piece in pieces)
+
+
+def test_click_and_double_click(fake_events):
+    macos.mouse.click(100, 200, count=2)
+    macos.mouse.click(button="right")
+
+    clicks = [(event["kind"], event["x"], event["y"], event["clicks"]) for event in fake_events.posted]
+    assert clicks == [
+        (5, 100, 200, 0),  # moved there first
+        (1, 100, 200, 1),
+        (2, 100, 200, 1),
+        (1, 100, 200, 2),
+        (2, 100, 200, 2),
+        (3, 10.0, 20.0, 1),  # where the pointer is
+        (4, 10.0, 20.0, 1),
+    ]
+
+
+def test_drag_releases_the_button_at_the_end(fake_events, monkeypatch):
+    monkeypatch.setattr(macos.mouse.time, "sleep", lambda seconds: None)
+
+    macos.mouse.drag(40, 80, duration=0.05)
+
+    kinds = [event["kind"] for event in fake_events.posted]
+    assert kinds[0] == 1 and kinds[-1] == 2
+    assert set(kinds[1:-1]) == {6}
+    assert (fake_events.posted[-2]["x"], fake_events.posted[-2]["y"]) == (40, 80)
+
+
+def test_scroll_directions(fake_events):
+    macos.mouse.scroll(3)
+    macos.mouse.scroll(-2, horizontal=True)
+    macos.mouse.scroll(0)
+
+    # Core Graphics counts a wheel turned up (or left) as positive.
+    assert [(event["vertical"], event["sideways"]) for event in fake_events.posted] == [(-3, 0), (0, 2)]
+
+
+def test_events_need_the_accessibility_permission(fake_events, monkeypatch):
+    from macos import _events
+
+    monkeypatch.setattr(_events, "has_permission", lambda: False)
+
+    for call in (lambda: macos.keyboard.type("x"), lambda: macos.mouse.click(), lambda: macos.mouse.scroll(1)):
+        with pytest.raises(macos.PermissionDeniedError, match="Accessibility"):
+            call()
+    assert fake_events.posted == []
+
+
+_BLUETOOTH = {
+    "SPBluetoothDataType": [
+        {
+            "controller_properties": {"controller_state": "attrib_on"},
+            "device_connected": [
+                {
+                    "AirPods Pro": {
+                        "device_address": "aa:bb:cc:dd:ee:01",
+                        "device_minorType": "Headphones",
+                        "device_batteryLevelLeft": "90%",
+                        "device_batteryLevelRight": "85%",
+                        "device_batteryLevelCase": "40%",
+                    }
+                }
+            ],
+            "device_not_connected": [
+                {"Magic Mouse": {"device_address": "AA:BB:CC:DD:EE:02", "device_minorType": "Mouse"}},
+                {"Magic Mouse": {"device_address": "AA:BB:CC:DD:EE:02", "device_minorType": "Mouse"}},
+                {"Magic Keyboard": {"device_address": "AA:BB:CC:DD:EE:03", "device_batteryLevelMain": "n/a"}},
+                # A flat entry, as other macOS versions may write, and junk to skip.
+                {"device_name": "Speaker", "device_address": "AA:BB:CC:DD:EE:05", "device_minorType": "Speaker"},
+                {"Broken": "not a dictionary"},
+                "not an entry",
+            ],
+        }
+    ]
+}
+
+
+def test_bluetooth_devices(commands):
+    import json
+
+    commands.answers["SPBluetoothDataType"] = (0, json.dumps(_BLUETOOTH), "")
+
+    found = macos.bluetooth.devices()
+
+    assert found == [
+        macos.bluetooth.Device(
+            "AirPods Pro", "AA:BB:CC:DD:EE:01", True, "headphones", {"left": 90, "right": 85, "case": 40}
+        ),
+        macos.bluetooth.Device("Magic Mouse", "AA:BB:CC:DD:EE:02", False, "mouse", {}),
+        macos.bluetooth.Device("Magic Keyboard", "AA:BB:CC:DD:EE:03", False, "unknown", {}),
+        macos.bluetooth.Device("Speaker", "AA:BB:CC:DD:EE:05", False, "speaker", {}),
+    ]
+    assert commands.calls[-1] == ["system_profiler", "SPBluetoothDataType", "-json"]
+
+
+def test_bluetooth_device_matching(commands):
+    import json
+
+    commands.answers["SPBluetoothDataType"] = (0, json.dumps(_BLUETOOTH), "")
+    find = macos.bluetooth._find
+
+    assert find("AirPods").name == "AirPods Pro"
+    assert find("aa-bb-cc-dd-ee-02").name == "Magic Mouse"
+    assert find("Magic Keyboard").address == "AA:BB:CC:DD:EE:03"
+    with pytest.raises(ValueError, match="several"):
+        find("Magic")
+    with pytest.raises(ValueError, match="no paired"):
+        find("Headset")
+
+
+def test_bluetooth_without_devices(commands):
+    commands.answers["SPBluetoothDataType"] = (0, '{"SPBluetoothDataType": []}', "")
+
+    assert macos.bluetooth.devices() == []
+
+
+class _FakeBluetoothDevice:
+    """Answers the IOBluetoothDevice messages; the link changes a few checks after the request."""
+
+    def __init__(self, connected, status=0, delay=3):
+        self.connected, self.status, self.delay = connected, status, delay
+        self.requests, self.checks = [], 0
+
+    def send(self, receiver, selector, *args, **kwargs):
+        if selector == "deviceWithAddressString:":
+            return 1
+        if selector in ("openConnection", "closeConnection"):
+            self.requests.append(selector)
+            self.target, self.checks = selector == "openConnection", 0
+            return self.status
+        if selector == "isConnected":
+            self.checks += 1
+            if self.requests and self.checks > self.delay:
+                self.connected = self.target
+            return self.connected
+        return 0
+
+
+@pytest.fixture
+def fake_bluetooth(monkeypatch):
+    from contextlib import nullcontext
+
+    from macos import bluetooth
+
+    device = bluetooth.Device("JBL Tune", "AA:BB:CC:DD:EE:04", True, "headphones", {"main": 80})
+    fake = _FakeBluetoothDevice(connected=True)
+    monkeypatch.setattr(bluetooth, "_find", lambda target: device)
+    monkeypatch.setattr(bluetooth, "power", lambda: True)
+    monkeypatch.setattr(bluetooth._objc, "send", fake.send)
+    monkeypatch.setattr(bluetooth._objc, "cls", lambda name: 1)
+    monkeypatch.setattr(bluetooth._objc, "nsstring", lambda text: 1)
+    monkeypatch.setattr(bluetooth._objc, "autorelease_pool", nullcontext)
+    monkeypatch.setattr(bluetooth.time, "sleep", lambda seconds: None)
+    return fake
+
+
+def test_disconnect_waits_until_the_link_is_down(fake_bluetooth):
+    # closeConnection returns at once; a script exiting then kept the device connected.
+    result = macos.bluetooth.disconnect("JBL")
+
+    assert fake_bluetooth.requests == ["closeConnection"]
+    assert fake_bluetooth.connected is False and fake_bluetooth.checks > fake_bluetooth.delay
+    assert result.connected is False and result.name == "JBL Tune"
+
+    assert macos.bluetooth.connect("JBL").connected is True
+    assert fake_bluetooth.connected is True
+
+
+def test_bluetooth_connection_failures(fake_bluetooth, monkeypatch):
+    fake_bluetooth.status = -536870212  # kIOReturnError
+    with pytest.raises(macos.MacOSError, match="could not disconnect 'JBL Tune' \\(IOReturn 0xe00002bc\\)"):
+        macos.bluetooth.disconnect("JBL")
+
+    fake_bluetooth.status, fake_bluetooth.delay = 0, 10**9  # the link never changes
+    clock = iter(range(0, 100, 5))
+    monkeypatch.setattr(macos.bluetooth.time, "monotonic", lambda: next(clock))
+    with pytest.raises(macos.MacOSError, match="within 10.0 seconds"):
+        macos.bluetooth.disconnect("JBL")
+
+    with pytest.raises(ValueError, match="timeout"):
+        macos.bluetooth.connect("JBL", timeout=0)
+
+
+def test_hold_keeps_modifiers_down_for_clicks_and_keys(fake_events):
+    shift, cmd = 1 << 17, 1 << 20
+
+    with macos.keyboard.hold("shift"):
+        macos.mouse.click(5, 5)
+        with macos.keyboard.hold("cmd"):
+            macos.keyboard.press("c")
+
+    posted = [(event["kind"], event.get("code"), event.get("down"), event["flags"]) for event in fake_events.posted]
+    assert posted == [
+        ("key", 56, True, shift),
+        (5, None, None, shift),  # the click and its move carry Shift
+        (1, None, None, shift),
+        (2, None, None, shift),
+        ("key", 55, True, shift | cmd),
+        ("key", 8, True, shift | cmd),
+        ("key", 8, False, shift | cmd),
+        ("key", 55, False, shift),
+        ("key", 56, False, 0),
+    ]
+    assert macos._events.HELD == []
+
+
+def test_hold_releases_the_keys_when_the_block_fails(fake_events):
+    with pytest.raises(RuntimeError):
+        with macos.keyboard.hold("cmd+shift"):
+            raise RuntimeError("boom")
+
+    released = [(event["code"], event["flags"]) for event in fake_events.posted if not event["down"]]
+    assert released == [(56, 1 << 20), (55, 0)]
+    assert macos._events.HELD == []
+
+
+def test_set_mode(fake_run):
+    macos.appearance.set_mode("light")
+
+    assert fake_run.args[:2] == ["osascript", "-e"]
+    assert fake_run.args[2].endswith("set dark mode to false")
+
+
+def test_set_mode_without_the_automation_permission(fake_run):
+    fake_run.returncode = 1
+    fake_run.stderr = "execution error: Not authorized to send Apple events to System Events. (-1743)"
+
+    with pytest.raises(macos.PermissionDeniedError, match="Automation"):
+        macos.appearance.set_mode("dark")
+
+    fake_run.stderr = "execution error: something else (-1)"
+    with pytest.raises(macos.CommandError):
+        macos.appearance.set_mode("dark")
+
+
+def test_shortcuts_off_the_main_thread_use_a_us_keyboard():
+    import threading
+
+    parsed = []
+    worker = threading.Thread(target=lambda: parsed.extend(macos.keyboard._parse(keys) for keys in ("cmd+plus", "?", "a")))
+    worker.start()
+    worker.join()
+
+    cmd = [(1 << 20, 55)]
+    assert parsed == [(cmd, 24, True), ([], 44, True), ([], 0, False)]  # Shift+= types "+"
+
+
+def test_missing_private_classes_are_not_supported(monkeypatch):
+    from contextlib import nullcontext
+
+    def missing(name):
+        raise LookupError("Objective-C class {!r} is not loaded".format(name))
+
+    monkeypatch.setattr(macos._objc, "cls", missing)
+    monkeypatch.setattr(macos._objc, "autorelease_pool", nullcontext)
+    for module in (macos.keyboard, macos.screen):
+        monkeypatch.setattr(module, "private_framework", lambda name: None)
+        monkeypatch.setattr(module, "framework", lambda name: None)
+
+    with pytest.raises(macos.NotSupportedError, match="keyboard backlight"):
+        macos.keyboard.brightness()
+    with pytest.raises(macos.NotSupportedError, match="Night Shift"):
+        macos.screen.night_shift()
+    with pytest.raises(macos.NotSupportedError, match="True Tone"):
+        macos.screen.true_tone()
+
+
+def test_caps_lock(fake_events):
+    assert macos.keyboard.caps_lock() is False
+    fake_events.flags_state = (1 << 16) | (1 << 17)  # Caps Lock and Shift
+    assert macos.keyboard.caps_lock() is True
+
+
+class _FakeCoreAudio:
+    """Input properties by (device, selector, element), as CoreAudio would hold them."""
+
+    def __init__(self, values):
+        import struct
+
+        self.values = values
+        self.pack = struct.pack
+        self.writes = []
+
+    def property(self, target, selector, scope=None, element=0):
+        if selector == "slay":  # the stream configuration: one buffer with this many channels
+            channels = self.values.get((target, "channels"), 0)
+            return self.pack("II", 1, 0) + self.pack("IIQ", channels, 0, 0)
+        value = self.values.get((target, selector, element))
+        if value is None:
+            return None
+        return self.pack("f" if isinstance(value, float) else "I", value)
+
+    def AudioObjectSetPropertyData(self, target, address, qualifier_size, qualifier, size, data):
+        value = data._obj.value
+        address = address._obj
+        selector = address.selector.to_bytes(4, "big").decode()
+        self.writes.append((target, selector, address.element, round(value, 3) if isinstance(value, float) else value))
+        self.values[(target, selector, address.element)] = value
+        return 0
+
+
+@pytest.fixture
+def fake_audio(monkeypatch):
+    from macos import audio
+
+    microphone = audio.Device(7, "USB Mic", "usb-mic", "usb", False, True)
+    # Ten channels, each with its own volume: more than the 8 once assumed.
+    values = {(7, "channels"): 10, (7, "mute", 0): 0}
+    values.update({(7, "volm", channel): 0.5 if channel < 10 else 0.9 for channel in range(1, 11)})
+    fake = _FakeCoreAudio(values)
+    monkeypatch.setattr(audio, "_property", fake.property)
+    monkeypatch.setattr(audio, "_core_audio", lambda: fake)
+    monkeypatch.setattr(audio, "default_input", lambda: microphone)
+    monkeypatch.setattr(audio, "inputs", lambda: [microphone])
+    return fake
+
+
+def test_input_volume_per_channel(fake_audio):
+    # This microphone has no main volume, only one per channel.
+    assert macos.audio.input_volume() == 0.54
+    macos.audio.set_input_volume(0.25, device="USB")
+
+    assert fake_audio.writes == [(7, "volm", channel, 0.25) for channel in range(1, 11)]
+    assert macos.audio.input_volume() == 0.25
+
+
+def test_mute_input(fake_audio):
+    assert macos.audio.input_muted() is False
+    macos.audio.mute_input()
+    assert macos.audio.input_muted() is True
+    macos.audio.mute_input(False)
+
+    assert fake_audio.writes == [(7, "mute", 0, 1), (7, "mute", 0, 0)]
+
+    del fake_audio.values[(7, "mute", 0)]
+    with pytest.raises(macos.NotSupportedError, match="can't be muted"):
+        macos.audio.mute_input()
+
+
+def test_microphone_in_use(monkeypatch):
+    from macos import audio
+
+    properties = {(1, "prs#"): [101, 102], (101, "piri"): 0, (102, "piri"): 0}
+
+    def fake_property(target, selector, scope=None, element=0):
+        value = properties.get((target, selector))
+        if value is None:
+            return None
+        values = value if isinstance(value, list) else [value]
+        return b"".join(number.to_bytes(4, "little") for number in values)
+
+    monkeypatch.setattr(audio, "_property", fake_property)
+    monkeypatch.setattr(audio, "_uint", lambda target, selector: properties.get((target, selector)))
+    assert macos.system.microphone_in_use() is False
+    properties[(102, "piri")] = 1  # one app records
+    assert macos.system.microphone_in_use() is True
+
+    # Before macOS 14 there's no process list: an input device running counts.
+    del properties[(1, "prs#")]
+    monkeypatch.setattr(audio, "inputs", lambda: [audio.Device(9, "Mic", "mic", "builtin", False, True)])
+    assert macos.system.microphone_in_use() is False
+    properties[(9, "gone")] = 1
+    assert macos.system.microphone_in_use() is True
+
+
+def test_camera_in_use(monkeypatch):
+    running = {1: [34, 35], 34: [0], 35: [0]}
+    monkeypatch.setattr(
+        macos.system,
+        "_camera_property",
+        lambda target, selector: b"".join(number.to_bytes(4, "little") for number in running[target]),
+    )
+
+    assert macos.system.camera_in_use() is False
+    running[35] = [1]
+    assert macos.system.camera_in_use() is True
+
+
+def test_lock(monkeypatch):
+    from types import SimpleNamespace
+
+    calls = []
+
+    def lock_now():
+        calls.append("lock")
+        return login.status
+
+    login = SimpleNamespace(status=0, SACLockScreenImmediate=lock_now)
+    monkeypatch.setattr(macos.screen, "private_framework", lambda name: login)
+
+    macos.screen.lock()
+    assert calls == ["lock"]
+
+    login.status = 1
+    with pytest.raises(macos.MacOSError, match="could not lock"):
+        macos.screen.lock()
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="builds real Core Foundation dictionaries")
+@pytest.mark.parametrize(
+    "session, locked", [({"kCGSSessionOnConsoleKey": True}, False), ({"CGSSessionScreenIsLocked": True}, True)]
+)
+def test_is_locked_reads_the_session(monkeypatch, session, locked):
+    from types import SimpleNamespace
+
+    from macos import _cf
+
+    graphics = SimpleNamespace(CGSessionCopyCurrentDictionary=lambda: _cf.from_python(session))
+    monkeypatch.setattr(macos.screen, "framework", lambda name: graphics)
+
+    assert macos.screen.is_locked() is locked

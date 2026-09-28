@@ -23,11 +23,11 @@ from datetime import timedelta
 from functools import lru_cache
 from typing import Dict, Iterator, Optional, Tuple
 
-from . import _cf
+from . import _cf, _objc
 from ._system import framework, run
 from .errors import MacOSError
 
-__all__ = ["Battery", "battery", "keep_awake", "sleep", "sleep_display"]
+__all__ = ["Battery", "battery", "low_power_mode", "keep_awake", "sleep", "sleep_display"]
 
 kIOPMAssertionLevelOn = 255
 kIOReturnSuccess = 0
@@ -149,6 +149,21 @@ def battery() -> Optional[Battery]:
                 health=health,
             )
     return None
+
+
+def low_power_mode() -> bool:
+    """
+    Whether Low Power Mode is on (System Settings › Battery), making the Mac slower to save energy.
+
+    A long job can check it and lighten its work. Always ``False`` before macOS 12, which didn't have it.
+    """
+    framework("Foundation")
+    with _objc.autorelease_pool():
+        info = _objc.send(_objc.cls("NSProcessInfo"), "processInfo")
+        has_it = _objc.send(
+            info, "respondsToSelector:", _objc.sel("isLowPowerModeEnabled"), argtypes=(_objc.SEL,), restype=_objc.BOOL
+        )
+        return bool(has_it and _objc.send(info, "isLowPowerModeEnabled", restype=_objc.BOOL))
 
 
 @contextmanager

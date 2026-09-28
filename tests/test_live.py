@@ -1012,3 +1012,135 @@ def test_keywords():
     assert macos.language.keywords("   ") == []
     with pytest.raises(macos.NotSupportedError):
         macos.language.keywords("東京でティム・クックに会いました", language="ja")
+
+
+def test_mouse_position_is_on_a_display():
+    x, y = macos.mouse.position()
+
+    assert isinstance(x, float) and isinstance(y, float)
+    left = min(display.x for display in macos.screen.displays())
+    top = min(display.y for display in macos.screen.displays())
+    right = max(display.x + display.width for display in macos.screen.displays())
+    bottom = max(display.y + display.height for display in macos.screen.displays())
+    assert left <= x <= right and top <= y <= bottom
+
+
+def test_keyboard_and_mouse_permission():
+    if macos.mouse.has_permission():
+        # Moving the pointer where it already is changes nothing.
+        macos.mouse.move(*macos.mouse.position())
+    else:
+        # The events would be dropped silently: better to say so.
+        with pytest.raises(macos.PermissionDeniedError):
+            macos.keyboard.press("shift")
+        with pytest.raises(macos.PermissionDeniedError):
+            macos.mouse.move(*macos.mouse.position())
+    assert macos.keyboard.has_permission() == macos.mouse.has_permission()
+
+
+def test_display_brightness():
+    try:
+        current = macos.screen.brightness()
+    except macos.NotSupportedError:
+        pytest.skip("no display with a brightness macOS controls")
+    assert 0.0 <= current <= 1.0
+    macos.screen.set_brightness(current)  # the same value: nothing changes
+    assert abs(macos.screen.brightness() - current) < 0.01
+
+
+def test_keyboard_backlight():
+    try:
+        current = macos.keyboard.brightness()
+    except macos.NotSupportedError:
+        pytest.skip("no keyboard backlight")
+    automatic = macos.keyboard.auto_brightness()
+    assert 0.0 <= current <= 1.0
+    macos.keyboard.set_brightness(current)
+    macos.keyboard.set_auto_brightness(automatic)
+    assert macos.keyboard.auto_brightness() == automatic
+
+
+def test_bluetooth():
+    try:
+        on = macos.bluetooth.power()
+    except macos.NotSupportedError:
+        pytest.skip("no Bluetooth")
+    assert isinstance(on, bool)
+    found = macos.bluetooth.devices()
+    assert all(isinstance(device, macos.bluetooth.Device) and device.address for device in found)
+    assert len({device.address for device in found}) == len(found)
+
+
+def test_keyboard_layouts():
+    enabled = macos.keyboard.layouts()
+    current = macos.keyboard.layout()
+
+    assert enabled and all(isinstance(name, str) and name for name in enabled)
+    if current in enabled:  # an input method can be current without being a layout
+        assert macos.keyboard.set_layout(current) == current  # the same layout: nothing changes
+        assert macos.keyboard.layout() == current
+    with pytest.raises(ValueError, match="no enabled keyboard layout"):
+        macos.keyboard.set_layout("No Such Layout {}".format(uuid.uuid4()))
+
+
+def test_night_shift():
+    try:
+        on = macos.screen.night_shift()
+    except macos.NotSupportedError:
+        pytest.skip("no Night Shift")
+    macos.screen.set_night_shift(on)  # the same state: nothing changes
+    assert macos.screen.night_shift() == on
+
+
+@pytest.mark.skipif(bool(os.environ.get("CI")), reason="the Automation prompt would block a CI runner")
+def test_set_mode_to_the_current_mode():
+    current = macos.appearance.mode()
+
+    macos.appearance.set_mode(current)
+
+    assert macos.appearance.mode() == current
+
+
+def test_thermal_state_and_lid():
+    assert macos.system.thermal_state() in ("nominal", "fair", "serious", "critical")
+    try:
+        assert isinstance(macos.system.lid_closed(), bool)
+    except macos.NotSupportedError:
+        pass  # a desktop Mac
+
+
+def test_camera_microphone_and_power_state():
+    assert isinstance(macos.system.camera_in_use(), bool)
+    assert isinstance(macos.system.microphone_in_use(), bool)
+    assert isinstance(macos.power.low_power_mode(), bool)
+    assert isinstance(macos.keyboard.caps_lock(), bool)
+
+
+def test_microphone_volume_and_mute():
+    if macos.audio.default_input() is None:
+        pytest.skip("no microphone")
+    try:
+        volume = macos.audio.input_volume()
+    except macos.NotSupportedError:
+        pytest.skip("the microphone has no adjustable volume")
+    assert 0.0 <= volume <= 1.0
+    macos.audio.set_input_volume(volume)  # the same value: nothing changes
+    assert abs(macos.audio.input_volume() - volume) < 0.01
+    try:
+        muted = macos.audio.input_muted()
+    except macos.NotSupportedError:
+        return
+    macos.audio.mute_input(muted)
+    assert macos.audio.input_muted() == muted
+
+
+def test_true_tone_lock_and_sleep_state():
+    try:
+        on = macos.screen.true_tone()
+    except macos.NotSupportedError:
+        on = None
+    if on is not None:
+        macos.screen.set_true_tone(on)  # the same state: nothing changes
+        assert macos.screen.true_tone() == on
+    assert isinstance(macos.screen.is_locked(), bool)
+    assert macos.screen.is_asleep() is False  # the tests run on a display that is on

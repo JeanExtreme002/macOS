@@ -88,6 +88,67 @@ macos.screen.set_wallpaper("mountains.jpg", display_id=display.id)  # only one
 picture file, such as a solid color. macOS keeps using the file you pass to
 {func}`~macos.screen.set_wallpaper`, so don't delete it afterwards.
 
+## Brightness
+
+```python
+macos.screen.brightness()          # 0.75, from 0.0 to 1.0
+macos.screen.set_brightness(0.4)
+```
+
+It works on the built-in display and on Apple displays, like the slider in
+Control Center. Most external monitors set their brightness with their own
+buttons, so they raise {class}`~macos.NotSupportedError`. `display_id` picks a
+display, as for the wallpaper.
+
+With *Automatically adjust brightness* on (System Settings › Displays), macOS
+keeps adapting it to the room's light afterwards. It uses a private macOS
+framework, since there's no public one.
+
+## Night Shift
+
+```python
+macos.screen.night_shift()          # False
+macos.screen.set_night_shift(True)  # warmer colors now
+```
+
+{func}`~macos.screen.night_shift` tells whether it's on right now, turned on
+by hand or by its schedule. {func}`~macos.screen.set_night_shift` works like
+the switch in Control Center: a schedule set in System Settings › Displays ›
+Night Shift still applies afterwards. It uses a private macOS framework,
+since there's no public one.
+
+## True Tone
+
+```python
+macos.screen.true_tone()           # True
+macos.screen.set_true_tone(False)  # exact colors, for photo editing
+```
+
+True Tone adapts the display's colors to the room's light. Macs whose
+displays don't have it raise {class}`~macos.NotSupportedError`. It uses a
+private macOS framework, like Night Shift.
+
+## Locking
+
+```python
+macos.screen.lock()
+```
+
+It locks the screen at once, like Ctrl-Cmd-Q: apps keep running, and the
+user needs their password or Touch ID to come back. It uses a private macOS
+framework, since there's no public one.
+
+{func}`~macos.screen.is_locked` tells whether the screen is locked, and
+{func}`~macos.screen.is_asleep` whether a display is off to save energy, so a
+script can wait for the user to come back:
+
+```python
+import time
+
+while macos.screen.is_locked():
+    time.sleep(5)
+```
+
 ## Screen saver
 
 ```python
@@ -108,3 +169,12 @@ this also locks it.
 - {func}`macos.screen.wallpaper`
 - {func}`macos.screen.set_wallpaper`
 - {func}`macos.screen.start_screensaver`
+- {func}`macos.screen.brightness`
+- {func}`macos.screen.set_brightness`
+- {func}`macos.screen.night_shift`
+- {func}`macos.screen.set_night_shift`
+- {func}`macos.screen.true_tone`
+- {func}`macos.screen.set_true_tone`
+- {func}`macos.screen.lock`
+- {func}`macos.screen.is_locked`
+- {func}`macos.screen.is_asleep`

@@ -45,6 +45,7 @@ explain how to use each part.
 
 .. autofunction:: macos.appearance.is_dark
 .. autofunction:: macos.appearance.mode
+.. autofunction:: macos.appearance.set_mode
 .. autofunction:: macos.appearance.is_auto
 .. autofunction:: macos.appearance.accent_color
 .. autofunction:: macos.appearance.wait_for_change
@@ -63,6 +64,40 @@ explain how to use each part.
    :members: is_running, is_active, is_hidden, activate, hide, unhide, quit
 .. autofunction:: macos.apps.default_for
 .. autofunction:: macos.apps.default_browser
+```
+
+## macos.keyboard
+
+```{eval-rst}
+.. module:: macos.keyboard
+
+.. autofunction:: macos.keyboard.type
+.. autofunction:: macos.keyboard.press
+.. autofunction:: macos.keyboard.hold
+.. autofunction:: macos.keyboard.caps_lock
+.. autofunction:: macos.keyboard.layouts
+.. autofunction:: macos.keyboard.layout
+.. autofunction:: macos.keyboard.set_layout
+.. autofunction:: macos.keyboard.has_permission
+.. autofunction:: macos.keyboard.request_permission
+.. autofunction:: macos.keyboard.brightness
+.. autofunction:: macos.keyboard.set_brightness
+.. autofunction:: macos.keyboard.auto_brightness
+.. autofunction:: macos.keyboard.set_auto_brightness
+```
+
+## macos.mouse
+
+```{eval-rst}
+.. module:: macos.mouse
+
+.. autofunction:: macos.mouse.position
+.. autofunction:: macos.mouse.move
+.. autofunction:: macos.mouse.click
+.. autofunction:: macos.mouse.drag
+.. autofunction:: macos.mouse.scroll
+.. autofunction:: macos.mouse.has_permission
+.. autofunction:: macos.mouse.request_permission
 ```
 
 ## macos.keychain
@@ -91,6 +126,7 @@ explain how to use each part.
 .. module:: macos.power
 
 .. autofunction:: macos.power.battery
+.. autofunction:: macos.power.low_power_mode
 .. autoclass:: macos.power.Battery
 .. autofunction:: macos.power.keep_awake
 .. autofunction:: macos.power.sleep
@@ -232,7 +268,24 @@ explain how to use each part.
 .. autofunction:: macos.audio.default_input
 .. autofunction:: macos.audio.set_output
 .. autofunction:: macos.audio.set_input
+.. autofunction:: macos.audio.input_volume
+.. autofunction:: macos.audio.set_input_volume
+.. autofunction:: macos.audio.input_muted
+.. autofunction:: macos.audio.mute_input
 .. autoclass:: macos.audio.Device
+```
+
+## macos.bluetooth
+
+```{eval-rst}
+.. module:: macos.bluetooth
+
+.. autofunction:: macos.bluetooth.power
+.. autofunction:: macos.bluetooth.set_power
+.. autofunction:: macos.bluetooth.devices
+.. autofunction:: macos.bluetooth.connect
+.. autofunction:: macos.bluetooth.disconnect
+.. autoclass:: macos.bluetooth.Device
 ```
 
 ## macos.sound
@@ -269,6 +322,15 @@ explain how to use each part.
 .. autofunction:: macos.screen.wallpaper
 .. autofunction:: macos.screen.set_wallpaper
 .. autofunction:: macos.screen.start_screensaver
+.. autofunction:: macos.screen.brightness
+.. autofunction:: macos.screen.set_brightness
+.. autofunction:: macos.screen.night_shift
+.. autofunction:: macos.screen.set_night_shift
+.. autofunction:: macos.screen.true_tone
+.. autofunction:: macos.screen.set_true_tone
+.. autofunction:: macos.screen.lock
+.. autofunction:: macos.screen.is_locked
+.. autofunction:: macos.screen.is_asleep
 ```
 
 ## macos.dialog
@@ -302,6 +364,10 @@ explain how to use each part.
 .. autofunction:: macos.system.volumes
 .. autofunction:: macos.system.eject
 .. autofunction:: macos.system.fonts
+.. autofunction:: macos.system.thermal_state
+.. autofunction:: macos.system.lid_closed
+.. autofunction:: macos.system.camera_in_use
+.. autofunction:: macos.system.microphone_in_use
 .. autoclass:: macos.system.Volume
 ```
 

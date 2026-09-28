@@ -8,10 +8,15 @@ itself, so a script can work in one terminal and not in another.
 |---|---|---|
 | {func}`macos.screenshot` | Screen Recording | System Settings › Privacy & Security › Screen & System Audio Recording |
 | {func}`macos.notify` | Notifications for *Script Editor* | System Settings › Notifications › Script Editor |
+| {mod}`macos.keyboard` typing and keys, {mod}`macos.mouse` moving, clicking and scrolling | Accessibility | System Settings › Privacy & Security › Accessibility |
+| {func}`macos.appearance.set_mode` | Automation of *System Events* (asked the first time) | System Settings › Privacy & Security › Automation |
+| {func}`macos.bluetooth.connect`, {func}`~macos.bluetooth.disconnect` | Bluetooth (asked the first time) | System Settings › Privacy & Security › Bluetooth |
 
 The other features (clipboard, appearance, apps, Keychain, speech, power,
 Shortcuts, Finder, volume, Spotlight, dialogs, system info, Vision, images,
-PDFs, language, audio devices, sounds, network) need no permission.
+PDFs, language, audio devices, sounds, network, brightness, the keyboard
+backlight, the mouse position, listing Bluetooth devices, Caps Lock, microphone
+volume, camera and microphone use, locking the screen) need no permission.
 
 ## Screen Recording
 
@@ -26,6 +31,28 @@ macos.screen.request_permission()   # show the system prompt
 
 After granting it in System Settings, **restart the app running Python**; macOS
 only applies the change to newly started processes.
+
+## Accessibility
+
+Sending keystrokes and mouse events lets a script control any app, so macOS
+asks for the Accessibility permission. Without it macOS silently drops the
+events; {mod}`macos.keyboard` and {mod}`macos.mouse` check first and raise
+{class}`~macos.PermissionDeniedError` instead.
+
+```python
+macos.keyboard.has_permission()       # check without prompting (the same for macos.mouse)
+macos.keyboard.request_permission()   # show the system prompt
+```
+
+As with Screen Recording, **restart the app running Python** after allowing it.
+
+## Automation
+
+{func}`macos.appearance.set_mode` asks System Events to switch the
+appearance, so the first time macOS asks whether the app running Python may
+control System Events. If that's denied, it raises
+{class}`~macos.PermissionDeniedError`; allow it again in System Settings ›
+Privacy & Security › Automation.
 
 ## Notifications
 

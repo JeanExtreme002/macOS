@@ -23,9 +23,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from . import _objc
-from ._system import framework, run
-from .errors import MacOSError, PermissionDeniedError
+from . import _cf, _objc
+from ._system import framework, private_framework, run
+from .errors import MacOSError, NotSupportedError, PermissionDeniedError
 
 __all__ = [
     "screenshot",
@@ -36,6 +36,15 @@ __all__ = [
     "wallpaper",
     "set_wallpaper",
     "start_screensaver",
+    "brightness",
+    "set_brightness",
+    "night_shift",
+    "set_night_shift",
+    "true_tone",
+    "set_true_tone",
+    "lock",
+    "is_locked",
+    "is_asleep",
 ]
 
 _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tiff": "tiff", ".gif": "gif", ".pdf": "pdf"}
@@ -322,3 +331,220 @@ def start_screensaver() -> None:
     Lock Screen), this also locks the Mac once the password delay passes.
     """
     run(["open", "-a", "ScreenSaverEngine"])
+
+
+@lru_cache(maxsize=None)
+def _display_services() -> ctypes.CDLL:
+    # DisplayServices is private: the public API (IOKit's IODisplay) doesn't
+    # reach the built-in displays of Apple silicon Macs.
+    services = private_framework("DisplayServices")
+    for name in ("DisplayServicesCanChangeBrightness", "DisplayServicesGetBrightness", "DisplayServicesSetBrightness"):
+        if not hasattr(services, name):
+            raise NotSupportedError("this version of macOS doesn't expose the display brightness")
+    services.DisplayServicesCanChangeBrightness.argtypes = (ctypes.c_uint32,)
+    services.DisplayServicesCanChangeBrightness.restype = ctypes.c_bool
+    services.DisplayServicesGetBrightness.argtypes = (ctypes.c_uint32, ctypes.POINTER(ctypes.c_float))
+    services.DisplayServicesGetBrightness.restype = ctypes.c_int
+    services.DisplayServicesSetBrightness.argtypes = (ctypes.c_uint32, ctypes.c_float)
+    services.DisplayServicesSetBrightness.restype = ctypes.c_int
+    return services
+
+
+def _dimmable(display_id: Union[int, Display, None]) -> int:
+    """The display whose brightness to use: ``display_id``, or the first one macOS can dim."""
+    services = _display_services()
+    if display_id is not None:
+        wanted = display_id.id if isinstance(display_id, Display) else display_id
+        if not services.DisplayServicesCanChangeBrightness(wanted):
+            raise NotSupportedError("macOS can't change the brightness of display {}".format(wanted))
+        return wanted
+    for display in displays():
+        if services.DisplayServicesCanChangeBrightness(display.id):
+            return display.id
+    raise NotSupportedError(
+        "no display here has a brightness macOS controls (external monitors usually set it with their own buttons)"
+    )
+
+
+def brightness(display_id: Union[int, Display, None] = None) -> float:
+    """
+    The display brightness, from 0.0 to 1.0, as the slider in Control Center.
+
+    By default, of the built-in display (or an Apple display). ``display_id``
+    works as in :func:`wallpaper`. Most external monitors set their brightness
+    with their own buttons, so they raise :class:`~macos.errors.NotSupportedError`.
+    """
+    target = _dimmable(display_id)
+    value = ctypes.c_float()
+    status = _display_services().DisplayServicesGetBrightness(target, ctypes.byref(value))
+    if status != 0:
+        raise MacOSError("could not read the brightness of display {} (error {})".format(target, status))
+    return round(float(value.value), 3)
+
+
+def set_brightness(value: float, *, display_id: Union[int, Display, None] = None) -> None:
+    """
+    Set the display brightness, from 0.0 (darkest, not off) to 1.0.
+
+    ``display_id`` works as in :func:`brightness`. With *Automatically adjust
+    brightness* on (System Settings › Displays), macOS keeps adapting it to
+    the room's light afterwards.
+    """
+    if not 0.0 <= value <= 1.0:
+        raise ValueError("brightness must be from 0.0 to 1.0, not {}".format(value))
+    target = _dimmable(display_id)
+    status = _display_services().DisplayServicesSetBrightness(target, float(value))
+    if status != 0:
+        raise MacOSError("could not change the brightness of display {} (error {})".format(target, status))
+
+
+class _NightShiftTime(ctypes.Structure):
+    _fields_ = [("hour", ctypes.c_int), ("minute", ctypes.c_int)]
+
+
+class _NightShiftStatus(ctypes.Structure):
+    # CoreBrightness's private StatusData, as the Night Shift settings read it.
+    _fields_ = [
+        ("active", ctypes.c_bool),
+        ("enabled", ctypes.c_bool),
+        ("sun_schedule_permitted", ctypes.c_bool),
+        ("mode", ctypes.c_int),
+        ("start", _NightShiftTime),
+        ("end", _NightShiftTime),
+        ("disable_flags", ctypes.c_ulonglong),
+        ("available", ctypes.c_bool),
+    ]
+
+
+def _night_shift_client() -> int:
+    """An autoreleased ``CBBlueLightClient``. Call inside an autorelease pool."""
+    private_framework("CoreBrightness")
+    framework("Foundation")
+    try:
+        _objc.cls("CBBlueLightClient")
+    except LookupError:
+        raise NotSupportedError("this version of macOS doesn't expose Night Shift") from None
+    return _objc.new("CBBlueLightClient")
+
+
+def _night_shift_status() -> _NightShiftStatus:
+    status = _NightShiftStatus()
+    with _objc.autorelease_pool():
+        ok = _objc.send(
+            _night_shift_client(), "getBlueLightStatus:", ctypes.byref(status), argtypes=(ctypes.c_void_p,), restype=_objc.BOOL
+        )
+    if not ok:
+        raise MacOSError("could not read the Night Shift status")
+    if not status.available:
+        raise NotSupportedError("Night Shift isn't available on this Mac's displays")
+    return status
+
+
+def night_shift() -> bool:
+    """
+    Whether Night Shift is on right now, making the display warmer (yellower).
+
+    It's on when turned on by hand or during its schedule (System Settings ›
+    Displays › Night Shift).
+    """
+    return bool(_night_shift_status().enabled)
+
+
+def set_night_shift(on: bool) -> None:
+    """
+    Turn Night Shift on or off now, like the switch in Control Center.
+
+    Its schedule, if any, still applies: it turns on or off again at the
+    scheduled times.
+    """
+    _night_shift_status()  # raises when unavailable
+    with _objc.autorelease_pool():
+        ok = _objc.send(_night_shift_client(), "setEnabled:", bool(on), argtypes=(_objc.BOOL,), restype=_objc.BOOL)
+    if not ok:
+        raise MacOSError("macOS refused to turn Night Shift {}".format("on" if on else "off"))
+
+
+def _true_tone_client() -> int:
+    """An autoreleased ``CBTrueToneClient`` for a Mac with True Tone. Call inside an autorelease pool."""
+    private_framework("CoreBrightness")
+    framework("Foundation")
+    try:
+        _objc.cls("CBTrueToneClient")
+    except LookupError:
+        raise NotSupportedError("this version of macOS doesn't expose True Tone") from None
+    client = _objc.new("CBTrueToneClient")
+    for name in ("supported", "available"):
+        if not _objc.send(client, name, restype=_objc.BOOL):
+            raise NotSupportedError("True Tone isn't available on this Mac's displays")
+    return client
+
+
+def true_tone() -> bool:
+    """
+    Whether True Tone is on, adapting the display's colors to the room's light.
+
+    Raises :class:`~macos.errors.NotSupportedError` on Macs whose displays
+    don't have it.
+    """
+    with _objc.autorelease_pool():
+        return bool(_objc.send(_true_tone_client(), "enabled", restype=_objc.BOOL))
+
+
+def set_true_tone(on: bool) -> None:
+    """Turn True Tone on or off, like the switch in System Settings › Displays."""
+    with _objc.autorelease_pool():
+        ok = _objc.send(_true_tone_client(), "setEnabled:", bool(on), argtypes=(_objc.BOOL,), restype=_objc.BOOL)
+    if not ok:
+        raise MacOSError("macOS refused to turn True Tone {}".format("on" if on else "off"))
+
+
+def lock() -> None:
+    """
+    Lock the screen now, like Ctrl-Cmd-Q or *Lock Screen* in the Apple menu.
+
+    Apps keep running; the user needs their password (or Touch ID) to come
+    back. Uses a private macOS framework, since there's no public one.
+    """
+    login = private_framework("login")
+    if not hasattr(login, "SACLockScreenImmediate"):
+        raise NotSupportedError("this version of macOS doesn't expose locking the screen")
+    login.SACLockScreenImmediate.argtypes = ()
+    login.SACLockScreenImmediate.restype = ctypes.c_int
+    status = login.SACLockScreenImmediate()
+    if status != 0:
+        raise MacOSError("could not lock the screen (error {})".format(status))
+
+
+def is_locked() -> bool:
+    """
+    Whether the screen is locked (by :func:`lock`, the user, or the screen saver asking for the password).
+
+    A script can wait for the user to come back::
+
+        while macos.screen.is_locked():
+            time.sleep(5)
+    """
+    graphics = framework("CoreGraphics")
+    graphics.CGSessionCopyCurrentDictionary.argtypes = ()
+    graphics.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+    with _cf.owned(graphics.CGSessionCopyCurrentDictionary()) as session:
+        if not session:
+            raise MacOSError("could not read the login session")
+        # Present, and true, only while the screen is locked.
+        return _cf.to_bool(_cf.lookup(session, "CGSSessionScreenIsLocked"))
+
+
+def is_asleep(display_id: Union[int, Display, None] = None) -> bool:
+    """
+    Whether a display is asleep (turned off to save energy), the main one by default.
+
+    ``display_id`` works as in :func:`wallpaper`.
+    """
+    graphics = _display_api()
+    graphics.CGDisplayIsAsleep.argtypes = (ctypes.c_uint32,)
+    graphics.CGDisplayIsAsleep.restype = ctypes.c_bool
+    if display_id is None:
+        target = graphics.CGMainDisplayID()
+    else:
+        target = display_id.id if isinstance(display_id, Display) else display_id
+    return bool(graphics.CGDisplayIsAsleep(target))
