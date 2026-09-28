@@ -1291,12 +1291,14 @@ def test_windows(test_window):
 
     assert window.fullscreen is False
     if os.environ.get("CI"):  # it switches to a Space of its own: not on the user's Mac
-        window.set_fullscreen()
-        time.sleep(1.5)
-        assert window.fullscreen
-        window.set_fullscreen(False)
-        time.sleep(1.5)
-        assert not window.fullscreen
+        for on in (True, False):
+            window.set_fullscreen(on)
+            # The animation takes a second or more, longer on a busy runner.
+            for _ in range(50):
+                if window.fullscreen == on:
+                    break
+                time.sleep(0.1)
+            assert window.fullscreen == on
 
     window.minimize()
     time.sleep(0.8)
