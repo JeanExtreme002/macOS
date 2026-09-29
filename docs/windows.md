@@ -64,8 +64,8 @@ display, like Rectangle, leaving out the menu bar and the Dock:
 
 ```python
 window = macos.windows.focused()
-window.snap("left")             # the left half
-window.snap("top_right")        # a quarter
+window.snap("left")               # the left half
+window.snap("top_right")          # a quarter
 window.snap("right_third")
 window.snap("maximize")
 ```
@@ -80,6 +80,7 @@ makes a window manager in a few lines:
 ```python
 for keys, layout in {"ctrl+option+left": "left", "ctrl+option+right": "right"}.items():
     macos.hotkeys.register(keys, lambda layout=layout: macos.windows.focused().snap(layout))
+
 macos.hotkeys.run()
 ```
 

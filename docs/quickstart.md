@@ -37,7 +37,7 @@ macos.mouse.click(300, 400)
 macos.mouse.click_text("Submit")                     # wherever it shows on the screen
 
 macos.windows.focused().set_frame(0, 25, 1280, 800)
-macos.windows.focused().snap("left")                  # the left half, like Rectangle
+macos.windows.focused().snap("left")                 # the left half, like Rectangle
 
 macos.shortcuts.run("Translate", input="Olá")        # 'Hello'
 macos.music.now_playing()                            # Track(title='Imagine', artist='John Lennon', ...)
@@ -110,7 +110,7 @@ Everything runs on your Mac, offline, with Apple's own models. See
 
 ```python
 macos.keychain.set("my-app", "alice", "s3cret")
-macos.keychain.get("my-app", "alice")             # 's3cret'
+macos.keychain.get("my-app", "alice")              # 's3cret'
 
 if macos.auth.confirm("unlock the deploy token"):  # Touch ID or the password
     token = macos.keychain.get("deploy", "prod")
