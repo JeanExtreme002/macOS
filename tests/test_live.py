@@ -1537,8 +1537,9 @@ def test_audio_editing(speech, tmp_path):
     assert max(map(abs, _samples(audio.gain(wav, tmp_path / "loud.wav", 6)))) > max(map(abs, _samples(wav)))
     twice = audio.reverse(audio.reverse(wav, tmp_path / "backwards.wav"), tmp_path / "forwards.wav")
     assert _samples(twice) == _samples(wav)
-    fast = audio.speed(speech, tmp_path / "fast.m4a", 2)
-    assert abs(audio.info(fast).duration - details.duration / 2) < 0.1
+    fast = audio.speed(speech, tmp_path / "fast.wav", 2)
+    assert abs(audio.info(fast).duration - details.duration / 2) < 0.02
+    assert abs(audio.info(audio.speed(speech, tmp_path / "fast.m4a", 2)).duration - details.duration / 2) < 0.1
 
     labels = dict(audio.classify(speech))
     assert labels.get("speech", 0) > 0.5

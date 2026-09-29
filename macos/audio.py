@@ -815,7 +815,7 @@ def speed(
     if factor <= 0:
         raise ValueError("factor must be positive, not {}".format(factor))
     target = Path(output).expanduser().absolute()
-    options = _encoding(target, quality, lossless)
+    _encoding(target, quality, lossless)  # check the output before the work
     with tempfile.TemporaryDirectory() as folder:
         stretched = Path(folder) / "stretched.m4a"
         with _objc.autorelease_pool():
@@ -836,7 +836,11 @@ def speed(
                 time_pitch="Spectral" if keep_pitch else "Varispeed",
                 length=length / factor,
             )
-        return _afconvert(stretched, target, options)
+        # AAC pads the start and end of what it encodes: cut the exact length
+        # from the decoded samples, and encode only once, in the output's format.
+        channels, rate, samples = _decode(stretched)
+        exact = int(round(length / factor * rate)) * channels
+        return _encode(samples[:exact], channels, rate, target, quality, lossless)
 
 
 # Sound classification, through SoundAnalysis.
