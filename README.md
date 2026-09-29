@@ -1,6 +1,6 @@
 # pymacos
 
-**A Pythonic interface to macOS.** Notifications, clipboard, webcam and microphone, keyboard and mouse, windows, global hotkeys, dark mode, apps, Keychain, speech, screenshots, battery, volume, Shortcuts, Finder, Spotlight, dialogs, system info, OCR, document scanning, background removal, duplicate photos, images, PDFs, videos, music control, audio devices, Bluetooth, brightness and language tools, all from one import with zero dependencies.
+**A Pythonic interface to macOS.** Control your whole Mac from Python: apps, notifications, input, screen, camera, microphone, OCR, media and more, with one import and zero dependencies.
 
 <table>
     <tr>
@@ -61,6 +61,17 @@ macos.power.battery()                           # Battery(percent=87, charging=T
 macos.shortcuts.run("Translate", input="Olá")   # 'Hello'
 macos.finder.trash("old.log")                   # moved to the Trash
 ```
+
+## What's inside
+
+| Area | Topics |
+|---|---|
+| **Apps & Automation** | [Apps](https://macos.readthedocs.io/en/latest/apps.html), [Clipboard](https://macos.readthedocs.io/en/latest/clipboard.html), [Hotkeys](https://macos.readthedocs.io/en/latest/hotkeys.html), [Keyboard](https://macos.readthedocs.io/en/latest/keyboard.html), [Mouse](https://macos.readthedocs.io/en/latest/mouse.html), [Music](https://macos.readthedocs.io/en/latest/music.html), [Shortcuts](https://macos.readthedocs.io/en/latest/shortcuts.html), [Windows](https://macos.readthedocs.io/en/latest/windows.html) |
+| **User Interaction** | [Dialogs](https://macos.readthedocs.io/en/latest/dialog.html), [Notifications](https://macos.readthedocs.io/en/latest/notifications.html), [Sound](https://macos.readthedocs.io/en/latest/sound.html), [Speech](https://macos.readthedocs.io/en/latest/speech.html) |
+| **Files & Documents** | [Audio Files](https://macos.readthedocs.io/en/latest/audio-files.html), [Finder](https://macos.readthedocs.io/en/latest/finder.html), [Images](https://macos.readthedocs.io/en/latest/image.html), [PDF](https://macos.readthedocs.io/en/latest/pdf.html), [Spotlight](https://macos.readthedocs.io/en/latest/spotlight.html), [Video](https://macos.readthedocs.io/en/latest/video.html) |
+| **Intelligence** | [Language](https://macos.readthedocs.io/en/latest/language.html), [Vision](https://macos.readthedocs.io/en/latest/vision.html) |
+| **Security** | [Keychain](https://macos.readthedocs.io/en/latest/keychain.html) |
+| **System & Hardware** | [Appearance](https://macos.readthedocs.io/en/latest/appearance.html), [Audio](https://macos.readthedocs.io/en/latest/audio.html), [Bluetooth](https://macos.readthedocs.io/en/latest/bluetooth.html), [Camera](https://macos.readthedocs.io/en/latest/camera.html), [Network](https://macos.readthedocs.io/en/latest/network.html), [Power](https://macos.readthedocs.io/en/latest/power.html), [Screen](https://macos.readthedocs.io/en/latest/screen.html), [System](https://macos.readthedocs.io/en/latest/system.html), [Volume](https://macos.readthedocs.io/en/latest/volume.html) |
 
 ## Install
 
