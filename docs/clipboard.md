@@ -75,6 +75,7 @@ To follow every copy, {func}`~macos.clipboard.watch` yields each one, until you
 
 ```python
 history = []
+
 for text in macos.clipboard.watch():
     if text:
         history.append(text)

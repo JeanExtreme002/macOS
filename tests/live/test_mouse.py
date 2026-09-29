@@ -25,10 +25,9 @@ def test_click_text_and_watch_clicks(test_window):
         pytest.skip("needs the Screen Recording and Accessibility permissions")
     test_window.set_frame(300, 300, 500, 300)
     test_window.focus()
-    time.sleep(0.8)
     before = macos.mouse.position()
     try:
-        match = macos.mouse.click_text(test_window.title)
+        match = macos.mouse.click_text("pymacos test", region=(300, 300, 500, 300), timeout=10)
         assert 300 <= match.center[0] <= 800 and 300 <= match.center[1] <= 340
         with pytest.raises(macos.MacOSError, match="isn't on the screen"):
             macos.mouse.click_text("no such text, surely")
