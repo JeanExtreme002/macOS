@@ -1,8 +1,12 @@
 # pymacos
 
-**A Pythonic interface to macOS.** Control your whole Mac from
-Python: apps, notifications, input, screen, camera, microphone, OCR, media
-and more, with one import and zero dependencies.
+<p class="wordmark"><img alt="pymacos" src="_static/brand/wordmark-light.svg" width="360"></p>
+
+<h2 class="tagline">A Pythonic interface to macOS</h2>
+
+Control your whole Mac from Python: apps, notifications, input, screen, camera,
+microphone, OCR, media, Keychain, Touch ID and more, with one import and zero
+dependencies.
 
 <table class="badge-table">
   <tr>

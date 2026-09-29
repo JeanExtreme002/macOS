@@ -1,6 +1,15 @@
-# pymacos
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/JeanExtreme002/pymacos/main/docs/_static/brand/wordmark-dark.svg">
+    <img alt="pymacos" src="https://raw.githubusercontent.com/JeanExtreme002/pymacos/main/docs/_static/brand/wordmark-light.svg" width="360">
+  </picture>
+</p>
 
-**A Pythonic interface to macOS.** Control your whole Mac from Python: apps, notifications, input, screen, camera, microphone, OCR, media and more, with one import and zero dependencies.
+<br>
+
+## A Pythonic interface to macOS
+
+Control your whole Mac from Python: apps, notifications, input, screen, camera, microphone, OCR, media, Keychain, Touch ID and more, with one import and zero dependencies.
 
 <table>
     <tr>

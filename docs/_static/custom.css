@@ -92,3 +92,29 @@
   margin: 0.1rem 0.15rem;
   line-height: 0;
 }
+
+/* --- Home page wordmark ------------------------------------------------- */
+/* The image stands for the page title, which stays for the browser tab and
+   the navigation but isn't shown. */
+section#pymacos > h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.rst-content p.wordmark {
+  margin: 0.5rem 0 2.5rem;
+  text-align: center;
+}
+
+.rst-content p.wordmark img {
+  max-width: 100%;
+  height: auto;
+}
+
+.rst-content h2.tagline {
+  margin: 0 0 1rem;
+}
+
