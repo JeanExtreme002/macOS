@@ -17,6 +17,7 @@ Uses AVFoundation, the framework behind QuickTime Player, and the
 
 import ctypes
 import os
+import re
 import struct
 import tempfile
 import time
@@ -44,6 +45,7 @@ __all__ = [
     "reverse",
     "mute",
     "add_audio",
+    "add_language_track",
     "from_images",
 ]
 
@@ -969,3 +971,77 @@ def reverse(source: PathLike, output: PathLike) -> Path:
             return add_audio(silent, backwards, target, replace=True)
         finally:
             silent.unlink(missing_ok=True)
+
+
+_LANGUAGE_TAG = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")  # "en", "pt-BR", "es-419"...
+
+
+def _set_language(track: int, tag: str) -> None:
+    # The exporter fills the three-letter code (eng, por...) from the tag.
+    _objc.send(track, "setExtendedLanguageTag:", _objc.nsstring(tag), argtypes=(_objc.id,), restype=None)
+
+
+def add_language_track(
+    video: PathLike,
+    audio: PathLike,
+    output: PathLike,
+    language: str,
+    *,
+    original_language: Optional[str] = None,
+) -> Path:
+    """
+    Add a sound in another language as an alternative track, and return ``output``.
+
+    Players that support it (QuickTime Player, the TV app, VLC...) offer the
+    languages in their audio menu; the video's own sound stays the default.
+    ``language`` and ``original_language`` are language tags such as ``"en"``,
+    ``"pt-BR"`` or ``"es-419"``; ``original_language`` labels the sound that's
+    already there. Nothing is re-encoded but the added sound, turned into AAC
+    if it isn't already::
+
+        macos.video.add_language_track("film.mov", "film-english.m4a", "film-dual.mov", "en", original_language="pt-BR")
+
+    A sound longer than the video is cut at its end. To mix a sound into the
+    video instead, see :func:`add_audio`.
+    """
+    from . import audio as audio_module
+
+    for label, tag in (("language", language), ("original_language", original_language)):
+        if tag is not None and not _LANGUAGE_TAG.match(tag):
+            raise ValueError("{} must be a language tag such as 'en' or 'pt-BR', not {!r}".format(label, tag))
+    target = _target(output)
+    sound_path = _existing(audio)
+    with tempfile.TemporaryDirectory() as folder:
+        # Copied as it is into the video: make it AAC, which every player reads.
+        if audio_module.info(sound_path).codec != "aac":
+            sound_path = audio_module.convert(sound_path, Path(folder) / "sound.m4a")
+        with _objc.autorelease_pool():
+            picture = _media.asset(_existing(video))
+            sound = _media.asset(sound_path)
+            length = _media.duration(picture)
+            dubbed = _media.composition()
+            for track in _media.tracks(picture, "vide"):
+                copy = _media.add_track(dubbed, "vide")
+                _media.insert(copy, track, 0, length, 0)
+                transform = _objc.send(track, "preferredTransform", restype=_objc.CGAffineTransform)
+                _objc.send(copy, "setPreferredTransform:", transform, argtypes=(_objc.CGAffineTransform,), restype=None)
+            # One alternate group for every sound track: players offer one at a time.
+            group = 1
+            originals = _media.tracks(picture, "soun")
+            for track in originals:
+                copy = _media.add_track(dubbed, "soun")
+                own = _media.seconds(_objc.send(track, "timeRange", restype=_media.CMTimeRange).duration)
+                _media.insert(copy, track, 0, min(length, own), 0)
+                _objc.send(copy, "setAlternateGroupID:", group, argtypes=(ctypes.c_int32,), restype=None)
+                if original_language:
+                    _set_language(copy, original_language)
+            added_tracks = _media.tracks(sound, "soun")
+            if not added_tracks:
+                raise ValueError("{} has no sound".format(audio))
+            added = _media.add_track(dubbed, "soun")
+            _media.insert(added, added_tracks[0], 0, min(_media.duration(sound), length), 0)
+            _objc.send(added, "setAlternateGroupID:", group, argtypes=(ctypes.c_int32,), restype=None)
+            _set_language(added, language)
+            # Off by default when there's an original to play; the only sound otherwise.
+            _objc.send(added, "setEnabled:", not originals, argtypes=(_objc.BOOL,), restype=None)
+            return _media.export(dubbed, target, preset="AVAssetExportPresetPassthrough")

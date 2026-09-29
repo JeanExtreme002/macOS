@@ -1,5 +1,6 @@
 """Tests against the real system. Skipped outside macOS."""
 
+import ctypes
 import os
 import time
 import uuid
@@ -8,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import macos
-from macos import _objc
+from macos import _media, _objc
 
 pytestmark = pytest.mark.live
 
@@ -1614,6 +1615,15 @@ def test_video_editing(speech, tmp_path):
     backwards = video.reverse(voiced, tmp_path / "backwards.mov")
     assert video.info(backwards).has_audio
     assert square(clip, 0.1) < square(clip, 0.9) and square(backwards, 0.1) > square(backwards, 0.9)
+
+    dual = video.add_language_track(voiced, speech, tmp_path / "dual.mp4", "en", original_language="pt-BR")
+    with _objc.autorelease_pool():
+        sounds = _media.tracks(_media.asset(dual), "soun")
+        languages = [_objc.pystring(_objc.send(track, "languageCode")) for track in sounds]
+        enabled = [bool(_objc.send(track, "isEnabled", restype=_objc.BOOL)) for track in sounds]
+        groups = {_objc.send(track, "alternateGroupID", restype=ctypes.c_int32) for track in sounds}
+    assert (languages, enabled, len(groups)) == (["por", "eng"], [True, False], 1)
+    assert video.info(dual).duration == 1.0
 
 
 def test_image_editing(tmp_path):

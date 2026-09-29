@@ -326,6 +326,7 @@ explain how to use each part.
 .. autofunction:: macos.video.mute
 .. autofunction:: macos.video.reverse
 .. autofunction:: macos.video.add_audio
+.. autofunction:: macos.video.add_language_track
 .. autofunction:: macos.video.from_images
 .. autoclass:: macos.video.VideoInfo
 ```

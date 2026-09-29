@@ -109,6 +109,16 @@ By default the sound plays over the video's own; `replace=True` drops the
 original. `at` is where it starts, and a sound longer than the video is cut at
 its end. To use part of a song, {func}`macos.audio.trim` it first.
 
+{func}`~macos.video.add_language_track` adds a dub as a separate track
+instead, which players offer in their audio menu, next to the original:
+
+```python
+macos.video.add_language_track("film.mov", "film-english.m4a", "film-dual.mov", "en", original_language="pt-BR")
+```
+
+Languages are tags such as `"en"`, `"pt-BR"` or `"es-419"`. The original
+sound stays the default, and the video isn't re-encoded.
+
 ## Frames and timelapses
 
 {func}`~macos.video.frames` takes a frame every few seconds, and
@@ -142,5 +152,6 @@ video on one page.
 - {func}`macos.video.mute`
 - {func}`macos.video.reverse`
 - {func}`macos.video.add_audio`
+- {func}`macos.video.add_language_track`
 - {func}`macos.video.from_images`
 - {class}`macos.video.VideoInfo`
