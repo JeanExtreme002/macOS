@@ -153,3 +153,18 @@ def test_structs_match_libcups():
     pointer = ctypes.sizeof(ctypes.c_void_p)
     assert ctypes.sizeof(printer._Dest) == 2 * pointer + 2 * 4 + pointer
     assert printer._Job.state.offset == 4 * pointer + pointer  # after id (padded) and four strings
+
+
+def test_printers_named_by_queue_first_and_ambiguous_descriptions_refused(cups, tmp_path):
+    report = tmp_path / "report.pdf"
+    report.write_bytes(b"%PDF")
+    cups.printers = [
+        ("Office_1", {"printer-info": "Office"}, True),
+        ("Office_2", {"printer-info": "Office"}, False),
+        ("Office", {"printer-info": "Front desk"}, False),
+    ]
+    printer.print_file(report, "Office")  # the queue's name wins over two descriptions
+    assert cups.printed[-1][0] == "Office"
+    cups.printers = cups.printers[:2]
+    with pytest.raises(ValueError, match="several printers are named 'Office': use one of their queue names, Office_1, Office_2"):
+        printer.print_file(report, "Office")

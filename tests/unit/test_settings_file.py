@@ -74,3 +74,15 @@ def test_the_real_table_reads_and_changes_existing_functions():
         for name, setting in table.items():
             assert callable(setting.read) and callable(setting.change), "{}.{}".format(section, name)
     assert len(settings.names()) == len(set(settings.names())) > 80
+
+
+def test_apply_skips_what_this_mac_lacks(fake_settings, monkeypatch):
+    values, changes, restarts = fake_settings
+
+    def lacking(value):
+        raise macos.NotSupportedError("this Mac has no keyboard backlight")
+
+    table = settings._SETTINGS["keyboard"]
+    monkeypatch.setitem(table, "backlight_timeout", settings._Setting(table["backlight_timeout"].read, lacking))
+    changed = settings.apply({"keyboard": {"backlight_timeout": 10}, "dock": {"size": 64}})
+    assert changed == ["dock.size"] and changes == [("size", 64)]

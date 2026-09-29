@@ -642,6 +642,9 @@ def test_windows_appearance_sound_and_screenshots(prefs, tmp_path, monkeypatch):
     assert (macos.sound.alert_sound(), macos.sound.alert_volume(), macos.sound.ui_sounds()) == ("Funk", 0.5, False)
     with pytest.raises(ValueError, match="no alert sound is named"):
         macos.sound.set_alert_sound("Boop")
+    for pattern in ("*", "F*", "../Sounds/Funk"):  # names, not patterns or paths
+        with pytest.raises(ValueError, match="no alert sound is named"):
+            macos.sound.set_alert_sound(pattern)
     with pytest.raises(ValueError, match="volume must be"):
         macos.sound.set_alert_volume(2)
 

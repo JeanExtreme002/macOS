@@ -699,7 +699,13 @@ def is_quarantined(path: Union[str, "os.PathLike[str]"]) -> bool:
     if not os.path.lexists(target):
         raise FileNotFoundError(str(target))
     size = _libc().getxattr(os.fsencode(target), _QUARANTINE, None, 0, 0, _XATTR_NOFOLLOW)
-    return size >= 0
+    if size >= 0:
+        return True
+    error = ctypes.get_errno()
+    if error == _ENOATTR:
+        return False
+    # Anything else (no access, a disk error...) says nothing about the mark: don't guess.
+    raise OSError(error, "can't read the quarantine of {}: {}".format(target, os.strerror(error)))
 
 
 def unquarantine(path: Union[str, "os.PathLike[str]"]) -> int:

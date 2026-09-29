@@ -97,3 +97,21 @@ def test_unquarantine(tmp_path):
     assert macos.apps.unquarantine(app) == 0
     with pytest.raises(FileNotFoundError):
         macos.apps.is_quarantined(tmp_path / "missing.app")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="extended attributes as macOS keeps them")
+def test_is_quarantined_reports_errors_other_than_a_missing_mark(tmp_path, monkeypatch):
+    import ctypes
+    import errno
+
+    file = tmp_path / "file"
+    file.write_text("")
+
+    class Failing:
+        def getxattr(self, *args):
+            ctypes.set_errno(errno.EACCES)
+            return -1
+
+    monkeypatch.setattr(macos.apps, "_libc", lambda: Failing())
+    with pytest.raises(PermissionError):
+        macos.apps.is_quarantined(file)

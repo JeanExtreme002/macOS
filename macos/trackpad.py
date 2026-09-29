@@ -267,6 +267,7 @@ def set_gesture(name: str, on: Union[bool, int]) -> None:
         _write(key, value if on else (False if isinstance(value, bool) else 0))
     elif name in _SWIPES:
         three, four, dock_switch = _SWIPES[name]
+        # As System Settings writes it: three fingers turns on the four-finger swipe too.
         _write(three, _GESTURE if fingers == 3 else 0)
         _write(four, _GESTURE if fingers else 0)
         if dock_switch:

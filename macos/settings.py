@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, List, Mapping, NamedTuple, Optional
 
 from . import appearance, dock, finder, keyboard, mouse, screen, sound, system, trackpad, windows
 from ._system import batched_restarts, require_macos
-from .errors import MacOSError
+from .errors import MacOSError, NotSupportedError
 
 __all__ = ["export", "apply", "names"]
 
@@ -231,7 +231,8 @@ def apply(settings: Mapping[str, Mapping[str, Any]]) -> List[str]:
     Any part of an export works: settings left out stay as they are. Those
     already as wanted aren't touched, and the Dock and Finder restart once
     at the end. Unknown names raise :class:`ValueError` before anything
-    changes. Returns ``["dock.autohide", ...]``.
+    changes, and settings this Mac lacks (a keyboard backlight, Night Shift...)
+    are skipped. Returns ``["dock.autohide", ...]``.
     """
     require_macos()
     unknown = []
@@ -253,6 +254,9 @@ def apply(settings: Mapping[str, Mapping[str, Any]]) -> List[str]:
                     current = None
                 if current == _normalized(value):
                     continue
-                setting.change(value)
+                try:
+                    setting.change(value)
+                except NotSupportedError:
+                    continue  # this Mac lacks it (a keyboard backlight, Night Shift...): the others still apply
                 changed.append("{}.{}".format(section, name))
     return changed

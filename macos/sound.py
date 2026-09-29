@@ -140,8 +140,8 @@ def set_alert_sound(name: Optional[str]) -> None:
         return
     require_macos()
     for folder in _SOUND_FOLDERS:
-        for path in sorted(folder.glob(name + ".*")) if folder.is_dir() else ():
-            if path.suffix.lower() in (".aiff", ".aif", ".caf", ".wav"):
+        for path in sorted(folder.iterdir()) if folder.is_dir() else ():
+            if path.stem == name and path.suffix.lower() in (".aiff", ".aif", ".caf", ".wav"):
                 defaults.write(defaults.GLOBAL, "com.apple.sound.beep.sound", str(path))
                 return
     raise ValueError("no alert sound is named {!r}; see macos.sound.names()".format(name))

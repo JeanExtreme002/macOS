@@ -178,11 +178,17 @@ def _name(printer: Union[None, str, Printer]) -> str:
         if found is None:
             raise MacOSError("there's no default printer: name one, or set it with macos.printer.set_default()")
         return found.name
-    names = {found.name: found.name for found in printers()}
-    names.update({found.description: found.name for found in printers()})
-    if printer not in names:
+    every = printers()
+    if any(candidate.name == printer for candidate in every):
+        return printer  # a queue's name is unique
+    matches = [candidate.name for candidate in every if candidate.description == printer]
+    if len(matches) > 1:
+        raise ValueError(
+            "several printers are named {!r}: use one of their queue names, {}".format(printer, ", ".join(matches))
+        )
+    if not matches:
         raise ValueError("no printer is named {!r}; see macos.printer.printers()".format(printer))
-    return names[printer]
+    return matches[0]
 
 
 def set_default(printer: Union[str, Printer]) -> None:
