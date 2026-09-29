@@ -226,16 +226,15 @@ def _mach() -> ctypes.CDLL:
     return libc
 
 
-def _cpu_ticks() -> Tuple[int, int]:
-    """The processor's busy and total ticks since startup, all cores together."""
+def _cpu_ticks() -> Tuple[int, int, int, int]:
+    """The processor's user, system, idle and nice ticks since startup, all cores together (32-bit counters)."""
     require_macos()
     ticks = (ctypes.c_uint32 * 4)()  # user, system, idle, nice
     count = ctypes.c_uint32(4)
     mach = _mach()
     if mach.host_statistics(mach.mach_host_self(), _CPU_LOAD_INFO, ticks, ctypes.byref(count)) != 0:
         raise MacOSError("could not read the processor load")
-    user, system_, idle, nice = ticks
-    return user + system_ + nice, user + system_ + idle + nice
+    return ticks[0], ticks[1], ticks[2], ticks[3]
 
 
 def cpu_usage(interval: float = 0.5) -> float:
@@ -246,11 +245,13 @@ def cpu_usage(interval: float = 0.5) -> float:
     """
     if interval <= 0:
         raise ValueError("interval must be positive, not {}".format(interval))
-    busy, total = _cpu_ticks()
+    before = _cpu_ticks()
     time.sleep(interval)
-    busy_after, total_after = _cpu_ticks()
-    elapsed = total_after - total
-    return (busy_after - busy) / elapsed if elapsed > 0 else 0.0
+    after = _cpu_ticks()
+    # Each counter is 32-bit and wraps around: take each one's own difference, modulo 2**32.
+    user, system_, idle, nice = ((later - earlier) % 2**32 for earlier, later in zip(before, after))
+    total = user + system_ + idle + nice
+    return min(1.0, (user + system_ + nice) / total) if total else 0.0
 
 
 @dataclass(frozen=True)

@@ -191,3 +191,12 @@ def test_mount_image_detaches_an_image_without_a_volume(fake_run, tmp_path):
     with pytest.raises(macos.MacOSError, match="no volume to mount"):
         macos.system.mount_image(image)
     assert fake_run.args == ["hdiutil", "detach", "/dev/disk9", "-force"]  # the whole disk, not left attached
+
+
+def test_cpu_usage_survives_a_counter_wrapping_around(monkeypatch):
+    system = macos.system
+    samples = iter([(2**32 - 100, 50, 1000, 0), (100, 150, 1200, 0)])  # user wrapped: +200
+    monkeypatch.setattr(system, "_cpu_ticks", lambda: next(samples))
+    monkeypatch.setattr(system.time, "sleep", lambda seconds: None)
+
+    assert system.cpu_usage() == 0.6  # (200 user + 100 system) busy of 500 ticks
