@@ -88,6 +88,28 @@ for click in macos.mouse.watch():
 It only listens: the clicks still reach the apps. It needs the [Input Monitoring
 permission](permissions.md#input-monitoring).
 
+## Mouse settings
+
+{func}`~macos.mouse.set_tracking_speed` sets how fast the pointer moves with a
+mouse, from 0.0 to 1.0, like the slider in System Settings › Mouse; it takes
+effect at the next login. For the trackpad, see [Trackpad](trackpad.md).
+
+```python
+macos.mouse.tracking_speed()        # 0.333
+macos.mouse.set_tracking_speed(0.8)
+```
+
+{func}`~macos.mouse.set_scroll_speed` sets how fast the wheel scrolls, as
+macOS keeps it: 0.3125 by default, higher is faster; it too waits for the
+next login. {func}`~macos.mouse.set_double_click_speed` sets how many seconds
+apart two clicks can be and still count as a double click, 0.5 by default,
+for the mouse and the trackpad:
+
+```python
+macos.mouse.set_scroll_speed(1.0)
+macos.mouse.set_double_click_speed(0.3)   # quicker clicks
+```
+
 ## Reference
 
 - {func}`macos.mouse.position`
@@ -100,3 +122,9 @@ permission](permissions.md#input-monitoring).
 - {func}`macos.mouse.click_text`
 - {func}`macos.mouse.watch`
 - {class}`macos.mouse.Click`
+- {func}`macos.mouse.tracking_speed`
+- {func}`macos.mouse.set_tracking_speed`
+- {func}`macos.mouse.scroll_speed`
+- {func}`macos.mouse.set_scroll_speed`
+- {func}`macos.mouse.double_click_speed`
+- {func}`macos.mouse.set_double_click_speed`

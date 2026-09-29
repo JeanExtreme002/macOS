@@ -21,6 +21,8 @@ instead. The backlight and the layouts need no permission.
 """
 
 import ctypes
+import json
+import re
 import threading
 import time
 from contextlib import contextmanager
@@ -39,6 +41,18 @@ __all__ = [
     "caps_lock",
     "KeyPress",
     "watch",
+    "key_repeat",
+    "set_key_repeat",
+    "press_and_hold",
+    "set_press_and_hold",
+    "standard_function_keys",
+    "set_standard_function_keys",
+    "autocorrect",
+    "set_autocorrect",
+    "smart_quotes",
+    "set_smart_quotes",
+    "smart_dashes",
+    "set_smart_dashes",
     "layout",
     "layouts",
     "set_layout",
@@ -48,6 +62,15 @@ __all__ = [
     "set_brightness",
     "auto_brightness",
     "set_auto_brightness",
+    "auto_capitalization",
+    "set_auto_capitalization",
+    "double_space_period",
+    "set_double_space_period",
+    "full_keyboard_access",
+    "set_full_keyboard_access",
+    "remap",
+    "remappings",
+    "clear_remappings",
 ]
 
 has_permission = _events.has_permission
@@ -625,3 +648,265 @@ def watch(*, timeout: Optional[float] = None) -> Iterator[KeyPress]:
         "listening to the keyboard needs the Input Monitoring permission: allow the app running Python (your "
         "terminal or IDE) in System Settings › Privacy & Security › Input Monitoring, then restart it",
     )
+
+
+# --- Settings ---------------------------------------------------------------
+
+_KEY_REPEAT_UNIT = 0.015  # KeyRepeat and InitialKeyRepeat count 15 ms steps
+
+
+def _global(key: str, default: object) -> object:
+    from . import defaults
+
+    return defaults.read(defaults.GLOBAL, key, default=default)
+
+
+def _set_global(key: str, value: object, apply: bool = True) -> None:
+    from . import defaults
+    from ._system import apply_input_settings
+
+    defaults.write(defaults.GLOBAL, key, value)
+    if apply:
+        apply_input_settings()
+
+
+def key_repeat() -> Tuple[float, float]:
+    """``(interval, delay)``: seconds between the repeats of a held key, and before the first one."""
+    interval = float(_global("KeyRepeat", 6)) * _KEY_REPEAT_UNIT  # type: ignore[arg-type]
+    delay = float(_global("InitialKeyRepeat", 25)) * _KEY_REPEAT_UNIT  # type: ignore[arg-type]
+    return round(interval, 3), round(delay, 3)
+
+
+def set_key_repeat(interval: Optional[float] = None, *, delay: Optional[float] = None) -> None:
+    """
+    Set how fast a held key repeats: ``interval`` seconds between repeats, after ``delay`` seconds.
+
+    ::
+
+        macos.keyboard.set_key_repeat(0.03, delay=0.25)   # fast, the favorite of developers
+
+    System Settings' fastest are 0.03 and 0.225 seconds; shorter ones work
+    too. Takes effect at the next login.
+    """
+    if interval is None and delay is None:
+        raise ValueError("give interval, delay, or both")
+    for label, value in (("interval", interval), ("delay", delay)):
+        if value is not None and value <= 0:
+            raise ValueError("{} must be positive, not {}".format(label, value))
+    if interval is not None:
+        _set_global("KeyRepeat", max(1, round(interval / _KEY_REPEAT_UNIT)), apply=False)
+    if delay is not None:
+        _set_global("InitialKeyRepeat", max(1, round(delay / _KEY_REPEAT_UNIT)), apply=False)
+
+
+def press_and_hold() -> bool:
+    """Whether holding a key shows the accents menu (é, ê, è...) instead of repeating it."""
+    return bool(_global("ApplePressAndHoldEnabled", True))
+
+
+def set_press_and_hold(on: bool = True) -> None:
+    """
+    Show the accents menu when a key is held, or repeat the key instead (``False``).
+
+    Apps pick it up when they're reopened.
+    """
+    _set_global("ApplePressAndHoldEnabled", bool(on), apply=False)
+
+
+def standard_function_keys() -> bool:
+    """Whether F1, F2... act as function keys without holding Fn (instead of brightness, volume...)."""
+    return bool(_global("com.apple.keyboard.fnState", False))
+
+
+def set_standard_function_keys(on: bool = True) -> None:
+    """Make F1, F2... act as function keys without Fn, like System Settings › Keyboard › Keyboard Shortcuts › Function Keys."""
+    _set_global("com.apple.keyboard.fnState", bool(on))
+
+
+def autocorrect() -> bool:
+    """Whether macOS corrects spelling as you type."""
+    return bool(_global("NSAutomaticSpellingCorrectionEnabled", True))
+
+
+def set_autocorrect(on: bool = True) -> None:
+    """Correct spelling as you type, or not. Apps pick it up when they're reopened."""
+    _set_global("NSAutomaticSpellingCorrectionEnabled", bool(on), apply=False)
+    _set_global("WebAutomaticSpellingCorrectionEnabled", bool(on), apply=False)
+
+
+def smart_quotes() -> bool:
+    """Whether typed quotes become curly ones (“ ”), which break code pasted anywhere."""
+    return bool(_global("NSAutomaticQuoteSubstitutionEnabled", True))
+
+
+def set_smart_quotes(on: bool = True) -> None:
+    """Turn typed quotes into curly ones, or keep them straight (``False``). Apps pick it up when reopened."""
+    _set_global("NSAutomaticQuoteSubstitutionEnabled", bool(on), apply=False)
+
+
+def smart_dashes() -> bool:
+    """Whether a typed ``--`` becomes a dash (—)."""
+    return bool(_global("NSAutomaticDashSubstitutionEnabled", True))
+
+
+def set_smart_dashes(on: bool = True) -> None:
+    """Turn a typed ``--`` into a dash, or keep it (``False``). Apps pick it up when reopened."""
+    _set_global("NSAutomaticDashSubstitutionEnabled", bool(on), apply=False)
+
+
+def auto_capitalization() -> bool:
+    """Whether the first letter of a sentence is capitalized as you type."""
+    return bool(_global("NSAutomaticCapitalizationEnabled", True))
+
+
+def set_auto_capitalization(on: bool = True) -> None:
+    """Capitalize the first letter of sentences as you type, or not. Apps pick it up when they're reopened."""
+    _set_global("NSAutomaticCapitalizationEnabled", bool(on), apply=False)
+
+
+def double_space_period() -> bool:
+    """Whether typing two spaces adds a period and a space, as on the iPhone."""
+    return bool(_global("NSAutomaticPeriodSubstitutionEnabled", True))
+
+
+def set_double_space_period(on: bool = True) -> None:
+    """Make two spaces type a period, or not. Apps pick it up when they're reopened."""
+    _set_global("NSAutomaticPeriodSubstitutionEnabled", bool(on), apply=False)
+
+
+_KEYBOARD_NAVIGATION = 2  # AppleKeyboardUIMode's bit for "Keyboard navigation"
+
+
+def full_keyboard_access() -> bool:
+    """Whether Tab moves between every control (buttons, checkboxes, menus...), not only text fields and lists."""
+    return bool(int(_global("AppleKeyboardUIMode", 0)) & _KEYBOARD_NAVIGATION)  # type: ignore[call-overload]
+
+
+def set_full_keyboard_access(on: bool = True) -> None:
+    """
+    Let Tab move between every control, like *Keyboard navigation* in System Settings › Keyboard, or not.
+
+    Apps pick it up when they're reopened.
+    """
+    # A bit mask: only its navigation bit changes, the others stay as they are.
+    mode = int(_global("AppleKeyboardUIMode", 0))  # type: ignore[call-overload]
+    _set_global("AppleKeyboardUIMode", mode | _KEYBOARD_NAVIGATION if on else mode & ~_KEYBOARD_NAVIGATION, apply=False)
+
+
+# --- Remapping keys ---------------------------------------------------------
+
+_HID_PAGE = 0x700000000  # the keyboard's HID usage page, as hidutil numbers keys
+_HID_USAGES = {
+    "caps_lock": 0x39,
+    "escape": 0x29,
+    "enter": 0x28,
+    "tab": 0x2B,
+    "space": 0x2C,
+    "delete": 0x2A,
+    "forward_delete": 0x4C,
+    "left": 0x50,
+    "right": 0x4F,
+    "down": 0x51,
+    "up": 0x52,
+    "home": 0x4A,
+    "end": 0x4D,
+    "page_up": 0x4B,
+    "page_down": 0x4E,
+    "ctrl": 0xE0,
+    "shift": 0xE1,
+    "option": 0xE2,
+    "cmd": 0xE3,
+    "right_ctrl": 0xE4,
+    "right_shift": 0xE5,
+    "right_option": 0xE6,
+    "right_cmd": 0xE7,
+}
+_HID_USAGES.update({chr(ord("a") + index): 0x04 + index for index in range(26)})
+_HID_USAGES.update({str(digit): 0x1E + (digit - 1) % 10 for digit in range(10)})
+_HID_USAGES.update({"f{}".format(number): 0x3A + number - 1 for number in range(1, 13)})
+_HID_USAGES.update({"f{}".format(number): 0x68 + number - 13 for number in range(13, 21)})
+_HID_CODES = {name: _HID_PAGE | usage for name, usage in _HID_USAGES.items()}
+_HID_CODES["fn"] = 0xFF0100000003  # Apple's own usage page
+_HID_NAMES = {code: name for name, code in _HID_CODES.items()}
+_HID_ALIASES = {
+    "esc": "escape",
+    "return": "enter",
+    "backspace": "delete",
+    "command": "cmd",
+    "left_cmd": "cmd",
+    "opt": "option",
+    "alt": "option",
+    "left_option": "option",
+    "control": "ctrl",
+    "left_ctrl": "ctrl",
+    "left_shift": "shift",
+}
+
+
+def _hid_code(key: str) -> int:
+    name = key.lower()
+    name = _HID_ALIASES.get(name, name)
+    if name not in _HID_CODES:
+        raise ValueError(
+            "can't remap {!r}: use a letter, a digit, f1 to f20, a modifier (cmd, right_option...) "
+            "or one of caps_lock, escape, enter, tab, space, delete, forward_delete, the arrows, "
+            "home, end, page_up, page_down, fn".format(key)
+        )
+    return _HID_CODES[name]
+
+
+def _mappings() -> Dict[int, int]:
+    from ._system import run
+
+    output = run(["hidutil", "property", "--get", "UserKeyMapping"])
+    found = {}
+    for block in re.findall(r"\{(.*?)\}", output, re.S):
+        source = re.search(r"HIDKeyboardModifierMappingSrc\s*=\s*(\d+)", block)
+        target = re.search(r"HIDKeyboardModifierMappingDst\s*=\s*(\d+)", block)
+        if source and target:
+            found[int(source.group(1))] = int(target.group(1))
+    return found
+
+
+def _set_mappings(mappings: Dict[int, int]) -> None:
+    from ._system import run
+
+    pairs = [
+        {"HIDKeyboardModifierMappingSrc": source, "HIDKeyboardModifierMappingDst": target} for source, target in mappings.items()
+    ]
+    run(["hidutil", "property", "--set", json.dumps({"UserKeyMapping": pairs})])
+
+
+def remappings() -> Dict[str, str]:
+    """The keys remapped, as ``{"caps_lock": "escape"}``; ``{}`` when none is."""
+    return {_HID_NAMES.get(source, hex(source)): _HID_NAMES.get(target, hex(target)) for source, target in _mappings().items()}
+
+
+def remap(key: str, to: Optional[str]) -> None:
+    """
+    Make ``key`` act as ``to`` on every keyboard, or undo it (``to=None``).
+
+    ::
+
+        macos.keyboard.remap("caps_lock", "escape")      # a favorite of Vim users
+        macos.keyboard.remap("right_option", "ctrl")
+        macos.keyboard.remap("caps_lock", None)          # back to Caps Lock
+
+    Keys are named as for :func:`press`: letters, digits, ``f1`` to ``f20``,
+    modifiers (``cmd``, ``right_cmd``, ``option``, ``right_option``, ``ctrl``,
+    ``shift``, ``fn``...) and ``caps_lock``, ``escape``, ``enter``, ``tab``...
+    Applies at once, without a permission, until the Mac restarts: to keep
+    it, run it at login with :func:`macos.schedule.add`.
+    """
+    source = _hid_code(key)
+    mappings = _mappings()
+    if to is None:
+        mappings.pop(source, None)
+    else:
+        mappings[source] = _hid_code(to)
+    _set_mappings(mappings)
+
+
+def clear_remappings() -> None:
+    """Undo every key remapping: each key acts as itself again."""
+    _set_mappings({})

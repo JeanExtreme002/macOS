@@ -81,6 +81,8 @@ autodoc_default_options = {
 }
 autodoc_member_order = "bysource"
 autodoc_typehints = "description"
+# The type variable that keeps a decorated function's signature: internal, not documented.
+nitpick_ignore = [("py:class", "macos.auth._Function")]
 
 copybutton_prompt_text = r">>> |\.\.\. |\$ "
 copybutton_prompt_is_regexp = True

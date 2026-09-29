@@ -41,6 +41,10 @@ __all__ = [
     "set_screenshot_format",
     "screenshot_shadow",
     "set_screenshot_shadow",
+    "screensaver_delay",
+    "screenshot_thumbnail",
+    "set_screenshot_thumbnail",
+    "set_screensaver_delay",
     "has_permission",
     "request_permission",
     "displays",
@@ -325,6 +329,21 @@ def set_screenshot_format(format: str) -> None:
     if wanted not in _SETTING_FORMATS:
         raise ValueError("format must be one of {}, not {!r}".format(", ".join(_SETTING_FORMATS), format))
     defaults.write(_CAPTURE_SETTINGS, "type", wanted)
+    _apply_capture_settings()
+
+
+def screenshot_thumbnail() -> bool:
+    """Whether a screenshot first shows as a thumbnail in the corner, to edit or drag, before it's saved."""
+    from . import defaults
+
+    return bool(defaults.read(_CAPTURE_SETTINGS, "show-thumbnail", default=True))
+
+
+def set_screenshot_thumbnail(on: bool = True) -> None:
+    """Show the floating thumbnail after a screenshot, or save it at once (``False``)."""
+    from . import defaults
+
+    defaults.write(_CAPTURE_SETTINGS, "show-thumbnail", bool(on))
     _apply_capture_settings()
 
 
@@ -802,3 +821,21 @@ def record(
     if not target.exists():
         raise MacOSError("the screen recording wasn't saved")
     return target
+
+
+def screensaver_delay() -> Optional[float]:
+    """Minutes of inactivity before the screen saver starts; ``None`` when it never does."""
+    from . import defaults
+
+    seconds = defaults.read("com.apple.screensaver", "idleTime", default=1200, current_host=True)
+    return round(float(seconds) / 60, 2) if seconds else None
+
+
+def set_screensaver_delay(minutes: Optional[float]) -> None:
+    """Start the screen saver after ``minutes`` of inactivity, or never (``None``), like System Settings › Lock Screen."""
+    from . import defaults
+
+    if minutes is not None and minutes <= 0:
+        raise ValueError("minutes must be positive, or None for never, not {}".format(minutes))
+    # At least a second: 0 is how macOS says "never".
+    defaults.write("com.apple.screensaver", "idleTime", max(1, int(round(minutes * 60))) if minutes else 0, current_host=True)

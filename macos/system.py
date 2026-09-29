@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework, require_macos, run as _run
@@ -57,6 +57,20 @@ __all__ = [
     "camera_in_use",
     "microphone_in_use",
     "Volume",
+    "ds_store_on_network",
+    "set_ds_store_on_network",
+    "ds_store_on_usb",
+    "set_ds_store_on_usb",
+    "keep_windows_on_quit",
+    "set_keep_windows_on_quit",
+    "battery_percentage_shown",
+    "set_show_battery_percentage",
+    "save_to_icloud_by_default",
+    "set_save_to_icloud_by_default",
+    "expanded_save_dialog",
+    "set_expanded_save_dialog",
+    "clock_format",
+    "set_clock_format",
 ]
 
 
@@ -691,3 +705,163 @@ def microphone_in_use() -> bool:
     # Before: whether an input device is running for any app. A headset
     # that only plays sound can count too.
     return any(audio._uint(device.id, "gone") for device in audio.inputs())
+
+
+_DESKTOP_SERVICES = "com.apple.desktopservices"
+
+
+def ds_store_on_network() -> bool:
+    """Whether Finder writes ``.DS_Store`` files into network shares it opens."""
+    from . import defaults
+
+    return not defaults.read(_DESKTOP_SERVICES, "DSDontWriteNetworkStores", default=False)
+
+
+def set_ds_store_on_network(on: bool = True) -> None:
+    """
+    Let Finder write ``.DS_Store`` files into network shares, or not (``False``), sparing everyone else on them.
+
+    Takes effect at the next login.
+    """
+    from . import defaults
+
+    defaults.write(_DESKTOP_SERVICES, "DSDontWriteNetworkStores", not on)
+
+
+def ds_store_on_usb() -> bool:
+    """Whether Finder writes ``.DS_Store`` files onto USB drives and other external disks."""
+    from . import defaults
+
+    return not defaults.read(_DESKTOP_SERVICES, "DSDontWriteUSBStores", default=False)
+
+
+def set_ds_store_on_usb(on: bool = True) -> None:
+    """Let Finder write ``.DS_Store`` files onto USB drives and external disks, or not. Takes effect at the next login."""
+    from . import defaults
+
+    defaults.write(_DESKTOP_SERVICES, "DSDontWriteUSBStores", not on)
+
+
+def keep_windows_on_quit() -> bool:
+    """Whether apps reopen the windows they had when they quit (unchecks "Close windows when quitting an app")."""
+    from . import defaults
+
+    return bool(defaults.read(defaults.GLOBAL, "NSQuitAlwaysKeepsWindows", default=False))
+
+
+def set_keep_windows_on_quit(on: bool = True) -> None:
+    """Make apps reopen their windows when opened again, or start fresh (``False``)."""
+    from . import defaults
+
+    defaults.write(defaults.GLOBAL, "NSQuitAlwaysKeepsWindows", bool(on))
+
+
+def battery_percentage_shown() -> bool:
+    """Whether the battery icon in the menu bar shows the percentage."""
+    from . import defaults
+
+    return bool(defaults.read("com.apple.controlcenter", "BatteryShowPercentage", default=False, current_host=True))
+
+
+def set_show_battery_percentage(on: bool = True) -> None:
+    """Show the battery percentage next to its icon in the menu bar, or not."""
+    from . import defaults
+
+    defaults.write("com.apple.controlcenter", "BatteryShowPercentage", bool(on), current_host=True)
+    try:
+        _run(["killall", "ControlCenter"])  # macOS starts it again, reading the setting
+    except MacOSError:
+        pass
+
+
+def save_to_icloud_by_default() -> bool:
+    """Whether new documents are saved to iCloud Drive unless another place is chosen."""
+    from . import defaults
+
+    return bool(defaults.read(defaults.GLOBAL, "NSDocumentSaveNewDocumentsToCloud", default=True))
+
+
+def set_save_to_icloud_by_default(on: bool = True) -> None:
+    """Offer iCloud Drive first when saving a new document, or the Mac (``False``). Apps pick it up when reopened."""
+    from . import defaults
+
+    defaults.write(defaults.GLOBAL, "NSDocumentSaveNewDocumentsToCloud", bool(on))
+
+
+def expanded_save_dialog() -> bool:
+    """Whether the Save dialog opens expanded, with the sidebar and the folders."""
+    from . import defaults
+
+    return bool(defaults.read(defaults.GLOBAL, "NSNavPanelExpandedStateForSaveMode", default=False))
+
+
+def set_expanded_save_dialog(on: bool = True) -> None:
+    """Open the Save dialog expanded, with every folder, or small (``False``). Apps pick it up when reopened."""
+    from . import defaults
+
+    for key in ("NSNavPanelExpandedStateForSaveMode", "NSNavPanelExpandedStateForSaveMode2"):
+        defaults.write(defaults.GLOBAL, key, bool(on))
+
+
+_CLOCK = "com.apple.menuextra.clock"
+# Name: (key, default).
+_CLOCK_OPTIONS = {
+    "seconds": ("ShowSeconds", False),
+    "day_of_week": ("ShowDayOfWeek", True),
+    "am_pm": ("ShowAMPM", True),
+    "analog": ("IsAnalog", False),
+}
+_CLOCK_DATES = ("auto", "always", "never")  # ShowDate's 0, 1 and 2
+
+
+def clock_format() -> Dict[str, object]:
+    """
+    How the menu bar's clock shows the time.
+
+    ``{"seconds": False, "day_of_week": True, "am_pm": True, "analog": False, "date": "auto"}``;
+    ``date`` is ``"auto"`` (when there's room), ``"always"`` or ``"never"``.
+    """
+    from . import defaults
+
+    found: Dict[str, object] = {
+        name: bool(defaults.read(_CLOCK, key, default=default)) for name, (key, default) in _CLOCK_OPTIONS.items()
+    }
+    date = int(defaults.read(_CLOCK, "ShowDate", default=0))
+    found["date"] = _CLOCK_DATES[date] if 0 <= date < len(_CLOCK_DATES) else "auto"
+    return found
+
+
+def set_clock_format(
+    *,
+    seconds: Optional[bool] = None,
+    day_of_week: Optional[bool] = None,
+    am_pm: Optional[bool] = None,
+    analog: Optional[bool] = None,
+    date: Optional[str] = None,
+) -> None:
+    """
+    Change how the menu bar's clock shows the time; the options left out stay as they are.
+
+    ::
+
+        macos.system.set_clock_format(seconds=True, date="always")
+
+    ``date`` is ``"auto"`` (when there's room), ``"always"`` or ``"never"``.
+    Whether it's 12 or 24 hours follows System Settings › General › Date & Time.
+    """
+    from . import defaults
+
+    options = {"seconds": seconds, "day_of_week": day_of_week, "am_pm": am_pm, "analog": analog}
+    if date is None and all(value is None for value in options.values()):
+        raise ValueError("say what to change: seconds=, day_of_week=, am_pm=, analog= or date=")
+    if date is not None and date not in _CLOCK_DATES:
+        raise ValueError("date must be 'auto', 'always' or 'never', not {!r}".format(date))
+    for name, value in options.items():
+        if value is not None:
+            defaults.write(_CLOCK, _CLOCK_OPTIONS[name][0], bool(value))
+    if date is not None:
+        defaults.write(_CLOCK, "ShowDate", _CLOCK_DATES.index(date))
+    try:
+        _run(["killall", "ControlCenter"])  # it draws the clock; macOS starts it again, reading the settings
+    except MacOSError:
+        pass

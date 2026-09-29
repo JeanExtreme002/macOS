@@ -130,6 +130,22 @@ macos.keyboard.press("cmd+s")
 dialog = macos.windows.wait_for("TextEdit", title="Save", timeout=5)
 ```
 
+## Window settings
+
+How windows behave, as in System Settings › Desktop & Dock. They need no
+permission:
+
+| Read | Change | Values |
+|---|---|---|
+| {func}`~macos.windows.double_click_title_bar` | {func}`~macos.windows.set_double_click_title_bar` | `"zoom"`, `"fill"` (macOS 15+), `"minimize"` or `None`: what a double click on a title bar does |
+| {func}`~macos.windows.tiling` | {func}`~macos.windows.set_tiling` | windows dragged to an edge tile there (macOS 15+) |
+| {func}`~macos.windows.click_wallpaper_to_show_desktop` | {func}`~macos.windows.set_click_wallpaper_to_show_desktop` | a click on the wallpaper shows the desktop (macOS 14+) |
+
+```python
+macos.windows.set_tiling(False)                     # windows go where you drop them
+macos.windows.set_double_click_title_bar("minimize")
+```
+
 ## Reference
 
 - {func}`macos.windows.list`
@@ -139,3 +155,9 @@ dialog = macos.windows.wait_for("TextEdit", title="Save", timeout=5)
 - {func}`macos.windows.request_permission`
 - {func}`macos.windows.wait_for`
 - {data}`macos.windows.LAYOUTS`
+- {func}`macos.windows.double_click_title_bar`
+- {func}`macos.windows.set_double_click_title_bar`
+- {func}`macos.windows.tiling`
+- {func}`macos.windows.set_tiling`
+- {func}`macos.windows.click_wallpaper_to_show_desktop`
+- {func}`macos.windows.set_click_wallpaper_to_show_desktop`

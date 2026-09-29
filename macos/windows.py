@@ -29,10 +29,24 @@ from typing import Any, Optional, Tuple, Union
 
 from . import _cf, _objc, apps
 from ._objc import CGPoint, CGSize
-from ._system import framework
+from ._system import framework, run as _run
 from .errors import MacOSError, PermissionDeniedError
 
-__all__ = ["Window", "LAYOUTS", "list", "wait_for", "focused", "has_permission", "request_permission"]
+__all__ = [
+    "Window",
+    "LAYOUTS",
+    "list",
+    "wait_for",
+    "focused",
+    "has_permission",
+    "request_permission",
+    "double_click_title_bar",
+    "set_double_click_title_bar",
+    "tiling",
+    "set_tiling",
+    "click_wallpaper_to_show_desktop",
+    "set_click_wallpaper_to_show_desktop",
+]
 
 _SUCCESS = 0
 _API_DISABLED = -25211  # kAXErrorAPIDisabled: no Accessibility permission
@@ -547,3 +561,73 @@ def focused() -> Optional[Window]:
         return Window(value, front.name or "", front.pid) if value else None
     finally:
         _cf.release(element)
+
+
+# --- Settings ---------------------------------------------------------------
+
+_TITLE_BAR_ACTIONS = {"zoom": "Maximize", "fill": "Fill", "minimize": "Minimize", None: "None"}
+_WINDOW_MANAGER = "com.apple.WindowManager"
+
+
+def double_click_title_bar() -> Optional[str]:
+    """What a double click on a window's title bar does: ``'zoom'``, ``'fill'``, ``'minimize'``, or ``None``."""
+    from . import defaults
+
+    found = defaults.read(defaults.GLOBAL, "AppleActionOnDoubleClick", default="Maximize")
+    names = {value: name for name, value in _TITLE_BAR_ACTIONS.items()}
+    return names.get(found, "zoom")
+
+
+def set_double_click_title_bar(action: Optional[str]) -> None:
+    """
+    Make a double click on a title bar ``"zoom"`` the window, ``"fill"`` the screen, ``"minimize"`` it, or nothing (``None``).
+
+    ``"fill"`` needs macOS 15 or later. Some apps pick it up only when reopened.
+    """
+    from . import defaults
+
+    if action not in _TITLE_BAR_ACTIONS:
+        raise ValueError("action must be 'zoom', 'fill', 'minimize' or None, not {!r}".format(action))
+    defaults.write(defaults.GLOBAL, "AppleActionOnDoubleClick", _TITLE_BAR_ACTIONS[action])
+
+
+def _restart_window_manager() -> None:
+    try:
+        _run(["killall", "WindowManager"])  # macOS starts it again, reading the settings
+    except MacOSError:
+        pass  # not running: it reads them when it starts
+
+
+def tiling() -> bool:
+    """Whether dragging a window to an edge of the screen tiles it there (macOS 15 and later)."""
+    from . import defaults
+
+    return bool(defaults.read(_WINDOW_MANAGER, "EnableTilingByEdgeDrag", default=True))
+
+
+def set_tiling(on: bool = True) -> None:
+    """
+    Tile windows dragged to an edge (to the menu bar, to fill the screen), or let them go anywhere (``False``).
+
+    Needs macOS 15 or later; the layouts of :meth:`Window.snap` work either way.
+    """
+    from . import defaults
+
+    defaults.write(_WINDOW_MANAGER, "EnableTilingByEdgeDrag", bool(on))
+    defaults.write(_WINDOW_MANAGER, "EnableTopTilingByEdgeDrag", bool(on))
+    _restart_window_manager()
+
+
+def click_wallpaper_to_show_desktop() -> bool:
+    """Whether a click on the wallpaper moves the windows away to show the desktop (macOS 14 and later)."""
+    from . import defaults
+
+    return bool(defaults.read(_WINDOW_MANAGER, "EnableStandardClickToShowDesktop", default=True))
+
+
+def set_click_wallpaper_to_show_desktop(on: bool = True) -> None:
+    """Make a click on the wallpaper show the desktop, or only in Stage Manager (``False``). Needs macOS 14 or later."""
+    from . import defaults
+
+    defaults.write(_WINDOW_MANAGER, "EnableStandardClickToShowDesktop", bool(on))
+    _restart_window_manager()

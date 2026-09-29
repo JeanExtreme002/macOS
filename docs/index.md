@@ -61,7 +61,7 @@ macos.finder.trash("old.log")                   # moved to the Trash
 | **Files & Documents** | [Audio Files](audio-files.md), [Finder](finder.md), [Images](image.md), [PDF](pdf.md), [Spotlight](spotlight.md), [Video](video.md) |
 | **Intelligence** | [Language](language.md), [Vision](vision.md) |
 | **Security** | [Authentication](auth.md), [Keychain](keychain.md) |
-| **System & Hardware** | [Appearance](appearance.md), [Audio](audio.md), [Bluetooth](bluetooth.md), [Camera](camera.md), [Defaults](defaults.md), [Dock](dock.md), [Network](network.md), [Power](power.md), [Screen](screen.md), [System](system.md), [Time Machine](time_machine.md), [Volume](volume.md) |
+| **System & Hardware** | [Appearance](appearance.md), [Audio](audio.md), [Bluetooth](bluetooth.md), [Camera](camera.md), [Defaults](defaults.md), [Dock](dock.md), [Network](network.md), [Power](power.md), [Screen](screen.md), [System](system.md), [Time Machine](time_machine.md), [Trackpad](trackpad.md), [Volume](volume.md) |
 
 New here? Read [Why pymacos?](why.md), then start with
 [Installation](installation.md) and the [Quick Start](quickstart.md).
@@ -146,6 +146,7 @@ power
 screen
 system
 time_machine
+trackpad
 volume
 ```
 

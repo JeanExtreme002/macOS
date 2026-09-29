@@ -50,6 +50,13 @@ explain how to use each part.
 .. autofunction:: macos.appearance.is_auto
 .. autofunction:: macos.appearance.accent_color
 .. autofunction:: macos.appearance.wait_for_change
+.. autofunction:: macos.appearance.set_auto_mode
+.. autofunction:: macos.appearance.set_accent_color
+.. autodata:: macos.appearance.ACCENT_COLORS
+.. autofunction:: macos.appearance.menu_bar_hidden
+.. autofunction:: macos.appearance.set_hide_menu_bar
+.. autofunction:: macos.appearance.scroll_bars
+.. autofunction:: macos.appearance.set_scroll_bars
 ```
 
 ## macos.apps
@@ -94,6 +101,27 @@ explain how to use each part.
 .. autofunction:: macos.keyboard.set_brightness
 .. autofunction:: macos.keyboard.auto_brightness
 .. autofunction:: macos.keyboard.set_auto_brightness
+.. autofunction:: macos.keyboard.key_repeat
+.. autofunction:: macos.keyboard.set_key_repeat
+.. autofunction:: macos.keyboard.press_and_hold
+.. autofunction:: macos.keyboard.set_press_and_hold
+.. autofunction:: macos.keyboard.standard_function_keys
+.. autofunction:: macos.keyboard.set_standard_function_keys
+.. autofunction:: macos.keyboard.autocorrect
+.. autofunction:: macos.keyboard.set_autocorrect
+.. autofunction:: macos.keyboard.smart_quotes
+.. autofunction:: macos.keyboard.set_smart_quotes
+.. autofunction:: macos.keyboard.smart_dashes
+.. autofunction:: macos.keyboard.set_smart_dashes
+.. autofunction:: macos.keyboard.auto_capitalization
+.. autofunction:: macos.keyboard.set_auto_capitalization
+.. autofunction:: macos.keyboard.double_space_period
+.. autofunction:: macos.keyboard.set_double_space_period
+.. autofunction:: macos.keyboard.full_keyboard_access
+.. autofunction:: macos.keyboard.set_full_keyboard_access
+.. autofunction:: macos.keyboard.remap
+.. autofunction:: macos.keyboard.remappings
+.. autofunction:: macos.keyboard.clear_remappings
 ```
 
 ## macos.mouse
@@ -111,6 +139,12 @@ explain how to use each part.
 .. autoclass:: macos.mouse.Click
 .. autofunction:: macos.mouse.has_permission
 .. autofunction:: macos.mouse.request_permission
+.. autofunction:: macos.mouse.tracking_speed
+.. autofunction:: macos.mouse.set_tracking_speed
+.. autofunction:: macos.mouse.scroll_speed
+.. autofunction:: macos.mouse.set_scroll_speed
+.. autofunction:: macos.mouse.double_click_speed
+.. autofunction:: macos.mouse.set_double_click_speed
 ```
 
 ## macos.windows
@@ -127,6 +161,12 @@ explain how to use each part.
    :no-value:
 .. autofunction:: macos.windows.has_permission
 .. autofunction:: macos.windows.request_permission
+.. autofunction:: macos.windows.double_click_title_bar
+.. autofunction:: macos.windows.set_double_click_title_bar
+.. autofunction:: macos.windows.tiling
+.. autofunction:: macos.windows.set_tiling
+.. autofunction:: macos.windows.click_wallpaper_to_show_desktop
+.. autofunction:: macos.windows.set_click_wallpaper_to_show_desktop
 ```
 
 ## macos.hotkeys
@@ -216,6 +256,7 @@ explain how to use each part.
 
 .. autofunction:: macos.auth.confirm
 .. autofunction:: macos.auth.is_available
+.. autofunction:: macos.auth.required
 ```
 
 ## macos.defaults
@@ -246,6 +287,46 @@ explain how to use each part.
 .. autofunction:: macos.dock.remove_app
 .. autofunction:: macos.dock.restart
 .. autoclass:: macos.dock.DockApp
+.. autodata:: macos.dock.HOT_CORNER_ACTIONS
+.. autofunction:: macos.dock.hot_corners
+.. autofunction:: macos.dock.set_hot_corner
+.. autofunction:: macos.dock.autohide_delay
+.. autofunction:: macos.dock.set_autohide_delay
+.. autofunction:: macos.dock.magnification
+.. autofunction:: macos.dock.set_magnification
+.. autofunction:: macos.dock.show_recents
+.. autofunction:: macos.dock.set_show_recents
+.. autofunction:: macos.dock.minimize_effect
+.. autofunction:: macos.dock.set_minimize_effect
+.. autofunction:: macos.dock.show_indicators
+.. autofunction:: macos.dock.set_show_indicators
+.. autofunction:: macos.dock.minimize_to_app
+.. autofunction:: macos.dock.set_minimize_to_app
+.. autofunction:: macos.dock.autohide_duration
+.. autofunction:: macos.dock.set_autohide_duration
+.. autofunction:: macos.dock.add_spacer
+.. autofunction:: macos.dock.remove_spacers
+.. autofunction:: macos.dock.auto_rearrange_spaces
+.. autofunction:: macos.dock.set_auto_rearrange_spaces
+.. autofunction:: macos.dock.separate_spaces_per_display
+.. autofunction:: macos.dock.set_separate_spaces_per_display
+```
+
+## macos.trackpad
+
+```{eval-rst}
+.. module:: macos.trackpad
+
+.. autofunction:: macos.trackpad.tap_to_click
+.. autofunction:: macos.trackpad.set_tap_to_click
+.. autofunction:: macos.trackpad.natural_scrolling
+.. autofunction:: macos.trackpad.set_natural_scrolling
+.. autofunction:: macos.trackpad.tracking_speed
+.. autofunction:: macos.trackpad.set_tracking_speed
+.. autofunction:: macos.trackpad.three_finger_drag
+.. autofunction:: macos.trackpad.set_three_finger_drag
+.. autofunction:: macos.trackpad.secondary_click
+.. autofunction:: macos.trackpad.set_secondary_click
 ```
 
 ## macos.time_machine
@@ -335,6 +416,26 @@ explain how to use each part.
 .. autofunction:: macos.finder.set_show_status_bar
 .. autofunction:: macos.finder.restart
 .. autoclass:: macos.finder.Event
+.. autofunction:: macos.finder.show_desktop_icons
+.. autofunction:: macos.finder.set_show_desktop_icons
+.. autofunction:: macos.finder.default_view
+.. autofunction:: macos.finder.set_default_view
+.. autofunction:: macos.finder.show_library_folder
+.. autofunction:: macos.finder.set_show_library_folder
+.. autofunction:: macos.finder.new_window_folder
+.. autofunction:: macos.finder.set_new_window_folder
+.. autofunction:: macos.finder.search_scope
+.. autofunction:: macos.finder.set_search_scope
+.. autofunction:: macos.finder.show_full_path_in_title
+.. autofunction:: macos.finder.set_show_full_path_in_title
+.. autofunction:: macos.finder.folders_first
+.. autofunction:: macos.finder.set_folders_first
+.. autofunction:: macos.finder.extension_change_warning
+.. autofunction:: macos.finder.set_extension_change_warning
+.. autofunction:: macos.finder.remove_old_trash_items
+.. autofunction:: macos.finder.set_remove_old_trash_items
+.. autofunction:: macos.finder.drives_on_desktop
+.. autofunction:: macos.finder.set_show_drives_on_desktop
 ```
 
 ## macos.volume
@@ -593,6 +694,10 @@ explain how to use each part.
 .. autofunction:: macos.screen.lock
 .. autofunction:: macos.screen.is_locked
 .. autofunction:: macos.screen.is_asleep
+.. autofunction:: macos.screen.screensaver_delay
+.. autofunction:: macos.screen.set_screensaver_delay
+.. autofunction:: macos.screen.screenshot_thumbnail
+.. autofunction:: macos.screen.set_screenshot_thumbnail
 ```
 
 ## macos.dialog
@@ -641,6 +746,20 @@ explain how to use each part.
 .. autofunction:: macos.system.camera_in_use
 .. autofunction:: macos.system.microphone_in_use
 .. autoclass:: macos.system.Volume
+.. autofunction:: macos.system.ds_store_on_network
+.. autofunction:: macos.system.set_ds_store_on_network
+.. autofunction:: macos.system.ds_store_on_usb
+.. autofunction:: macos.system.set_ds_store_on_usb
+.. autofunction:: macos.system.keep_windows_on_quit
+.. autofunction:: macos.system.set_keep_windows_on_quit
+.. autofunction:: macos.system.battery_percentage_shown
+.. autofunction:: macos.system.set_show_battery_percentage
+.. autofunction:: macos.system.save_to_icloud_by_default
+.. autofunction:: macos.system.set_save_to_icloud_by_default
+.. autofunction:: macos.system.expanded_save_dialog
+.. autofunction:: macos.system.set_expanded_save_dialog
+.. autofunction:: macos.system.clock_format
+.. autofunction:: macos.system.set_clock_format
 ```
 
 ## Exceptions

@@ -23,6 +23,30 @@ permission is needed.
 | {func}`~macos.dock.autohide` | {func}`~macos.dock.set_autohide` | `True` hides it until the pointer reaches the edge |
 | {func}`~macos.dock.size` | {func}`~macos.dock.set_size` | 16 to 128 points, like the Size slider |
 | {func}`~macos.dock.position` | {func}`~macos.dock.set_position` | `"left"`, `"bottom"` or `"right"` |
+| {func}`~macos.dock.autohide_delay` | {func}`~macos.dock.set_autohide_delay` | seconds a hidden Dock waits to show; `0` shows it at once |
+| {func}`~macos.dock.magnification` | {func}`~macos.dock.set_magnification` | the size icons grow to under the pointer, or `None` |
+| {func}`~macos.dock.show_recents` | {func}`~macos.dock.set_show_recents` | recent apps in their own section |
+| {func}`~macos.dock.minimize_effect` | {func}`~macos.dock.set_minimize_effect` | `"genie"` or `"scale"` |
+| {func}`~macos.dock.autohide_duration` | {func}`~macos.dock.set_autohide_duration` | seconds a hidden Dock takes to slide in; `0` has no animation, `None` is macOS's own |
+| {func}`~macos.dock.show_indicators` | {func}`~macos.dock.set_show_indicators` | a dot under the open apps |
+| {func}`~macos.dock.minimize_to_app` | {func}`~macos.dock.set_minimize_to_app` | `True` minimizes windows into their app's icon |
+
+## Hot corners
+
+{func}`~macos.dock.set_hot_corner` makes moving the pointer into a corner of
+the screen do something, like System Settings › Desktop & Dock › Hot Corners:
+
+```python
+macos.dock.set_hot_corner("bottom_right", "lock_screen")
+macos.dock.set_hot_corner("top_left", None)   # nothing
+macos.dock.hot_corners()   # {'top_left': None, 'top_right': 'notification_center', ...}
+```
+
+The corners are `"top_left"`, `"top_right"`, `"bottom_left"` and
+`"bottom_right"`; the actions, in {data}`~macos.dock.HOT_CORNER_ACTIONS`:
+`"mission_control"`, `"app_windows"`, `"desktop"`, `"notification_center"`,
+`"launchpad"`, `"quick_note"`, `"start_screensaver"`, `"disable_screensaver"`,
+`"display_sleep"` and `"lock_screen"`.
 
 ## Apps in the Dock
 
@@ -41,6 +65,27 @@ macos.dock.remove_app("com.apple.Maps")   # by name, bundle ID or path
 doesn't add it twice. {func}`~macos.dock.remove_app` takes it out of the Dock;
 the app stays installed.
 
+Blank spaces group the apps: {func}`~macos.dock.add_spacer` adds one, at the
+end or before the app at `index`, and {func}`~macos.dock.remove_spacers`
+takes them all out:
+
+```python
+macos.dock.add_spacer(index=3)
+macos.dock.add_spacer(small=True)
+macos.dock.remove_spacers()   # 2
+```
+
+## Spaces
+
+Mission Control's settings live with the Dock's:
+
+```python
+macos.dock.set_auto_rearrange_spaces(False)        # keep the spaces where you put them
+macos.dock.set_separate_spaces_per_display(False)  # one set of spaces across the displays
+```
+
+The second takes effect at the next login.
+
 ## Reference
 
 - {func}`macos.dock.autohide`
@@ -54,3 +99,26 @@ the app stays installed.
 - {func}`macos.dock.remove_app`
 - {func}`macos.dock.restart`
 - {class}`macos.dock.DockApp`
+- {data}`macos.dock.HOT_CORNER_ACTIONS`
+- {func}`macos.dock.hot_corners`
+- {func}`macos.dock.set_hot_corner`
+- {func}`macos.dock.autohide_delay`
+- {func}`macos.dock.set_autohide_delay`
+- {func}`macos.dock.magnification`
+- {func}`macos.dock.set_magnification`
+- {func}`macos.dock.show_recents`
+- {func}`macos.dock.set_show_recents`
+- {func}`macos.dock.minimize_effect`
+- {func}`macos.dock.set_minimize_effect`
+- {func}`macos.dock.show_indicators`
+- {func}`macos.dock.set_show_indicators`
+- {func}`macos.dock.minimize_to_app`
+- {func}`macos.dock.set_minimize_to_app`
+- {func}`macos.dock.autohide_duration`
+- {func}`macos.dock.set_autohide_duration`
+- {func}`macos.dock.add_spacer`
+- {func}`macos.dock.remove_spacers`
+- {func}`macos.dock.auto_rearrange_spaces`
+- {func}`macos.dock.set_auto_rearrange_spaces`
+- {func}`macos.dock.separate_spaces_per_display`
+- {func}`macos.dock.set_separate_spaces_per_display`

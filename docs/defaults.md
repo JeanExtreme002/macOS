@@ -46,6 +46,16 @@ preferences when they start: restart the app to see it. For the Dock, the
 Finder and the screenshots, see [Dock](dock.md), [Finder](finder.md) and
 [Screen](screen.md), which restart what's needed.
 
+## This Mac only
+
+A few settings are kept per Mac, such as the screen saver's delay:
+`defaults -currentHost` reads them. Pass `current_host=True` to any of the
+functions for the same:
+
+```python
+macos.defaults.read("com.apple.screensaver", "idleTime", current_host=True)   # 1200
+```
+
 ## Reference
 
 - {func}`macos.defaults.read`

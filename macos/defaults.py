@@ -49,17 +49,29 @@ def _preferences() -> ctypes.CDLL:
     cf.CFPreferencesSetValue.restype = None
     cf.CFPreferencesSynchronize.argtypes = (pointer, pointer, pointer)
     cf.CFPreferencesSynchronize.restype = ctypes.c_bool
+    cf.CFPreferencesCopyValue.argtypes = (pointer, pointer, pointer, pointer)
+    cf.CFPreferencesCopyValue.restype = pointer
     return cf
 
 
-def _store(domain: str, key: str, value: Optional[int]) -> None:
+def _host(current_host: bool) -> Optional[int]:
+    """This Mac only (``defaults -currentHost``), or any host."""
+    cf = _preferences()
+    return ctypes.c_void_p.in_dll(cf, "kCFPreferencesCurrentHost" if current_host else "kCFPreferencesAnyHost").value
+
+
+def _user() -> Optional[int]:
+    return ctypes.c_void_p.in_dll(_preferences(), "kCFPreferencesCurrentUser").value
+
+
+def _store(domain: str, key: str, value: Optional[int], current_host: bool = False) -> None:
     """Set (or, with ``None``, remove) a key, and write it out."""
     cf = _preferences()
     with _cf.owned(_domain(domain)) as name, _cf.owned(_cf.string(key)) as wanted:
-        if domain in _GLOBAL_NAMES:
-            # The global domain takes the call with an explicit user and host; SetAppValue is for app domains.
-            user = ctypes.c_void_p.in_dll(cf, "kCFPreferencesCurrentUser").value
-            host = ctypes.c_void_p.in_dll(cf, "kCFPreferencesAnyHost").value
+        if domain in _GLOBAL_NAMES or current_host:
+            # The global domain and a single host take the call with an explicit user and host;
+            # SetAppValue is for app domains, on any host.
+            user, host = _user(), _host(current_host)
             cf.CFPreferencesSetValue(wanted, value, name, user, host)
             cf.CFPreferencesSynchronize(name, user, host)
         else:
@@ -80,47 +92,54 @@ def _domain(domain: str) -> int:
     return _cf.string(domain)
 
 
-def keys(domain: str) -> List[str]:
+def keys(domain: str, *, current_host: bool = False) -> List[str]:
     """The keys the domain has, sorted, such as ``["autohide", "orientation", ...]`` for ``"com.apple.dock"``."""
     _check(domain)
     cf = _preferences()
-    user = ctypes.c_void_p.in_dll(cf, "kCFPreferencesCurrentUser").value
-    host = ctypes.c_void_p.in_dll(cf, "kCFPreferencesAnyHost").value
-    with _cf.owned(_domain(domain)) as name, _cf.owned(cf.CFPreferencesCopyKeyList(name, user, host)) as found:
+    with _cf.owned(_domain(domain)) as name, _cf.owned(
+        cf.CFPreferencesCopyKeyList(name, _user(), _host(current_host))
+    ) as found:
         return sorted(_cf.to_python(found) or [])
 
 
-def read(domain: str, key: Optional[str] = None, *, default: Any = None) -> Any:
+def read(domain: str, key: Optional[str] = None, *, default: Any = None, current_host: bool = False) -> Any:
     """
     The value of ``key`` in ``domain`` (an app's bundle ID, or :data:`GLOBAL`), or ``default`` when it isn't set.
 
     Without ``key``, returns all the domain's values, as a ``dict``.
+    ``current_host=True`` reads the settings kept for this Mac only, like
+    ``defaults -currentHost``.
     """
     _check(domain)
     if key is None:
-        return {name: read(domain, name) for name in keys(domain)}
+        return {name: read(domain, name, current_host=current_host) for name in keys(domain, current_host=current_host)}
     cf = _preferences()
     with _cf.owned(_domain(domain)) as name, _cf.owned(_cf.string(key)) as wanted:
-        with _cf.owned(cf.CFPreferencesCopyAppValue(wanted, name)) as value:
+        if current_host:
+            copied = cf.CFPreferencesCopyValue(wanted, name, _user(), _host(True))
+        else:
+            copied = cf.CFPreferencesCopyAppValue(wanted, name)
+        with _cf.owned(copied) as value:
             return _cf.to_python(value) if value else default
 
 
-def write(domain: str, key: str, value: Any) -> None:
+def write(domain: str, key: str, value: Any, *, current_host: bool = False) -> None:
     """
     Set ``key`` in ``domain`` to ``value``, as ``defaults write`` does, but with its Python type.
 
     ``True`` is written as a boolean, ``3`` as an integer, lists as arrays and
     dicts as dictionaries: no ``-bool`` or ``-int`` flags to get right.
+    ``current_host=True`` writes it for this Mac only, like ``defaults -currentHost``.
     """
     _check(domain)
     if value is None:
         raise ValueError("value must not be None; use delete() to remove a key")
     with _cf.owned(_cf.from_python(value)) as converted:
-        _store(domain, key, converted)
+        _store(domain, key, converted, current_host)
 
 
-def delete(domain: str, key: str) -> bool:
+def delete(domain: str, key: str, *, current_host: bool = False) -> bool:
     """Remove ``key`` from ``domain``; return whether it was set."""
-    existed = read(domain, key, default=_MISSING) is not _MISSING
-    _store(domain, key, None)
+    existed = read(domain, key, default=_MISSING, current_host=current_host) is not _MISSING
+    _store(domain, key, None, current_host)
     return existed

@@ -59,6 +59,24 @@ def applescript(app: str, script: str, *args: str) -> str:
         raise
 
 
+_ACTIVATE_SETTINGS = "/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings"
+
+
+def apply_input_settings() -> None:
+    """
+    Make the keyboard, mouse and trackpad settings just written take effect, as System Settings does.
+
+    Some (key repeat, pointer speed) still wait for the next login.
+    """
+    import os
+
+    if os.path.exists(_ACTIVATE_SETTINGS):
+        try:
+            run([_ACTIVATE_SETTINGS, "-u"])
+        except CommandError:
+            pass  # the settings are saved anyway; they apply at the next login
+
+
 @lru_cache(maxsize=None)
 def framework(name: str) -> ctypes.CDLL:
     """Load a system framework (e.g. ``"AppKit"``) once and cache the handle."""

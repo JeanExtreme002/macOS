@@ -49,6 +49,37 @@ plt.plot(x, y, color=accent)
 
 With *Multicolor* selected, it returns the default blue.
 
+{func}`~macos.appearance.set_accent_color` changes it, by name: one of
+{data}`~macos.appearance.ACCENT_COLORS`, `"multicolor"`, `"blue"`, `"purple"`,
+`"pink"`, `"red"`, `"orange"`, `"yellow"`, `"green"` or `"graphite"`. Running
+apps update at once; a few only when reopened.
+
+```python
+macos.appearance.set_accent_color("purple")
+```
+
+## Auto mode, the menu bar and scroll bars
+
+{func}`~macos.appearance.set_auto_mode` switches between Light and Dark by the
+time of day, like *Auto* in System Settings › Appearance; macOS may apply it
+at the next login. {func}`~macos.appearance.set_hide_menu_bar` hides the menu
+bar until the pointer reaches the top of the screen:
+
+```python
+macos.appearance.set_auto_mode(True)
+macos.appearance.set_hide_menu_bar(True)
+macos.appearance.menu_bar_hidden()   # True
+```
+
+{func}`~macos.appearance.set_scroll_bars` shows scroll bars `"always"`,
+`"when_scrolling"`, or `"automatic"`-ally, by the mouse or trackpad:
+
+```python
+macos.appearance.set_scroll_bars("always")
+```
+
+None of them needs a permission.
+
 ## Waiting for a switch
 
 {func}`~macos.appearance.wait_for_change` blocks until the system switches
@@ -70,3 +101,10 @@ With `timeout`, it raises `TimeoutError` if nothing changes in time.
 - {func}`macos.appearance.is_auto`
 - {func}`macos.appearance.accent_color`
 - {func}`macos.appearance.wait_for_change`
+- {func}`macos.appearance.set_auto_mode`
+- {func}`macos.appearance.set_accent_color`
+- {data}`macos.appearance.ACCENT_COLORS`
+- {func}`macos.appearance.menu_bar_hidden`
+- {func}`macos.appearance.set_hide_menu_bar`
+- {func}`macos.appearance.scroll_bars`
+- {func}`macos.appearance.set_scroll_bars`

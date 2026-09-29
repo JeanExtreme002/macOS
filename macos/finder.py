@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Sequence, Set, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
@@ -61,7 +61,27 @@ __all__ = [
     "set_show_path_bar",
     "show_status_bar",
     "set_show_status_bar",
+    "show_desktop_icons",
+    "set_show_desktop_icons",
+    "default_view",
+    "set_default_view",
+    "show_library_folder",
+    "set_show_library_folder",
+    "new_window_folder",
+    "set_new_window_folder",
+    "search_scope",
+    "set_search_scope",
+    "show_full_path_in_title",
+    "set_show_full_path_in_title",
     "restart",
+    "folders_first",
+    "set_folders_first",
+    "extension_change_warning",
+    "set_extension_change_warning",
+    "remove_old_trash_items",
+    "set_remove_old_trash_items",
+    "drives_on_desktop",
+    "set_show_drives_on_desktop",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -764,3 +784,206 @@ def quick_look(path: PathLike) -> None:
         stderr=subprocess.DEVNULL,
         start_new_session=True,  # outlives the script, as a preview opened from Finder does
     )
+
+
+def show_desktop_icons() -> bool:
+    """Whether the desktop shows its files and folders (and mounted disks)."""
+    return _setting_default(_FINDER, "CreateDesktop", True)
+
+
+def set_show_desktop_icons(on: bool = True) -> None:
+    """
+    Show the desktop's icons, or hide them all (``False``), for a clean screen in presentations and recordings.
+
+    The files stay on the Desktop, in its folder. Relaunches Finder.
+    """
+    _set(_FINDER, "CreateDesktop", on)
+
+
+def _setting_default(domain: str, key: str, default: bool) -> bool:
+    from . import defaults
+
+    return bool(defaults.read(domain, key, default=default))
+
+
+_VIEWS = {"icons": "icnv", "list": "Nlsv", "columns": "clmv", "gallery": "glyv"}
+
+
+def default_view() -> str:
+    """How Finder shows folders that have no view of their own: ``'icons'``, ``'list'``, ``'columns'`` or ``'gallery'``."""
+    from . import defaults
+
+    code = defaults.read(_FINDER, "FXPreferredViewStyle", default="icnv")
+    return next((view for view, found in _VIEWS.items() if found == code), "icons")
+
+
+def set_default_view(view: str) -> None:
+    """
+    Show folders as ``'icons'``, a ``'list'``, ``'columns'`` or a ``'gallery'`` by default. Relaunches Finder.
+
+    Folders already shown another way keep their own view.
+    """
+    from . import defaults
+
+    if view not in _VIEWS:
+        raise ValueError("view must be one of {}, not {!r}".format(", ".join(_VIEWS), view))
+    defaults.write(_FINDER, "FXPreferredViewStyle", _VIEWS[view])
+    restart()
+
+
+_UF_HIDDEN = 0x8000  # stat.UF_HIDDEN: the flag chflags hidden sets
+
+
+def show_library_folder() -> bool:
+    """Whether your Library folder (``~/Library``) shows in Finder; macOS hides it."""
+    from ._system import require_macos
+
+    require_macos()
+    flags = getattr(os.stat(str(Path.home() / "Library")), "st_flags", 0)  # only BSD systems have file flags
+    return not flags & _UF_HIDDEN
+
+
+def set_show_library_folder(on: bool = True) -> None:
+    """Show your Library folder in Finder, or hide it again, as ``chflags nohidden ~/Library`` does."""
+    _run(["chflags", "nohidden" if on else "hidden", str(Path.home() / "Library")])
+
+
+_NEW_WINDOW_TARGETS = {"PfHm": "~", "PfDe": "~/Desktop", "PfDo": "~/Documents"}
+
+
+def new_window_folder() -> Path:
+    """The folder a new Finder window (⌘N) opens."""
+    from . import defaults
+
+    target = defaults.read(_FINDER, "NewWindowTarget", default="PfHm")
+    if target in _NEW_WINDOW_TARGETS:
+        return Path(os.path.expanduser(_NEW_WINDOW_TARGETS[target]))
+    url = defaults.read(_FINDER, "NewWindowTargetPath", default="")
+    from urllib.parse import unquote, urlparse
+
+    return Path(unquote(urlparse(url).path)).absolute() if url else Path.home()
+
+
+def set_new_window_folder(folder: PathLike) -> None:
+    """Open new Finder windows (⌘N) in ``folder``, such as ``"~/Downloads"``. Relaunches Finder."""
+    from urllib.parse import quote
+
+    from . import defaults
+
+    target = _existing(folder)
+    if not target.is_dir():
+        raise NotADirectoryError(str(target))
+    defaults.write(_FINDER, "NewWindowTarget", "PfLo")
+    defaults.write(_FINDER, "NewWindowTargetPath", "file://{}/".format(quote(str(target))))
+    restart()
+
+
+_SCOPES = {"this_mac": "SCev", "current_folder": "SCcf", "previous": "SCsp"}
+
+
+def search_scope() -> str:
+    """Where a Finder search looks first: ``'this_mac'``, ``'current_folder'`` or ``'previous'`` (the last scope used)."""
+    from . import defaults
+
+    code = defaults.read(_FINDER, "FXDefaultSearchScope", default="SCev")
+    return next((scope for scope, found in _SCOPES.items() if found == code), "this_mac")
+
+
+def set_search_scope(scope: str) -> None:
+    """
+    Search the ``'current_folder'``, the whole Mac (``'this_mac'``), or the ``'previous'`` scope by default.
+
+    Relaunches Finder.
+    """
+    from . import defaults
+
+    if scope not in _SCOPES:
+        raise ValueError("scope must be one of {}, not {!r}".format(", ".join(_SCOPES), scope))
+    defaults.write(_FINDER, "FXDefaultSearchScope", _SCOPES[scope])
+    restart()
+
+
+def show_full_path_in_title() -> bool:
+    """Whether Finder windows show the folder's full path in their title."""
+    return _setting_default(_FINDER, "_FXShowPosixPathInTitle", False)
+
+
+def set_show_full_path_in_title(on: bool = True) -> None:
+    """Show the folder's full path (``/Users/alice/Projects``) in Finder windows' title. Relaunches Finder."""
+    _set(_FINDER, "_FXShowPosixPathInTitle", on)
+
+
+def folders_first() -> bool:
+    """Whether folders come before files when windows are sorted by name."""
+    return _setting_default(_FINDER, "_FXSortFoldersFirst", False)
+
+
+def set_folders_first(on: bool = True) -> None:
+    """Keep folders before files when sorting by name, in windows and on the desktop, or mix them."""
+    from . import defaults
+
+    defaults.write(_FINDER, "_FXSortFoldersFirstOnDesktop", bool(on))
+    _set(_FINDER, "_FXSortFoldersFirst", on)
+
+
+def extension_change_warning() -> bool:
+    """Whether Finder asks before a file's extension is changed."""
+    return _setting_default(_FINDER, "FXEnableExtensionChangeWarning", True)
+
+
+def set_extension_change_warning(on: bool = True) -> None:
+    """Ask before changing a file's extension, or rename it straight away (``False``)."""
+    _set(_FINDER, "FXEnableExtensionChangeWarning", on)
+
+
+def remove_old_trash_items() -> bool:
+    """Whether items are deleted from the Trash after 30 days."""
+    return _setting_default(_FINDER, "FXRemoveOldTrashItems", False)
+
+
+def set_remove_old_trash_items(on: bool = True) -> None:
+    """Delete items from the Trash after 30 days, or keep them until it's emptied."""
+    _set(_FINDER, "FXRemoveOldTrashItems", on)
+
+
+_DESKTOP_DRIVES = {
+    "internal": ("ShowHardDrivesOnDesktop", False),
+    "external": ("ShowExternalHardDrivesOnDesktop", True),
+    "removable": ("ShowRemovableMediaOnDesktop", True),
+    "servers": ("ShowMountedServersOnDesktop", False),
+}
+
+
+def drives_on_desktop() -> Dict[str, bool]:
+    """
+    Which disks show on the desktop: ``{"internal": False, "external": True, "removable": True, "servers": False}``.
+    """
+    return {kind: _setting_default(_FINDER, key, default) for kind, (key, default) in _DESKTOP_DRIVES.items()}
+
+
+def set_show_drives_on_desktop(
+    *,
+    internal: Optional[bool] = None,
+    external: Optional[bool] = None,
+    removable: Optional[bool] = None,
+    servers: Optional[bool] = None,
+) -> None:
+    """
+    Show or hide each kind of disk on the desktop; the ones left out stay as they are.
+
+    ::
+
+        macos.finder.set_show_drives_on_desktop(external=False, servers=True)
+
+    ``internal`` is the Mac's own disk, ``external`` the USB and Thunderbolt
+    ones, ``removable`` CDs and the like, ``servers`` the network shares.
+    """
+    from . import defaults
+
+    wanted = {"internal": internal, "external": external, "removable": removable, "servers": servers}
+    if all(on is None for on in wanted.values()):
+        raise ValueError("say which disks to show or hide: internal=, external=, removable= or servers=")
+    for kind, on in wanted.items():
+        if on is not None:
+            defaults.write(_FINDER, _DESKTOP_DRIVES[kind][0], bool(on))
+    restart()

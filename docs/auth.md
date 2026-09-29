@@ -36,6 +36,20 @@ macos.auth.confirm("delete the old backups", only_touch_id=True)
 macos.auth.is_available(only_touch_id=True)   # False on a Mac without Touch ID
 ```
 
+## Protecting a function
+
+The {func}`~macos.auth.required` decorator asks each time the function is
+called, before it runs. When the user doesn't confirm, the call raises
+{class}`~macos.PermissionDeniedError` and the function doesn't run:
+
+```python
+@macos.auth.required("deploy to production")
+def deploy():
+    ...
+
+deploy()   # asks first: Touch ID, the password or the Apple Watch
+```
+
 ## What it protects
 
 It's a check before an action, like `sudo` asking for a password: it stops
@@ -47,3 +61,4 @@ app signed with Apple's entitlements, which Python isn't.
 
 - {func}`macos.auth.confirm`
 - {func}`macos.auth.is_available`
+- {func}`macos.auth.required`
