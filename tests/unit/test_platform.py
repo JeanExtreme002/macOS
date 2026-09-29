@@ -2,6 +2,7 @@
 
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -242,6 +243,14 @@ def test_other_platforms_raise_not_supported(monkeypatch):
         lambda: macos.video.add_language_track(__file__, __file__, "out.mov", "en"),
         lambda: macos.video.from_images([__file__], "out.mov"),
         lambda: macos.video.frames(__file__),
+        lambda: next(macos.finder.watch(Path(__file__).parent)),
+        lambda: macos.finder.wait_for_change(Path(__file__).parent, timeout=0),
+        lambda: macos.events.wait("wake", timeout=0),
+        lambda: macos.schedule.add("job", __file__, every=60),
+        lambda: macos.schedule.jobs(),
+        lambda: macos.schedule.remove("job"),
+        lambda: macos.browser.tabs(),
+        lambda: macos.browser.open("https://example.com"),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):

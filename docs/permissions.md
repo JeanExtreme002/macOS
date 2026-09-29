@@ -15,6 +15,7 @@ itself, so a script can work in one terminal and not in another.
 | {mod}`macos.hotkeys` | Input Monitoring, and Accessibility to keep shortcuts from the app in front | System Settings › Privacy & Security › Input Monitoring |
 | {func}`macos.screen.record` | Screen Recording (and Microphone with `audio=True`) | System Settings › Privacy & Security › Screen & System Audio Recording |
 | {mod}`macos.music` | Automation of Music or Spotify (asked the first time) | System Settings › Privacy & Security › Automation |
+| {mod}`macos.browser` | Automation of the browser (asked the first time); {func}`~macos.browser.run_js` also needs the browser's *Allow JavaScript from Apple Events* | System Settings › Privacy & Security › Automation |
 | {func}`macos.appearance.set_mode` | Automation of *System Events* (asked the first time) | System Settings › Privacy & Security › Automation |
 | {func}`macos.bluetooth.connect`, {func}`~macos.bluetooth.disconnect` | Bluetooth (asked the first time) | System Settings › Privacy & Security › Bluetooth |
 
@@ -22,7 +23,8 @@ The other features (clipboard, appearance, apps, Keychain, speech, power,
 Shortcuts, Finder, volume, Spotlight, dialogs, system info, Vision, images,
 PDFs, language, audio devices, sounds, network, brightness, the keyboard
 backlight, the mouse position, listing Bluetooth devices, Caps Lock, microphone
-volume, camera and microphone use, locking the screen) need no permission.
+volume, camera and microphone use, locking the screen, watching folders, system
+events, scheduling scripts) need no permission.
 
 ## Screen Recording
 
@@ -84,7 +86,8 @@ Restart the app running Python after allowing it.
 ## Automation
 
 {func}`macos.appearance.set_mode` asks System Events to switch the
-appearance, and {mod}`macos.music` asks Music or Spotify to play, so the first
+appearance, {mod}`macos.music` asks Music or Spotify to play, and
+{mod}`macos.browser` asks the browser for its tabs, so the first
 time macOS asks whether the app running Python may control them. If that's denied, it raises
 {class}`~macos.PermissionDeniedError`; allow it again in System Settings ›
 Privacy & Security › Automation.

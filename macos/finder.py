@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Finder operations: reveal files, move them to the Trash, manage tags and aliases.
+Finder operations: reveal files, move them to the Trash, manage tags and aliases, and watch folders.
 
 ::
 
@@ -11,6 +11,9 @@ Finder operations: reveal files, move them to the Trash, manage tags and aliases
     macos.finder.tags("report.pdf")               # ['Work']
     macos.finder.resolve_alias("Projects alias")  # PosixPath('/Users/alice/Documents/Projects')
 
+    for event in macos.finder.watch("~/Downloads"):
+        print(event.kind, event.path)             # created /Users/alice/Downloads/report.pdf
+
 Trash and tags go through Foundation (``NSFileManager``/``NSURL``), the same
 APIs Finder itself uses: a trashed file can be restored with *Put Back*, and
 tags show up in Finder's sidebar and in Spotlight.
@@ -18,11 +21,13 @@ tags show up in Finder's sidebar and in Spotlight.
 
 import ctypes
 import os
+import time
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, List, Optional, Union
+from typing import Iterable, Iterator, List, Optional, Set, Union
 
-from . import _objc
+from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
 from ._system import framework, run
 from .errors import MacOSError
@@ -38,6 +43,9 @@ __all__ = [
     "is_alias",
     "resolve_alias",
     "make_alias",
+    "Event",
+    "watch",
+    "wait_for_change",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -404,3 +412,151 @@ def make_alias(target: PathLike, alias: Optional[PathLike] = None) -> Path:
         if not ok:
             _raise(error, "could not write the alias {}".format(destination))
     return destination
+
+
+@dataclass(frozen=True)
+class Event:
+    """A change in a watched folder."""
+
+    path: Path
+    """The file or folder that changed, with symbolic links resolved (``/private/tmp/...`` for ``/tmp/...``)."""
+    kind: str
+    """``'created'``, ``'modified'``, ``'deleted'`` or ``'renamed'`` (the new name of a moved or renamed item)."""
+    is_dir: bool
+
+
+# FSEventStreamEventFlags
+_CREATED, _REMOVED, _RENAMED, _IS_DIR = 0x100, 0x200, 0x800, 0x20000
+_FILE_EVENTS, _NO_DEFER = 0x10, 0x2  # FSEventStreamCreateFlags: one event per file, the first one right away
+_SINCE_NOW = 0xFFFFFFFFFFFFFFFF  # kFSEventStreamEventIdSinceNow
+_LATENCY = 0.1  # seconds FSEvents gathers events for before calling back
+
+_Callback = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_size_t,
+    ctypes.c_void_p,
+    ctypes.POINTER(ctypes.c_uint32),
+    ctypes.POINTER(ctypes.c_uint64),
+)
+
+
+@lru_cache(maxsize=None)
+def _core_services() -> ctypes.CDLL:
+    services = framework("CoreServices")
+    pointer = ctypes.c_void_p
+    signatures = {
+        "FSEventStreamCreate": (
+            (pointer, _Callback, pointer, pointer, ctypes.c_uint64, ctypes.c_double, ctypes.c_uint32),
+            pointer,
+        ),
+        "FSEventStreamScheduleWithRunLoop": ((pointer, pointer, pointer), None),
+        "FSEventStreamStart": ((pointer,), ctypes.c_bool),
+        "FSEventStreamStop": ((pointer,), None),
+        "FSEventStreamInvalidate": ((pointer,), None),
+        "FSEventStreamRelease": ((pointer,), None),
+    }
+    for name, (argtypes, restype) in signatures.items():
+        function = getattr(services, name)
+        function.argtypes = argtypes
+        function.restype = restype
+    run_loop = framework("CoreFoundation")
+    run_loop.CFRunLoopGetCurrent.argtypes = ()
+    run_loop.CFRunLoopGetCurrent.restype = pointer
+    run_loop.CFRunLoopRunInMode.argtypes = (pointer, ctypes.c_double, ctypes.c_bool)
+    run_loop.CFRunLoopRunInMode.restype = ctypes.c_int32
+    return services
+
+
+def _kind(path: Path, flags: int, seen: Set[Path]) -> str:
+    """
+    What happened to ``path``.
+
+    FSEvents' flags pile up: a file's later changes still carry the
+    "created" flag, and a rename flags both names. So a path that no longer
+    exists was deleted (or moved away), and only the first sighting of a
+    created path counts as its creation.
+    """
+    if not os.path.lexists(str(path)):
+        seen.discard(path)
+        return "deleted"
+    first = path not in seen
+    seen.add(path)
+    if flags & _RENAMED and not flags & _CREATED:
+        return "renamed"
+    if flags & _CREATED and first:
+        return "created"
+    if flags & _RENAMED and first:
+        return "renamed"
+    return "modified"
+
+
+def watch(path: PathLike, *, recursive: bool = True, timeout: Optional[float] = None) -> Iterator[Event]:
+    """
+    Yield an :class:`Event` each time something changes in the folder ``path``, as it happens.
+
+    ::
+
+        for event in macos.finder.watch("~/Downloads"):
+            if event.kind == "created" and event.path.suffix == ".pdf":
+                print("new PDF:", event.path.name)
+
+    It goes on until you ``break`` out of the loop, or ``timeout`` seconds
+    pass. ``recursive=False`` ignores what happens in subfolders. Writing a
+    new file usually yields ``'created'`` and then ``'modified'``; saving
+    over a file yields ``'modified'``. Uses FSEvents, like Spotlight and Time
+    Machine: no polling, and no permission needed outside the protected
+    folders (Desktop, Documents, Downloads ask once).
+    """
+    folder = Path(os.path.realpath(os.path.expanduser(str(path))))
+    if not folder.is_dir():
+        raise NotADirectoryError(str(folder))
+    services, run_loop = _core_services(), framework("CoreFoundation")
+    pending: List[Event] = []
+    seen: Set[Path] = set()
+
+    def changed(stream: int, info: int, count: int, paths: int, flags: "ctypes._Pointer", ids: "ctypes._Pointer") -> None:
+        names = ctypes.cast(paths, ctypes.POINTER(ctypes.c_char_p))
+        for index in range(count):
+            changed_path = Path(os.fsdecode(names[index]))
+            if changed_path == folder or (not recursive and changed_path.parent != folder):
+                continue
+            pending.append(Event(changed_path, _kind(changed_path, flags[index], seen), bool(flags[index] & _IS_DIR)))
+
+    callback = _Callback(changed)  # kept alive for as long as the stream runs
+    with _cf.owned(_cf.from_python([str(folder)])) as paths:
+        stream = services.FSEventStreamCreate(None, callback, None, paths, _SINCE_NOW, _LATENCY, _FILE_EVENTS | _NO_DEFER)
+    if not stream:
+        raise MacOSError("could not watch {}".format(folder))
+    mode = ctypes.c_void_p.in_dll(run_loop, "kCFRunLoopDefaultMode")
+    services.FSEventStreamScheduleWithRunLoop(stream, run_loop.CFRunLoopGetCurrent(), mode)
+    deadline = None if timeout is None else time.monotonic() + timeout
+    try:
+        if not services.FSEventStreamStart(stream):
+            raise MacOSError("could not watch {}".format(folder))
+        while True:
+            while pending:
+                yield pending.pop(0)
+            remaining = 0.1 if deadline is None else min(0.1, deadline - time.monotonic())
+            if remaining <= 0:
+                return
+            run_loop.CFRunLoopRunInMode(mode, remaining, True)
+    finally:
+        services.FSEventStreamStop(stream)
+        services.FSEventStreamInvalidate(stream)
+        services.FSEventStreamRelease(stream)
+
+
+def wait_for_change(path: PathLike, *, recursive: bool = True, timeout: Optional[float] = None) -> Optional[Event]:
+    """
+    Wait until something changes in the folder ``path``, and return that :class:`Event`.
+
+    Returns ``None`` if ``timeout`` seconds pass first. Handy to wait for a
+    download or an export to show up::
+
+        event = macos.finder.wait_for_change("~/Downloads", timeout=60)
+    """
+    for event in watch(path, recursive=recursive, timeout=timeout):
+        return event
+    return None

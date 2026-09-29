@@ -39,13 +39,18 @@ macos.windows.focused().set_frame(0, 25, 1280, 800)
 
 macos.shortcuts.run("Translate", input="Olá")        # 'Hello'
 macos.music.now_playing()                            # Track(title='Imagine', artist='John Lennon', ...)
+
+macos.browser.current_tab()                          # Tab(title='pymacos', url='https://github.com/...', ...)
+macos.events.on("wake", lambda event: macos.say("Welcome back"))
+macos.schedule.add("backup", "backup.py", every=3600)
 ```
 
 The keyboard, the mouse and windows need the
 [Accessibility permission](permissions.md#accessibility). See
 [Apps](apps.md), [Clipboard](clipboard.md), [Keyboard](keyboard.md),
-[Mouse](mouse.md), [Windows](windows.md), [Shortcuts](shortcuts.md) and
-[Music](music.md), plus [Hotkeys](hotkeys.md) for global shortcuts.
+[Mouse](mouse.md), [Windows](windows.md), [Shortcuts](shortcuts.md),
+[Music](music.md), [Browser](browser.md), [Events](events.md) and
+[Schedule](schedule.md), plus [Hotkeys](hotkeys.md) for global shortcuts.
 
 ### User Interaction
 
@@ -66,6 +71,7 @@ See [Notifications](notifications.md), [Speech](speech.md),
 macos.finder.add_tags("report.pdf", "Work")
 macos.finder.trash("old.log")
 macos.spotlight.search("kind:pdf invoice")   # [PosixPath('.../invoice-march.pdf'), ...]
+macos.finder.wait_for_change("~/Downloads")  # Event(path=..., kind='created', is_dir=False)
 
 macos.image.convert("IMG_0042.heic", "IMG_0042.jpg")
 macos.pdf.text("report.pdf")
