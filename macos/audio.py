@@ -870,7 +870,8 @@ def classify(path: PathLike, *, limit: int = 5, min_confidence: float = 0.1) -> 
     Apple's sound classifier knows more than 300 sounds: speech, laughter,
     music and instruments, dogs, birds, cars, sirens, applause, rain... It
     listens to the whole file, a few seconds at a time, and averages what it
-    hears. Runs offline and needs no permission::
+    hears; sounds shorter than half a second are too short to tell. Runs
+    offline and needs no permission::
 
         if dict(macos.audio.classify("clip.m4a")).get("dog_bark", 0) > 0.5:
             print("a dog!")
@@ -903,6 +904,10 @@ def classify(path: PathLike, *, limit: int = 5, min_confidence: float = 0.1) -> 
         if not request:
             raise MacOSError("the sound classifier isn't available: {}".format(_objc.error_message(error)))
         _objc.send(request, "autorelease")
+        # It listens in 3-second windows, and says nothing about a shorter
+        # file: use the file's own length then (it accepts 0.5 to 15 s).
+        window = min(3.0, max(0.5, info(source).duration))
+        _objc.send(request, "setWindowDuration:", _media.time(window), argtypes=(_media.CMTime,), restype=None)
         analyzer = _objc.send(
             _objc.send(_objc.cls("SNAudioFileAnalyzer"), "alloc"),
             "initWithURL:error:",

@@ -1542,6 +1542,8 @@ def test_audio_editing(speech, tmp_path):
 
     labels = dict(audio.classify(speech))
     assert labels.get("speech", 0) > 0.5
+    # Shorter than the classifier's usual 3-second window: still heard.
+    assert audio.classify("/System/Library/Sounds/Tink.aiff")
 
 
 def _brightening_clip(tmp_path, frames=24):
