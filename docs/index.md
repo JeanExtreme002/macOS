@@ -1,11 +1,8 @@
 # pymacos
 
-**A Pythonic interface to macOS.** Notifications, clipboard, webcam and
-microphone, keyboard and mouse, windows, global hotkeys, dark mode, apps,
-Keychain, speech, screenshots, battery, volume, Shortcuts, Finder, Spotlight,
-dialogs, system info, OCR, document scanning, background removal, duplicate
-photos, images, PDFs, videos, music control, audio devices, Bluetooth,
-brightness and language tools, all from one import with zero dependencies.
+**A Pythonic interface to macOS.** Control your whole Mac from
+Python: apps, notifications, input, screen, camera, microphone, OCR, media
+and more, with one import and zero dependencies.
 
 <table class="badge-table">
   <tr>
@@ -51,6 +48,17 @@ macos.shortcuts.run("Translate", input="Olá")   # 'Hello'
 macos.finder.trash("old.log")                   # moved to the Trash
 ```
 
+## What's inside
+
+| Area | Topics |
+|---|---|
+| **Apps & Automation** | [Apps](apps.md), [Clipboard](clipboard.md), [Hotkeys](hotkeys.md), [Keyboard](keyboard.md), [Mouse](mouse.md), [Music](music.md), [Shortcuts](shortcuts.md), [Windows](windows.md) |
+| **User Interaction** | [Dialogs](dialog.md), [Notifications](notifications.md), [Sound](sound.md), [Speech](speech.md) |
+| **Files & Documents** | [Audio Files](audio-files.md), [Finder](finder.md), [Images](image.md), [PDF](pdf.md), [Spotlight](spotlight.md), [Video](video.md) |
+| **Intelligence** | [Language](language.md), [Vision](vision.md) |
+| **Security** | [Keychain](keychain.md) |
+| **System & Hardware** | [Appearance](appearance.md), [Audio](audio.md), [Bluetooth](bluetooth.md), [Camera](camera.md), [Network](network.md), [Power](power.md), [Screen](screen.md), [System](system.md), [Volume](volume.md) |
+
 New here? Read [Why pymacos?](why.md), then start with
 [Installation](installation.md) and the [Quick Start](quickstart.md).
 
@@ -92,6 +100,7 @@ speech
 :caption: Files & Documents
 :hidden:
 
+audio-files
 finder
 image
 pdf

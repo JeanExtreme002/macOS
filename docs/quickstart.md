@@ -1,217 +1,181 @@
 # Quick Start
 
-Everything lives under a single import:
+pymacos is a single import. Its functions take and return plain Python
+(strings, numbers, {class}`~pathlib.Path` objects, dataclasses), so there's
+nothing new to learn beyond the function names.
+
+## Your first script
 
 ```python
 import macos
-```
 
-## Show a notification
-
-```python
-macos.notify("3 tests failed", title="CI", sound="Basso")
-```
-
-## Copy and paste text
-
-```python
-macos.clipboard.copy("hello")
-macos.clipboard.paste()        # 'hello'
-```
-
-## Check for Dark mode
-
-```python
-if macos.appearance.is_dark():
-    theme = "dark"
-```
-
-## Work with apps
-
-```python
-safari = macos.apps.open("Safari")
-print(safari.name, safari.pid)
-safari.quit()
-```
-
-## Store a password
-
-```python
-macos.keychain.set("my-app", "alice", "s3cret")
-macos.keychain.get("my-app", "alice")     # 's3cret'
-```
-
-## Speak
-
-```python
+macos.notify("Hello from Python", title="pymacos")
 macos.say("Hello from Python")
 ```
 
-## Take a screenshot
+A notification shows up in the corner of the screen, and your Mac says hello.
+
+## A tour
+
+One block per area, in the same order as the sidebar. Each links to its
+full guide.
+
+### Apps & Automation
 
 ```python
-path = macos.screenshot("screen.png")
+safari = macos.apps.open("Safari")                   # App(name='Safari', ...)
+safari.quit()
+
+macos.apps.open_with("report.pdf", "Preview")
+
+macos.clipboard.copy("hello")
+macos.clipboard.paste()                              # 'hello'
+
+macos.keyboard.type("Hello from Python")
+macos.keyboard.press("cmd+s")
+macos.mouse.click(300, 400)
+
+macos.windows.focused().set_frame(0, 25, 1280, 800)
+
+macos.shortcuts.run("Translate", input="Olá")        # 'Hello'
+macos.music.now_playing()                            # Track(title='Imagine', artist='John Lennon', ...)
 ```
 
-## Check the battery and stay awake
+The keyboard, the mouse and windows need the
+[Accessibility permission](permissions.md#accessibility). See
+[Apps](apps.md), [Clipboard](clipboard.md), [Keyboard](keyboard.md),
+[Mouse](mouse.md), [Windows](windows.md), [Shortcuts](shortcuts.md) and
+[Music](music.md), plus [Hotkeys](hotkeys.md) for global shortcuts.
+
+### User Interaction
 
 ```python
-battery = macos.power.battery()   # None on a Mac without a battery
+macos.notifications.notify("3 tests failed", title="CI", sound="Basso")
+macos.speech.say("Build finished")
 
-if battery is not None:
-    print(battery.percent)
-
-with macos.power.keep_awake():
-    long_task()
-```
-
-## Run a shortcut
-
-```python
-macos.shortcuts.run("Translate", input="Olá")
-```
-
-## Trash and tag files
-
-```python
-macos.finder.add_tags("report.pdf", "Work")
-macos.finder.trash("old.log")
-```
-
-## Change the volume
-
-```python
-macos.volume.set(30)
-```
-
-## Search with Spotlight
-
-```python
-macos.spotlight.search("kind:pdf invoice")
-```
-
-## Ask the user
-
-```python
 if macos.dialog.confirm("Continue?"):
     name = macos.dialog.prompt("Your name:")
 ```
 
-## Read text in an image
+See [Notifications](notifications.md), [Speech](speech.md),
+[Dialogs](dialog.md) and [Sound](sound.md).
+
+### Files & Documents
 
 ```python
-macos.vision.text("receipt.png")
-```
+macos.finder.add_tags("report.pdf", "Work")
+macos.finder.trash("old.log")
+macos.spotlight.search("kind:pdf invoice")   # [PosixPath('.../invoice-march.pdf'), ...]
 
-## Convert an iPhone photo
-
-```python
 macos.image.convert("IMG_0042.heic", "IMG_0042.jpg")
-```
-
-## Read a PDF
-
-```python
 macos.pdf.text("report.pdf")
-```
-
-## Remove a photo's background
-
-```python
-from pathlib import Path
-
-image = macos.vision.remove_background("dog.jpg")
-Path("cutout.png").write_bytes(image)
-```
-
-## Scan a document
-
-```python
-scan = macos.vision.scan_document("receipt.jpg")   # a photo of the receipt
-macos.pdf.from_images([scan], "receipt.pdf")
-```
-
-## Find duplicate photos
-
-```python
-photos = sorted(Path("~/Pictures").expanduser().glob("*.jpg"))
-macos.vision.duplicates(photos)   # [[PosixPath('IMG_1.jpg'), PosixPath('IMG_1 copy.jpg')]]
-```
-
-## Switch the audio output
-
-```python
-macos.audio.set_output("AirPods")
-```
-
-## Type and click
-
-```python
-macos.keyboard.type("Hello from Python")
-macos.keyboard.press("cmd+s")
-macos.mouse.click(300, 400)
-```
-
-These need the [Accessibility permission](permissions.md#accessibility).
-
-## Check your AirPods' battery
-
-```python
-for device in macos.bluetooth.devices():
-    print(device.name, device.battery)   # AirPods Pro {'left': 90, 'right': 85, 'case': 40}
-```
-
-## Arrange windows
-
-```python
-window = macos.windows.focused()
-window.set_frame(0, 25, 1280, 800)
-```
-
-## React to a global shortcut
-
-```python
-macos.hotkeys.register("ctrl+option+s", lambda: macos.screenshot("shot.png"))
-macos.hotkeys.run()
-```
-
-## Record the screen and share it
-
-```python
-macos.screen.record("demo.mov", 10)
-macos.video.convert("demo.mov", "demo.mp4", quality="medium")
-```
-
-## Control the music
-
-```python
-macos.music.now_playing()   # Track(title='Imagine', artist='John Lennon', ...)
-macos.music.next()
-```
-
-## Record and take photos
-
-```python
-macos.audio.record("memo.m4a", 10)   # the microphone
-macos.camera.photo("me.jpg")         # the webcam
-```
-
-## Edit audio and video
-
-```python
 macos.audio.trim("interview.m4a", "answer.m4a", start=95, duration=30)
 macos.video.add_audio("trip.mov", "music.m4a", "trip-music.mp4", volume=0.4)
 ```
 
-## Open a file with an app
+See [Finder](finder.md), [Spotlight](spotlight.md), [Images](image.md),
+[PDF](pdf.md), [Audio Files](audio-files.md) and [Video](video.md).
+
+### Intelligence
 
 ```python
-macos.apps.open_with("report.pdf", "Preview")
+macos.vision.text("receipt.png")                       # the text in the image
+macos.vision.classify("beach.jpg")                     # [('beach', 0.91), ('sky', 0.84), ('people', 0.62)]
+macos.vision.barcodes("poster.jpg")                    # [Barcode(payload='https://...', kind='QR', ...)]
+macos.vision.remove_background("dog.jpg")              # PNG bytes of the dog alone
+macos.vision.duplicates(["a.jpg", "b.jpg", "c.jpg"])   # the look-alike photos, in groups
+macos.vision.body_pose("dance.jpg")                    # every person's joints: shoulders, wrists, knees...
+
+macos.audio.classify("clip.m4a")            # [('dog_bark', 0.93), ('speech', 0.41)]
+
+macos.language.detect("Où est la gare ?")              # 'fr'
+macos.language.sentiment("This is broken and slow.")   # -0.8
+macos.language.entities("Tim Cook announced the iPhone in Cupertino.")
+# [Entity(text='Tim Cook', kind='person', ...), Entity(text='Cupertino', kind='place', ...)]
 ```
 
-## Handle errors
+Everything runs on your Mac, offline, with Apple's own models. See
+[Vision](vision.md), [Language](language.md) and [Audio Files](audio-files.md).
 
-Everything the package raises derives from {class}`~macos.MacOSError`:
+### Security
+
+```python
+macos.keychain.set("my-app", "alice", "s3cret")
+macos.keychain.get("my-app", "alice")             # 's3cret'
+```
+
+See [Keychain](keychain.md).
+
+### System & Hardware
+
+```python
+macos.appearance.is_dark()                    # True
+macos.volume.set(30)
+macos.audio.set_output("AirPods")
+macos.power.battery()                         # Battery(percent=87, charging=True, ...)
+
+macos.screenshot("screen.png")
+macos.screen.record("demo.mov", 10)
+macos.camera.photo("me.jpg")                  # the webcam
+macos.audio.record("memo.m4a", 10)            # the microphone
+
+for device in macos.bluetooth.devices():
+    print(device.name, device.battery)        # AirPods Pro {'left': 90, 'right': 85, 'case': 40}
+```
+
+See [Appearance](appearance.md), [Volume](volume.md), [Audio](audio.md),
+[Power](power.md), [Screen](screen.md), [Camera](camera.md),
+[Bluetooth](bluetooth.md), [Network](network.md) and [System](system.md).
+
+## Putting it together
+
+The pieces combine into small tools.
+
+**Copy the text out of a screenshot:**
+
+```python
+shot = macos.screenshot(region=(0, 0, 800, 600))
+macos.clipboard.copy(macos.vision.text(shot))
+macos.notify("Text copied")
+```
+
+**Get told when a long job ends**, without the Mac falling asleep:
+
+```python
+with macos.power.keep_awake():
+    train_model()
+
+macos.notify("Training finished", title="ML", sound="Glass")
+```
+
+**Turn receipts into a PDF:**
+
+```python
+from pathlib import Path
+
+photos = sorted(Path("~/Desktop/receipts").expanduser().glob("*.jpg"))
+scans = [macos.vision.scan_document(photo) for photo in photos]   # cropped and straightened
+macos.pdf.from_images([scan for scan in scans if scan], "receipts.pdf")
+```
+
+**Record a GIF of your screen with a shortcut:**
+
+```python
+def demo():
+    macos.screen.record("demo.mov", 5)
+    macos.video.to_gif("demo.mov", "demo.gif")
+    macos.notify("demo.gif is ready")
+
+macos.hotkeys.register("ctrl+option+r", demo)
+macos.hotkeys.run()
+```
+
+## Permissions and errors
+
+Some features need a privacy permission first (the screen, the camera,
+Accessibility...). When one is missing, you get a clear error instead of a
+silent failure. Everything the package raises derives from
+{class}`~macos.MacOSError`:
 
 ```python
 try:
@@ -220,4 +184,5 @@ except macos.PermissionDeniedError as error:
     print(error)   # says which permission to enable, and where
 ```
 
-Some features need a privacy permission first. See [Permissions](permissions.md).
+See [Permissions](permissions.md) for the list, and the
+[API reference](api.md) for every function.
