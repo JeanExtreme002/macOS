@@ -51,22 +51,30 @@ def test_copy_files_needs_paths():
 
 def test_clipboard_watch_yields_each_copy(monkeypatch):
     clipboard = macos.clipboard
-    # (change count, empty, content), one per check: a copy clears, then writes.
-    states = iter([(1, False, None), (1, False, None), (2, True, None), (3, False, "one"), (3, False, "one"), (4, False, None)])
-    current = {}
+    # What the clipboard holds at each check, as (change count, content); a copy clears, then writes.
+    moments = iter([(1, "old"), (2, None), (3, "one"), (3, "one"), (4, "image")])
+    state = {"now": (1, "old"), "copy_while_reading": False}
 
-    def read():
-        current["state"] = next(states, (4, False, None))
-        return current["state"][0]
+    def tick(seconds):
+        state["now"] = next(moments, state["now"])
 
-    monkeypatch.setattr(clipboard, "change_count", read)
-    monkeypatch.setattr(clipboard, "_is_empty", lambda: current["state"][1])
-    monkeypatch.setattr(clipboard, "paste", lambda: current["state"][2])
-    monkeypatch.setattr(clipboard.time, "sleep", lambda seconds: None)
+    def paste():
+        content = state["now"][1]
+        if state["copy_while_reading"]:
+            state["copy_while_reading"] = False
+            state["now"] = (5, "newer")  # copied again, between the count and the content
+        return None if content == "image" else content
+
+    monkeypatch.setattr(clipboard, "change_count", lambda: state["now"][0])
+    monkeypatch.setattr(clipboard, "_is_empty", lambda: state["now"][1] is None)
+    monkeypatch.setattr(clipboard, "paste", paste)
+    monkeypatch.setattr(clipboard.time, "sleep", tick)
 
     watched = clipboard.watch()
     assert next(watched) == "one"
-    assert next(watched) is None  # something that isn't text
+    state["copy_while_reading"] = True
+    state["now"] = (4, "image")
+    assert next(watched) == "newer"  # the image read mid-copy is skipped, not yielded twice
     watched.close()
     with pytest.raises(ValueError, match="interval"):
         next(clipboard.watch(interval=0))

@@ -136,8 +136,11 @@ def watch(*, timeout: Optional[float] = None, interval: float = 0.2) -> Iterator
         # An empty clipboard is a copy being made (see wait_for_change): wait for its content.
         count = change_count()
         if count != seen and not _is_empty():
+            content = paste()
+            if change_count() != count:
+                continue  # copied again while reading: read the newer copy instead
             seen = count
-            yield paste()
+            yield content
             continue
         remaining = None if deadline is None else deadline - time.monotonic()
         if remaining is not None and remaining <= 0:

@@ -171,7 +171,7 @@ def _area(region: Optional[Tuple[int, int, int, int]], display: Optional[int]) -
     if region is not None:
         return tuple(float(value) for value in region)  # type: ignore[return-value]
     found = displays()
-    index = (display or 1) - 1
+    index = (1 if display is None else display) - 1
     if not 0 <= index < len(found):
         raise ValueError("there's no display {}: there are {}".format(display, len(found)))
     screen = found[index]
@@ -245,9 +245,10 @@ def wait_for_text(
         found = find_text(text, region=region, display=display, languages=languages)
         if found:
             return found[0]
-        if deadline is not None and time.monotonic() + interval > deadline:
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
             return None
-        time.sleep(interval)
+        time.sleep(interval if remaining is None else min(interval, remaining))  # then look one last time
 
 
 def color_at(x: float, y: float) -> str:

@@ -147,6 +147,8 @@ def test_find_text_maps_the_boxes_to_the_screen(monkeypatch, tmp_path):
     assert (in_region.x, in_region.y) == (200, 125)
     with pytest.raises(ValueError, match="no display 3"):
         screen.find_text("x", display=3)
+    with pytest.raises(ValueError, match="no display 0"):  # displays count from 1
+        screen.find_text("x", display=0)
 
 
 def test_wait_for_text(monkeypatch):
@@ -157,6 +159,14 @@ def test_wait_for_text(monkeypatch):
     assert screen.wait_for_text("ok") == screen.TextMatch("OK", 1, 2, 3, 4)
     monkeypatch.setattr(screen, "find_text", lambda *args, **kwargs: [])
     assert screen.wait_for_text("ok", timeout=0) is None
+
+    # A timeout shorter than the interval still gets a last look, when it ends.
+    clock, scans = {"now": 0.0}, []
+    monkeypatch.setattr(screen.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(screen.time, "sleep", lambda seconds: clock.update(now=clock["now"] + seconds))
+    monkeypatch.setattr(screen, "find_text", lambda *args, **kwargs: scans.append(clock["now"]) or [])
+    assert screen.wait_for_text("ok", timeout=0.4, interval=0.5) is None
+    assert scans == [0.0, 0.4]
 
 
 def test_find_text_argument_checks():

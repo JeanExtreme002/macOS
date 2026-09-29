@@ -223,6 +223,26 @@ def _utf16(text: str, index: int) -> int:
     return len(text[:index].encode("utf-16-le")) // 2
 
 
+def _spans(line: str, needle: str) -> List[Tuple[int, int]]:
+    """
+    Where ``needle`` is in ``line``, ignoring case: ``(start, end)`` indexes of ``line``.
+
+    Case folding can change lengths ("ß" becomes "ss"), so each folded
+    character is mapped back to the character of the line it came from.
+    """
+    wanted = needle.casefold()
+    if not wanted:
+        return []
+    origin = [index for index, char in enumerate(line) for _ in char.casefold()]
+    folded = line.casefold()
+    spans = []
+    start = folded.find(wanted)
+    while start >= 0:
+        spans.append((origin[start], origin[start + len(wanted) - 1] + 1))
+        start = folded.find(wanted, start + len(wanted))
+    return spans
+
+
 def _occurrences(
     image: Image, needle: str, languages: Optional[Sequence[str]] = None
 ) -> List[Tuple[str, Tuple[float, float, float, float]]]:
@@ -233,17 +253,14 @@ def _occurrences(
     fractions of the image from its top-left corner.
     """
     _load()
-    wanted = needle.casefold()
     found = []
     with _objc.autorelease_pool():
         for observation in _perform(image, _request(languages, False)):
             candidates = _objc.send(observation, "topCandidates:", 1, argtypes=(NSUInteger,))
             for candidate in _objc.nsarray(candidates):
                 line = _objc.pystring(_objc.send(candidate, "string")) or ""
-                folded = line.casefold()
-                start = folded.find(wanted)
-                while start >= 0 and wanted:
-                    first, last = _utf16(line, start), _utf16(line, start + len(needle))
+                for start, end in _spans(line, needle):
+                    first, last = _utf16(line, start), _utf16(line, end)
                     error = ctypes.c_void_p()
                     part = _objc.send(
                         candidate,
@@ -253,7 +270,6 @@ def _occurrences(
                         argtypes=(_Range, ctypes.c_void_p),
                     )
                     found.append((line, _box(part) if part else _box(observation)))
-                    start = folded.find(wanted, start + max(1, len(wanted)))
     return sorted(found, key=lambda match: (round(match[1][1], 2), match[1][0]))
 
 

@@ -201,6 +201,9 @@ def wait_for_idle(seconds: Union[float, timedelta], *, timeout: Optional[float] 
         time.sleep(pause)
 
 
+_IDLE_SLACK = 0.05  # seconds: the idle time and the clock aren't read at the very same instant
+
+
 def wait_for_activity(*, timeout: Optional[float] = None, interval: float = 0.2) -> bool:
     """
     Wait until someone uses the keyboard, mouse or trackpad; return ``False`` on ``timeout``.
@@ -216,16 +219,17 @@ def wait_for_activity(*, timeout: Optional[float] = None, interval: float = 0.2)
     if interval <= 0:
         raise ValueError("interval must be positive, not {}".format(interval))
     deadline = None if timeout is None else time.monotonic() + timeout
-    last = idle_time()
+    start, idle_at_start = time.monotonic(), idle_time().total_seconds()
     while True:
         remaining = None if deadline is None else deadline - time.monotonic()
         if remaining is not None and remaining <= 0:
             return False
         time.sleep(interval if remaining is None else min(interval, remaining))
-        idle = idle_time()
-        if idle < last:  # the idle time starts over at each input
+        # Without input, the idle time grows as fast as the clock; any input starts it over,
+        # so it falls behind, even when the input came right after the previous reading.
+        expected = idle_at_start + (time.monotonic() - start)
+        if idle_time().total_seconds() < expected - _IDLE_SLACK:
             return True
-        last = idle
 
 
 @dataclass(frozen=True)
