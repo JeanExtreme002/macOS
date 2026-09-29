@@ -788,7 +788,9 @@ def set_full_keyboard_access(on: bool = True) -> None:
 
     Apps pick it up when they're reopened.
     """
-    _set_global("AppleKeyboardUIMode", _KEYBOARD_NAVIGATION if on else 0, apply=False)
+    # A bit mask: only its navigation bit changes, the others stay as they are.
+    mode = int(_global("AppleKeyboardUIMode", 0))  # type: ignore[call-overload]
+    _set_global("AppleKeyboardUIMode", mode | _KEYBOARD_NAVIGATION if on else mode & ~_KEYBOARD_NAVIGATION, apply=False)
 
 
 # --- Remapping keys ---------------------------------------------------------

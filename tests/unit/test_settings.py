@@ -246,6 +246,10 @@ def test_more_keyboard_settings(prefs):
     assert macos.keyboard.full_keyboard_access()
     store[(G, "AppleKeyboardUIMode", False)] = 3  # as older macOS wrote it
     assert macos.keyboard.full_keyboard_access()
+    macos.keyboard.set_full_keyboard_access(False)
+    assert store[(G, "AppleKeyboardUIMode", False)] == 1  # the other bit kept
+    macos.keyboard.set_full_keyboard_access(True)
+    assert store[(G, "AppleKeyboardUIMode", False)] == 3
 
 
 def test_remap(monkeypatch):
