@@ -1499,11 +1499,18 @@ def test_camera_photo_and_record(tmp_path):
 @pytest.fixture
 def speech(tmp_path):
     """A few seconds of speech, made by ``say``."""
+    import re
     import subprocess
 
     path = tmp_path / "speech.aiff"
-    subprocess.run(["say", "-o", str(path), "Good morning everyone, today we talk about the ocean."], check=True)
-    return path
+    # On CI runners, say now and then writes a file of a few milliseconds; afinfo tells, independently of pymacos.
+    for _ in range(3):
+        subprocess.run(["say", "-o", str(path), "Good morning everyone, today we talk about the ocean."], check=True)
+        details = subprocess.run(["afinfo", str(path)], capture_output=True, text=True, check=True).stdout
+        found = re.search(r"estimated duration: ([0-9.]+)", details)
+        if found and float(found.group(1)) > 2:
+            return path
+    pytest.skip("say didn't write the speech: {}".format(details.strip().splitlines()[-3:]))
 
 
 def _samples(path):
