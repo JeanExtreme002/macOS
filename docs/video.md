@@ -101,8 +101,8 @@ The others re-encode at the highest quality. The output can be a `.mov`,
 
 ```python
 macos.video.add_audio("trip.mov", "music.m4a", "trip-music.mp4", volume=0.4)   # under the original sound
-macos.video.add_audio("talk.mov", "dub.m4a", "dubbed.mov", replace=True)        # instead of it
-macos.video.add_audio("clip.mov", "sting.m4a", "clip-sting.mov", at=12.5)       # from 12.5 s
+macos.video.add_audio("talk.mov", "dub.m4a", "dubbed.mov", replace=True)       # instead of it
+macos.video.add_audio("clip.mov", "sting.m4a", "clip-sting.mov", at=12.5)      # from 12.5 s
 ```
 
 By default the sound plays over the video's own; `replace=True` drops the

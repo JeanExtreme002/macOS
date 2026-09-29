@@ -94,7 +94,7 @@ white, each its own way), `"chrome"`, `"fade"`, `"instant"`, `"process"` and
 ## Backgrounds
 
 ```python
-macos.image.blur_background("me.jpg", "me-portrait.jpg")                  # like Portrait mode
+macos.image.blur_background("me.jpg", "me-portrait.jpg")  # like Portrait mode
 macos.image.replace_background("me.jpg", "beach.jpg", "me-at-the-beach.jpg")
 ```
 
