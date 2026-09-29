@@ -290,6 +290,7 @@ def test_other_platforms_raise_not_supported(monkeypatch):
         lambda: macos.dock.magnification(),
         lambda: macos.finder.set_default_view("list"),
         lambda: macos.finder.set_show_library_folder(True),
+        lambda: macos.finder.show_library_folder(),
         lambda: macos.appearance.set_accent_color("blue"),
         lambda: macos.appearance.set_hide_menu_bar(False),
         lambda: macos.screen.screensaver_delay(),

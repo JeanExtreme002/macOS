@@ -820,4 +820,5 @@ def set_screensaver_delay(minutes: Optional[float]) -> None:
 
     if minutes is not None and minutes <= 0:
         raise ValueError("minutes must be positive, or None for never, not {}".format(minutes))
-    defaults.write("com.apple.screensaver", "idleTime", int(round(minutes * 60)) if minutes else 0, current_host=True)
+    # At least a second: 0 is how macOS says "never".
+    defaults.write("com.apple.screensaver", "idleTime", max(1, int(round(minutes * 60))) if minutes else 0, current_host=True)

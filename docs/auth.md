@@ -47,7 +47,7 @@ called, before it runs. When the user doesn't confirm, the call raises
 def deploy():
     ...
 
-deploy()   # Touch ID first
+deploy()   # asks first: Touch ID, the password or the Apple Watch
 ```
 
 ## What it protects

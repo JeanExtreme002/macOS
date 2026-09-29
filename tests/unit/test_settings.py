@@ -189,6 +189,8 @@ def test_screen_and_system_settings(prefs, monkeypatch):
     assert store[("com.apple.screensaver", "idleTime", True)] == 300 and screen.screensaver_delay() == 5.0
     screen.set_screensaver_delay(None)
     assert store[("com.apple.screensaver", "idleTime", True)] == 0 and screen.screensaver_delay() is None
+    screen.set_screensaver_delay(0.001)  # not 0 seconds, which would mean never
+    assert store[("com.apple.screensaver", "idleTime", True)] == 1
     with pytest.raises(ValueError, match="positive"):
         screen.set_screensaver_delay(0)
 
