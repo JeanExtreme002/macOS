@@ -1,0 +1,52 @@
+"""Unit tests for :mod:`macos.mouse`. They run on any platform."""
+
+import pytest
+
+import macos
+
+
+def test_click_and_double_click(fake_events):
+    macos.mouse.click(100, 200, count=2)
+    macos.mouse.click(button="right")
+
+    clicks = [(event["kind"], event["x"], event["y"], event["clicks"]) for event in fake_events.posted]
+    assert clicks == [
+        (5, 100, 200, 0),  # moved there first
+        (1, 100, 200, 1),
+        (2, 100, 200, 1),
+        (1, 100, 200, 2),
+        (2, 100, 200, 2),
+        (3, 10.0, 20.0, 1),  # where the pointer is
+        (4, 10.0, 20.0, 1),
+    ]
+
+
+def test_drag_releases_the_button_at_the_end(fake_events, monkeypatch):
+    monkeypatch.setattr(macos.mouse.time, "sleep", lambda seconds: None)
+
+    macos.mouse.drag(40, 80, duration=0.05)
+
+    kinds = [event["kind"] for event in fake_events.posted]
+    assert kinds[0] == 1 and kinds[-1] == 2
+    assert set(kinds[1:-1]) == {6}
+    assert (fake_events.posted[-2]["x"], fake_events.posted[-2]["y"]) == (40, 80)
+
+
+def test_scroll_directions(fake_events):
+    macos.mouse.scroll(3)
+    macos.mouse.scroll(-2, horizontal=True)
+    macos.mouse.scroll(0)
+
+    # Core Graphics counts a wheel turned up (or left) as positive.
+    assert [(event["vertical"], event["sideways"]) for event in fake_events.posted] == [(-3, 0), (0, 2)]
+
+
+def test_mouse_argument_checks():
+    with pytest.raises(ValueError, match="button"):
+        macos.mouse.click(button="side")
+    with pytest.raises(ValueError, match="count"):
+        macos.mouse.click(count=0)
+    with pytest.raises(ValueError, match="both x and y"):
+        macos.mouse.click(10)
+    with pytest.raises(ValueError, match="duration"):
+        macos.mouse.move(1, 1, duration=-1)

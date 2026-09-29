@@ -1,45 +1,19 @@
-import subprocess
+"""Marks the tests under ``tests/live`` as live; the unit tests have their own conftest."""
+
 import sys
-from typing import List
+from pathlib import Path
 
 import pytest
 
-from macos import _system, notifications
+_LIVE = Path(__file__).parent / "live"
 
 
+@pytest.hookimpl(tryfirst=True)  # before -m "not live" deselects by marker
 def pytest_collection_modifyitems(config, items):
-    if sys.platform == "darwin":
-        return
+    """Mark the tests under ``tests/live`` as live, and skip them outside macOS."""
     skip = pytest.mark.skip(reason="live tests need macOS")
     for item in items:
-        if "live" in item.keywords:
-            item.add_marker(skip)
-
-
-class FakeRun:
-    """Records the commands passed to ``subprocess.run`` instead of running them."""
-
-    def __init__(self, stdout: str = "", returncode: int = 0, stderr: str = "") -> None:
-        self.calls: List[dict] = []
-        self.stdout = stdout
-        self.returncode = returncode
-        self.stderr = stderr
-
-    def __call__(self, args, **kwargs):
-        self.calls.append({"args": list(args), **kwargs})
-        return subprocess.CompletedProcess(args, self.returncode, self.stdout, self.stderr)
-
-    @property
-    def args(self) -> List[str]:
-        return self.calls[-1]["args"]
-
-
-@pytest.fixture
-def fake_run(monkeypatch):
-    """Pretend to be on macOS and capture system commands."""
-    fake = FakeRun()
-    monkeypatch.setattr(_system.sys, "platform", "darwin")
-    monkeypatch.setattr(_system.subprocess, "run", fake)
-    # notify() reads the notification settings first; in unit tests they allow it.
-    monkeypatch.setattr(notifications, "is_allowed", lambda: True)
-    return fake
+        if _LIVE in Path(str(item.fspath)).parents:
+            item.add_marker(pytest.mark.live)
+            if sys.platform != "darwin":
+                item.add_marker(skip)
