@@ -399,6 +399,35 @@ class _ImmediateThread:
         lambda: macos.audio.set_input_volume(0.5),
         lambda: macos.audio.input_muted(),
         lambda: macos.audio.mute_input(),
+        lambda: macos.audio.info(__file__),
+        lambda: macos.audio.convert(__file__, "out.m4a"),
+        lambda: macos.audio.trim(__file__, "out.m4a", 1),
+        lambda: macos.audio.concat([__file__], "out.m4a"),
+        lambda: macos.audio.fade(__file__, "out.m4a", fade_in=1),
+        lambda: macos.audio.gain(__file__, "out.m4a", 3),
+        lambda: macos.audio.reverse(__file__, "out.m4a"),
+        lambda: macos.audio.speed(__file__, "out.m4a", 1.5),
+        lambda: macos.audio.classify(__file__),
+        lambda: macos.audio.record_until_silence("out.m4a"),
+        lambda: macos.image.enhance(__file__, "out.png"),
+        lambda: macos.image.effect(__file__, "out.png", "noir"),
+        lambda: macos.image.blur_background(__file__, "out.png"),
+        lambda: macos.image.replace_background(__file__, __file__, "out.png"),
+        lambda: macos.image.watermark(__file__, "out.png", "draft"),
+        lambda: macos.image.contact_sheet([__file__], "out.png"),
+        lambda: macos.vision.aesthetics(b"image"),
+        lambda: macos.vision.body_pose(b"image"),
+        lambda: macos.vision.hand_pose(b"image"),
+        lambda: macos.video.trim(__file__, "out.mov", 1),
+        lambda: macos.video.concat([__file__], "out.mov"),
+        lambda: macos.video.speed(__file__, "out.mov", 2),
+        lambda: macos.video.rotate(__file__, "out.mov", 90),
+        lambda: macos.video.crop(__file__, "out.mov", (0, 0, 10, 10)),
+        lambda: macos.video.reverse(__file__, "out.mov"),
+        lambda: macos.video.mute(__file__, "out.mov"),
+        lambda: macos.video.add_audio(__file__, __file__, "out.mov"),
+        lambda: macos.video.from_images([__file__], "out.mov"),
+        lambda: macos.video.frames(__file__),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
@@ -2036,3 +2065,131 @@ def test_objc_blocks_and_classes():
 
     assert _objc.run_until(lambda: True, 1) is True
     assert _objc.run_until(lambda: False, 0.1) is False
+
+
+def test_media_editing_argument_checks(tmp_path):
+    audio, video, image, vision = macos.audio, macos.video, macos.image, macos.vision
+    checks = [
+        (lambda: audio.convert(__file__, tmp_path / "out.mp3"), "can't write '.mp3'"),
+        (lambda: audio.convert(__file__, tmp_path / "out.wav", lossless=True), "lossless"),
+        (lambda: audio.convert(__file__, tmp_path / "out.m4a", quality="best"), "quality"),
+        (lambda: audio.trim(__file__, tmp_path / "out.m4a", -1), "negative"),
+        (lambda: audio.concat([], tmp_path / "out.m4a"), "at least one"),
+        (lambda: audio.fade(__file__, tmp_path / "out.m4a", fade_in=-1), "negative"),
+        (lambda: audio.speed(__file__, tmp_path / "out.m4a", 0), "positive"),
+        (lambda: audio.classify(__file__, limit=0), "limit"),
+        (lambda: audio.record_until_silence(tmp_path / "out.m4a", threshold=2), "threshold"),
+        (lambda: audio.record_until_silence(tmp_path / "out.mp3"), "can't record"),
+        (lambda: image.effect(__file__, tmp_path / "out.png", "sepia"), "name must be one of"),
+        (lambda: image.blur_background(__file__, tmp_path / "out.png", strength=0), "strength"),
+        (lambda: image.watermark(__file__, tmp_path / "out.png", " "), "empty"),
+        (lambda: image.watermark(__file__, tmp_path / "out.png", "x", opacity=0), "opacity"),
+        (lambda: image.watermark(__file__, tmp_path / "out.png", "x", color="white"), "hex color"),
+        (lambda: image.contact_sheet([], tmp_path / "out.png"), "at least one"),
+        (lambda: image.contact_sheet([__file__], tmp_path / "out.png", columns=0), "positive"),
+        (lambda: vision.hand_pose(b"image", max_hands=0), "max_hands"),
+        (lambda: video.trim(__file__, tmp_path / "out.avi", 1), "can't write '.avi'"),
+        (lambda: video.concat([], tmp_path / "out.mov"), "at least one"),
+        (lambda: video.speed(__file__, tmp_path / "out.mov", -1), "positive"),
+        (lambda: video.rotate(__file__, tmp_path / "out.mov", 45), "multiple of 90"),
+        (lambda: video.crop(__file__, tmp_path / "out.mov", (0, 0, 0, 10)), "positive size"),
+        (lambda: video.add_audio(__file__, __file__, tmp_path / "out.mov", volume=2), "volume"),
+        (lambda: video.add_audio(__file__, __file__, tmp_path / "out.mov", at=-1), "negative"),
+        (lambda: video.from_images([], tmp_path / "out.mov"), "at least one"),
+        (lambda: video.from_images([__file__], tmp_path / "out.mov", fps=0), "fps"),
+        (lambda: video.frames(__file__, every=0), "every"),
+    ]
+    for call, message in checks:
+        with pytest.raises(ValueError, match=message):
+            call()
+
+
+def test_read_wav_handles_the_extensible_format():
+    import struct
+
+    samples = struct.pack("<4h", 1, -2, 3, -4)
+    # WAVE_FORMAT_EXTENSIBLE (0xFFFE), with an odd-sized chunk before the data.
+    fmt = struct.pack("<HHIIHH", 0xFFFE, 2, 22050, 22050 * 4, 4, 16) + b"\x00" * 24
+    junk = b"LIST" + struct.pack("<I", 3) + b"abc\x00"
+    body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + junk + b"data" + struct.pack("<I", len(samples)) + samples
+    data = b"RIFF" + struct.pack("<I", len(body)) + body
+
+    assert macos.audio._read_wav(data) == (2, 22050, samples)
+    with pytest.raises(macos.MacOSError):
+        macos.audio._read_wav(b"not a wav file at all")
+
+
+@pytest.fixture
+def fake_pcm(monkeypatch):
+    """Stands in for afconvert: decoding gives stereo samples, encoding records what was written."""
+    import array
+
+    written = {}
+    stereo = [100, -100, 200, -200, 300, -300, 400, -400, 500, -500]  # 5 frames at 10 frames a second
+
+    def decode(path, rate=None, channels=None):
+        return 2, 10, array.array("h", stereo)
+
+    def encode(samples, channels, rate, output, quality, lossless):
+        written.update(samples=list(samples), channels=channels, rate=rate)
+        return output
+
+    monkeypatch.setattr(macos.audio, "_existing", lambda path: path)
+    monkeypatch.setattr(macos.audio, "_decode", decode)
+    monkeypatch.setattr(macos.audio, "_encode", encode)
+    return written
+
+
+def test_audio_sample_editing(fake_pcm):
+    macos.audio.reverse("in.wav", "out.wav")
+    assert fake_pcm["samples"] == [500, -500, 400, -400, 300, -300, 200, -200, 100, -100]  # channels stay in order
+
+    macos.audio.trim("in.wav", "out.wav", 0.1, 0.2)
+    assert fake_pcm["samples"] == [200, -200, 300, -300]
+
+    macos.audio.gain("in.wav", "out.wav", 20)  # 10 times louder
+    assert fake_pcm["samples"] == [1000, -1000, 2000, -2000, 3000, -3000, 4000, -4000, 5000, -5000]
+    macos.audio.gain("in.wav", "out.wav", 60)  # clipped at the maximum
+    assert max(fake_pcm["samples"]) == 32767 and min(fake_pcm["samples"]) == -32768
+
+    macos.audio.fade("in.wav", "out.wav", fade_in=0.2, fade_out=0.2)
+    assert fake_pcm["samples"] == [0, 0, 100, -100, 300, -300, 200, -200, 0, 0]
+
+    macos.audio.concat(["a.wav", "b.wav"], "out.wav")
+    assert len(fake_pcm["samples"]) == 20 and fake_pcm["channels"] == 2
+
+
+def test_record_until_silence_stops_after_quiet(monkeypatch, tmp_path):
+    from contextlib import nullcontext
+
+    from macos import _capture
+
+    clock = [0.0]
+    calls = []
+
+    def send(receiver, selector, *args, **kwargs):
+        calls.append(selector)
+        if selector == "averagePowerForChannel:":
+            # Quiet, then speech from 0.5 s to 1.5 s, then quiet again (in decibels).
+            return -10.0 if 0.5 <= clock[0] < 1.5 else -60.0
+        return True
+
+    target = tmp_path / "note.m4a"
+    monkeypatch.setattr(_capture, "require_permission", lambda media: None)
+    monkeypatch.setattr(macos.audio, "_recorder", lambda path, channels, metering=False: target.write_bytes(b"x") or 1)
+    monkeypatch.setattr(macos.audio._objc, "send", send)
+    monkeypatch.setattr(macos.audio._objc, "autorelease_pool", nullcontext)
+    monkeypatch.setattr(macos.audio.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(macos.audio.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    macos.audio.record_until_silence(target, max_seconds=30, silence=1.0)
+
+    assert 2.4 <= clock[0] <= 2.7  # about 1 s after the speech ended, not at 30 s
+    assert calls[-1] == "stop"
+
+
+def test_joint_names_are_readable():
+    assert macos.vision._snake("LeftShoulder") == "left_shoulder"
+    assert macos.vision._snake("ThumbCMC") == "thumb_cmc"
+    assert macos.vision._snake("IndexTip") == "index_tip"
+    assert len(macos.vision._BODY_JOINTS) == 19 and len(macos.vision._HAND_JOINTS) == 21

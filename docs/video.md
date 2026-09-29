@@ -67,10 +67,80 @@ set its smoothness and size. The GIF loops forever; `loop=False` plays it
 once. GIFs get big fast: a few seconds at 10 fps and
 480 pixels is a good size.
 
+## Editing
+
+```python
+macos.video.trim("lecture.mov", "question.mov", start=1800, duration=90)
+macos.video.concat(["intro.mov", "talk.mov", "outro.mov"], "full.mp4")
+macos.video.speed("walk.mov", "timelapse.mp4", 8)
+macos.video.rotate("sideways.mov", "upright.mov", 90)        # clockwise
+macos.video.crop("screen.mov", "window.mov", (100, 80, 1280, 720))
+macos.video.mute("clip.mov", "silent.mov")
+macos.video.reverse("jump.mov", "jump-backwards.mov")
+```
+
+- {func}`~macos.video.trim`, {func}`~macos.video.rotate` and
+  {func}`~macos.video.mute` don't re-encode: they're fast and lossless. The
+  trim lands on the nearest keyframe, so it may start a fraction of a second
+  early; {func}`~macos.video.convert` with `start` and `duration` is exact to
+  the frame.
+- {func}`~macos.video.concat` is made for clips of the same size, like parts
+  of one recording.
+- {func}`~macos.video.speed` keeps the sound's pitch.
+- {func}`~macos.video.crop` measures the box on the upright picture, in
+  pixels from the top-left corner.
+- {func}`~macos.video.reverse` plays the sound backwards too. It reads every
+  frame, so it's best for short clips.
+
+The others re-encode at the highest quality. The output can be a `.mov`,
+`.mp4` or `.m4v`.
+
+## Adding a soundtrack
+
+{func}`~macos.video.add_audio` adds music or a voice-over to a video:
+
+```python
+macos.video.add_audio("trip.mov", "music.m4a", "trip-music.mp4", volume=0.4)   # under the original sound
+macos.video.add_audio("talk.mov", "dub.m4a", "dubbed.mov", replace=True)        # instead of it
+macos.video.add_audio("clip.mov", "sting.m4a", "clip-sting.mov", at=12.5)       # from 12.5 s
+```
+
+By default the sound plays over the video's own; `replace=True` drops the
+original. `at` is where it starts, and a sound longer than the video is cut at
+its end. To use part of a song, {func}`macos.audio.trim` it first.
+
+## Frames and timelapses
+
+{func}`~macos.video.frames` takes a frame every few seconds, and
+{func}`~macos.video.from_images` makes a video from images:
+
+```python
+for index, png in enumerate(macos.video.frames("talk.mov", every=30, size=640)):
+    Path("frame-{:03}.png".format(index)).write_bytes(png)
+
+photos = sorted(Path("~/Pictures/Garden").expanduser().glob("*.jpg"))
+macos.video.from_images(photos, "garden.mp4", fps=12, width=1280)
+```
+
+The video takes the first image's size, or `width`; images of other shapes
+are fitted in, on black. With {func}`macos.camera.photo` in a loop, it makes a
+webcam timelapse, and {func}`macos.image.contact_sheet` puts the frames of a
+video on one page.
+
 ## Reference
 
 - {func}`macos.video.info`
 - {func}`macos.video.frame`
 - {func}`macos.video.convert`
 - {func}`macos.video.to_gif`
+- {func}`macos.video.frames`
+- {func}`macos.video.trim`
+- {func}`macos.video.concat`
+- {func}`macos.video.speed`
+- {func}`macos.video.rotate`
+- {func}`macos.video.crop`
+- {func}`macos.video.mute`
+- {func}`macos.video.reverse`
+- {func}`macos.video.add_audio`
+- {func}`macos.video.from_images`
 - {class}`macos.video.VideoInfo`

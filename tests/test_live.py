@@ -1493,3 +1493,160 @@ def test_camera_photo_and_record(tmp_path):
     finally:
         for made in shots + [movie]:
             made.unlink()  # don't keep pictures of the room
+
+
+@pytest.fixture
+def speech(tmp_path):
+    """A few seconds of speech, made by ``say``."""
+    import subprocess
+
+    path = tmp_path / "speech.aiff"
+    subprocess.run(["say", "-o", str(path), "Good morning everyone, today we talk about the ocean."], check=True)
+    return path
+
+
+def _samples(path):
+    import array
+
+    return array.array("h", macos.audio._read_wav(Path(path).read_bytes())[2])
+
+
+def test_audio_editing(speech, tmp_path):
+    audio = macos.audio
+    details = audio.info(speech)
+    assert details.codec == "pcm" and details.duration > 2 and details.channels == 1
+
+    for name, options, codec in (
+        ("speech.m4a", {}, "aac"),
+        ("speech-lossless.m4a", {"lossless": True}, "alac"),
+        ("speech.wav", {}, "pcm"),
+        ("speech.aiff", {}, "pcm"),
+        ("speech.caf", {}, "pcm"),
+    ):
+        converted = audio.convert(speech, tmp_path / name, **options)
+        assert audio.info(converted).codec == codec
+    small = audio.convert(speech, tmp_path / "small.m4a", quality="low")
+    assert small.stat().st_size < (tmp_path / "speech.m4a").stat().st_size
+
+    wav = tmp_path / "speech.wav"
+    assert abs(audio.info(audio.trim(wav, tmp_path / "part.wav", 0.5, 1.0)).duration - 1.0) < 0.01
+    joined = audio.concat([wav, tmp_path / "speech.m4a", wav], tmp_path / "joined.wav")
+    assert abs(audio.info(joined).duration - 3 * details.duration) < 0.2
+    faded = _samples(audio.fade(wav, tmp_path / "faded.wav", fade_in=0.5, fade_out=0.5))
+    assert faded[0] == 0 and faded[-1] == 0
+    assert max(map(abs, _samples(audio.gain(wav, tmp_path / "loud.wav", 6)))) > max(map(abs, _samples(wav)))
+    twice = audio.reverse(audio.reverse(wav, tmp_path / "backwards.wav"), tmp_path / "forwards.wav")
+    assert _samples(twice) == _samples(wav)
+    fast = audio.speed(speech, tmp_path / "fast.m4a", 2)
+    assert abs(audio.info(fast).duration - details.duration / 2) < 0.1
+
+    labels = dict(audio.classify(speech))
+    assert labels.get("speech", 0) > 0.5
+
+
+def _brightening_clip(tmp_path, frames=24):
+    """A 320x160 clip: red, blue, green and white quarters, with a gray square brightening frame after frame."""
+    colors = [(255, 0, 0), (0, 0, 255), (0, 255, 0), (255, 255, 255)]
+    images = []
+    for index in range(frames):
+
+        def pixel(x, y, index=index):
+            if 140 <= x < 180 and 10 <= y < 40:
+                return (index * 10,) * 3
+            return colors[(x >= 160) + 2 * (y >= 80)]
+
+        image = tmp_path / "frame-{:02}.png".format(index)
+        image.write_bytes(_rgb_png(320, 160, pixel))
+        images.append(image)
+    return macos.video.from_images(images, tmp_path / "clip.mp4", fps=24)
+
+
+def _frame_colors(path, tmp_path, at=0.5):
+    """The main color of each corner of the frame at ``at`` seconds, and the frame's size."""
+    shot = tmp_path / "shot.png"
+    shot.write_bytes(macos.video.frame(path, at=at))
+    details = macos.image.info(shot)
+    width, height = details.width, details.height
+    corners = []
+    for x, y in ((5, 5), (width - 25, 5), (5, height - 25), (width - 25, height - 25)):
+        corner = macos.image.crop(shot, tmp_path / "corner.png", (x, y, 20, 20))
+        corners.append(macos.image.dominant_colors(corner, count=1)[0])
+    return (width, height), corners
+
+
+def _is(color, target):
+    # Loose: H.264 shifts colors a little (pure green comes back as #43fb00).
+    return all(abs(int(color[index : index + 2], 16) - target[index // 2]) < 90 for index in (1, 3, 5))
+
+
+def test_video_editing(speech, tmp_path):
+    video = macos.video
+    red, blue, green, white = (255, 0, 0), (0, 0, 255), (0, 255, 0), (255, 255, 255)
+    clip = _brightening_clip(tmp_path)
+    details = video.info(clip)
+    assert (details.width, details.height, details.duration, details.has_audio) == (320, 160, 1.0, False)
+    size, corners = _frame_colors(clip, tmp_path)
+    assert size == (320, 160) and [_is(c, t) for c, t in zip(corners, (red, blue, green, white))] == [True] * 4
+
+    assert len(video.frames(clip, every=0.25)) == 4
+    voiced = video.add_audio(clip, speech, tmp_path / "voiced.mov")
+    assert video.info(voiced).has_audio and video.info(voiced).duration == 1.0
+    assert not video.info(video.mute(voiced, tmp_path / "muted.mov")).has_audio
+    assert abs(video.info(video.trim(voiced, tmp_path / "trimmed.mov", 0.25, 0.5)).duration - 0.5) < 0.15
+    assert video.info(video.concat([voiced, clip, voiced], tmp_path / "joined.mp4")).duration == 3.0
+    assert video.info(video.speed(voiced, tmp_path / "fast.mov", 2)).duration == 0.5
+
+    size, corners = _frame_colors(video.rotate(clip, tmp_path / "turned.mov", 90), tmp_path)
+    assert size == (160, 320)  # a quarter turn clockwise: the bottom-left (green) goes to the top-left
+    assert [_is(c, t) for c, t in zip(corners, (green, red, white, blue))] == [True] * 4
+    size, corners = _frame_colors(video.crop(clip, tmp_path / "cropped.mov", (200, 80, 120, 80)), tmp_path)
+    assert size == (120, 80) and all(_is(c, white) for c in corners)  # the bottom-right quarter
+
+    def square(path, at):
+        shot = tmp_path / "square.png"
+        shot.write_bytes(video.frame(path, at=at))
+        return int(macos.image.dominant_colors(macos.image.crop(shot, tmp_path / "s.png", (150, 15, 20, 15)), 1)[0][1:3], 16)
+
+    backwards = video.reverse(voiced, tmp_path / "backwards.mov")
+    assert video.info(backwards).has_audio
+    assert square(clip, 0.1) < square(clip, 0.9) and square(backwards, 0.1) > square(backwards, 0.9)
+
+
+def test_image_editing(tmp_path):
+    image = macos.image
+    colorful = _halves(tmp_path)
+    assert image.info(image.enhance(colorful, tmp_path / "enhanced.png")).width == 40
+    for color in image.dominant_colors(image.effect(colorful, tmp_path / "noir.png", "noir")):
+        assert int(color[1:3], 16) == int(color[3:5], 16) == int(color[5:7], 16)  # shades of gray
+
+    big = tmp_path / "big.png"
+    big.write_bytes(_rgb_png(400, 200, lambda x, y: (20, 40, 160)))
+    stamped = image.watermark(big, tmp_path / "stamped.png", "SAMPLE", color="#ffffff", opacity=0.8)
+    assert len(image.dominant_colors(stamped)) > 1  # the text shows on the plain blue
+    with pytest.raises(ValueError, match="no person"):
+        image.blur_background(big, tmp_path / "blurred.png")
+
+    sheet = image.contact_sheet([colorful, big, colorful], tmp_path / "sheet.png", columns=2, size=100, gap=10)
+    assert (image.info(sheet).width, image.info(sheet).height) == (230, 230)
+
+
+def test_vision_poses_and_aesthetics(tmp_path):
+    nobody = macos.image.qr_code("nobody here")
+    assert macos.vision.body_pose(nobody) == []
+    assert macos.vision.hand_pose(nobody) == []
+    try:
+        score = macos.vision.aesthetics(nobody)
+    except macos.NotSupportedError:
+        pytest.skip("needs macOS 15")
+    assert -1.0 <= score.score <= 1.0 and isinstance(score.utility, bool)
+
+
+@_CAPTURE
+def test_record_until_silence(tmp_path):
+    if macos.audio.default_input() is None:
+        pytest.skip("no microphone")
+    target = macos.audio.record_until_silence(tmp_path / "note.m4a", max_seconds=2, silence=1)
+    try:
+        assert macos.audio.info(target).duration <= 2.5
+    finally:
+        target.unlink()

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework
@@ -46,6 +46,12 @@ __all__ = [
     "flip",
     "straighten",
     "blur_faces",
+    "enhance",
+    "effect",
+    "blur_background",
+    "replace_background",
+    "watermark",
+    "contact_sheet",
     "dominant_colors",
     "qr_code",
     "ImageInfo",
@@ -841,6 +847,307 @@ def dominant_colors(path: PathLike, count: int = 5) -> List[str]:
         raise ValueError("count must be at least 1, not {}".format(count))
     clusters = _kmeans(_sample(path), count)
     return ["#" + "".join("{:02x}".format(int(round(channel))) for channel in color) for color, _ in clusters]
+
+
+def enhance(source: PathLike, output: PathLike, *, quality: Optional[float] = None) -> Path:
+    """
+    Improve a photo automatically, like the Enhance button in Photos, and return ``output``.
+
+    Fixes the exposure, contrast, colors and red eyes as Core Image judges
+    best for this photo. The metadata is kept and ``output``'s extension sets
+    the format.
+    """
+
+    def change(picture: int) -> int:
+        adjustments = _objc.send(picture, "autoAdjustmentFiltersWithOptions:", None, argtypes=(_objc.id,))
+        for adjustment in _objc.nsarray(adjustments):
+            _objc.send(
+                adjustment, "setValue:forKey:", picture, _objc.nsstring("inputImage"), argtypes=(_objc.id, _objc.id), restype=None
+            )
+            picture = _objc.send(adjustment, "valueForKey:", _objc.nsstring("outputImage"), argtypes=(_objc.id,))
+        return picture
+
+    return _edit(source, output, change, quality)
+
+
+_EFFECTS = {
+    "noir": "CIPhotoEffectNoir",
+    "mono": "CIPhotoEffectMono",
+    "tonal": "CIPhotoEffectTonal",
+    "chrome": "CIPhotoEffectChrome",
+    "fade": "CIPhotoEffectFade",
+    "instant": "CIPhotoEffectInstant",
+    "process": "CIPhotoEffectProcess",
+    "transfer": "CIPhotoEffectTransfer",
+}
+
+
+def effect(source: PathLike, output: PathLike, name: str, *, quality: Optional[float] = None) -> Path:
+    """
+    Apply one of the Photos app's filters and return ``output``.
+
+    ``name`` is ``"noir"``, ``"mono"``, ``"tonal"`` (black and white, each
+    its own way), ``"chrome"``, ``"fade"``, ``"instant"``, ``"process"`` or
+    ``"transfer"`` (vintage colors). The metadata is kept and ``output``'s
+    extension sets the format::
+
+        macos.image.effect("portrait.jpg", "portrait-noir.jpg", "noir")
+    """
+    if name not in _EFFECTS:
+        raise ValueError("name must be one of {}, not {!r}".format(", ".join(sorted(_EFFECTS)), name))
+    return _edit(source, output, lambda picture: _filter(_EFFECTS[name], picture), quality)
+
+
+def _people_mask(picture: int) -> int:
+    """A ``CIImage`` as large as ``picture``: white where people are, black elsewhere."""
+    from . import vision
+
+    vision._load()
+    humans = vision._perform_on(picture, _objc.new("VNDetectHumanRectanglesRequest"))
+    if not humans:
+        raise ValueError("no person found in the image")
+    request = _objc.new("VNGeneratePersonSegmentationRequest")
+    _objc.send(request, "setQualityLevel:", 0, argtypes=(_objc.NSUInteger,), restype=None)  # accurate
+    observations = vision._perform_on(picture, request)
+    if not observations:
+        raise MacOSError("could not separate the people from the background")
+    buffer = _objc.send(observations[0], "pixelBuffer", restype=ctypes.c_void_p)
+    mask = _objc.send(_objc.cls("CIImage"), "imageWithCVPixelBuffer:", buffer, argtypes=(ctypes.c_void_p,))
+    extent, mask_extent = _extent(picture), _extent(mask)
+    return _transform(
+        mask, extent.size.width / mask_extent.size.width, 0, 0, extent.size.height / mask_extent.size.height
+    )
+
+
+def _behind_people(picture: int, background: int) -> int:
+    """``picture``'s people in front of ``background`` (as large as ``picture``)."""
+    return _filter(
+        "CIBlendWithMask", picture, inputBackgroundImage=background, inputMaskImage=_people_mask(picture)
+    )
+
+
+def blur_background(
+    source: PathLike, output: PathLike, *, strength: float = 1.0, quality: Optional[float] = None
+) -> Path:
+    """
+    Blur what's behind the people in a photo, like Portrait mode, and return ``output``.
+
+    ``strength`` scales the blur (1.0 by default; 2.0 is twice as blurry).
+    Raises :class:`ValueError` when the photo shows no person. The metadata
+    is kept and ``output``'s extension sets the format::
+
+        macos.image.blur_background(macos.camera.photo(), "me-portrait.jpg")
+    """
+    if strength <= 0:
+        raise ValueError("strength must be positive, not {}".format(strength))
+
+    def change(picture: int) -> int:
+        picture = _to_origin(picture)
+        extent = _extent(picture)
+        radius = max(extent.size.width, extent.size.height) / 80 * strength
+        # Clamped first, so the edges blur without fading to transparent.
+        clamped = _objc.send(picture, "imageByClampingToExtent")
+        blurred = _filter("CIGaussianBlur", clamped, inputRadius=_number_object(radius))
+        blurred = _objc.send(blurred, "imageByCroppingToRect:", extent, argtypes=(_objc.CGRect,))
+        return _behind_people(picture, blurred)
+
+    return _edit(source, output, change, quality)
+
+
+def replace_background(
+    source: PathLike, background: PathLike, output: PathLike, *, quality: Optional[float] = None
+) -> Path:
+    """
+    Put the people of a photo in front of another picture, like a virtual background, and return ``output``.
+
+    ``background`` is scaled to fill the photo, keeping its proportions.
+    Raises :class:`ValueError` when the photo shows no person. The photo's
+    metadata is kept and ``output``'s extension sets the format::
+
+        macos.image.replace_background("me.jpg", "beach.jpg", "me-at-the-beach.jpg")
+    """
+    scenery_path = Path(background).expanduser().absolute()
+    if not scenery_path.exists():
+        raise FileNotFoundError(str(scenery_path))
+
+    def change(picture: int) -> int:
+        picture = _to_origin(picture)
+        extent = _extent(picture)
+        scenery = _to_origin(_objc.ciimage(scenery_path))
+        scenery_extent = _extent(scenery)
+        scale = max(extent.size.width / scenery_extent.size.width, extent.size.height / scenery_extent.size.height)
+        scaled = _transform(scenery, scale, 0, 0, scale)
+        scaled_extent = _extent(scaled)
+        centered = _transform(
+            scaled,
+            1,
+            0,
+            0,
+            1,
+            (extent.size.width - scaled_extent.size.width) / 2,
+            (extent.size.height - scaled_extent.size.height) / 2,
+        )
+        filled = _objc.send(centered, "imageByCroppingToRect:", extent, argtypes=(_objc.CGRect,))
+        return _behind_people(picture, filled)
+
+    return _edit(source, output, change, quality)
+
+
+def _hex_color(text: str) -> Tuple[float, float, float]:
+    value = text.strip().lstrip("#")
+    if len(value) != 6 or any(char not in "0123456789abcdefABCDEF" for char in value):
+        raise ValueError("color must be a hex color such as '#ffffff', not {!r}".format(text))
+    return (int(value[0:2], 16) / 255, int(value[2:4], 16) / 255, int(value[4:6], 16) / 255)
+
+
+def watermark(
+    source: PathLike,
+    output: PathLike,
+    text: str,
+    *,
+    color: str = "#ffffff",
+    opacity: float = 0.35,
+    quality: Optional[float] = None,
+) -> Path:
+    """
+    Write ``text`` across a photo, diagonally and see-through, and return ``output``.
+
+    For photos you share: a name, ``"SAMPLE"``, ``"© 2026 Alice"``... The
+    text is sized to the photo's diagonal. ``color`` is a hex color and
+    ``opacity`` goes from 0.0 (invisible) to 1.0. The metadata is kept and
+    ``output``'s extension sets the format, as for :func:`macos.pdf.watermark`::
+
+        macos.image.watermark("house.jpg", "house-listing.jpg", "Acme Realty")
+    """
+    if not text.strip():
+        raise ValueError("the watermark text can't be empty")
+    if not 0.0 < opacity <= 1.0:
+        raise ValueError("opacity must be above 0.0 and at most 1.0, not {}".format(opacity))
+    red, green, blue = _hex_color(color)
+    framework("AppKit")
+
+    def text_image(size: float) -> int:
+        font = _objc.send(
+            _objc.cls("NSFont"), "boldSystemFontOfSize:", size, argtypes=(ctypes.c_double,)
+        )
+        paint = _objc.send(
+            _objc.cls("NSColor"),
+            "colorWithSRGBRed:green:blue:alpha:",
+            red,
+            green,
+            blue,
+            opacity,
+            argtypes=(ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double),
+        )
+        attributes = _objc.send(
+            _objc.cls("NSDictionary"),
+            "dictionaryWithObjects:forKeys:",
+            _objc.nsarray_of([font, paint]),
+            _objc.nsarray_of([_objc.nsstring("NSFont"), _objc.nsstring("NSColor")]),
+            argtypes=(_objc.id, _objc.id),
+        )
+        styled = _objc.send(
+            _objc.send(_objc.cls("NSAttributedString"), "alloc"),
+            "initWithString:attributes:",
+            _objc.nsstring(text),
+            attributes,
+            argtypes=(_objc.id, _objc.id),
+        )
+        _objc.send(styled, "autorelease")
+        generator = _objc.send(
+            _objc.cls("CIFilter"), "filterWithName:", _objc.nsstring("CIAttributedTextImageGenerator"), argtypes=(_objc.id,)
+        )
+        _objc.send(
+            generator, "setValue:forKey:", styled, _objc.nsstring("inputText"), argtypes=(_objc.id, _objc.id), restype=None
+        )
+        return _objc.send(generator, "valueForKey:", _objc.nsstring("outputImage"), argtypes=(_objc.id,))
+
+    def change(picture: int) -> int:
+        picture = _to_origin(picture)
+        extent = _extent(picture)
+        width, height = extent.size.width, extent.size.height
+        probe = _extent(text_image(100))
+        size = 100 * 0.7 * math.hypot(width, height) / max(probe.size.width, 1.0)
+        words = _to_origin(text_image(size))
+        words_extent = _extent(words)
+        # Center the text on the origin, turn it along the diagonal, then move it to the middle.
+        angle = math.atan2(height, width)
+        cos, sin = math.cos(angle), math.sin(angle)
+        centered = _transform(words, 1, 0, 0, 1, -words_extent.size.width / 2, -words_extent.size.height / 2)
+        turned = _transform(centered, cos, sin, -sin, cos, width / 2, height / 2)
+        stamped = _objc.send(turned, "imageByCompositingOverImage:", picture, argtypes=(_objc.id,))
+        return _objc.send(stamped, "imageByCroppingToRect:", extent, argtypes=(_objc.CGRect,))
+
+    return _edit(source, output, change, quality)
+
+
+def contact_sheet(
+    images: Sequence[PathLike],
+    output: PathLike,
+    columns: int = 4,
+    *,
+    size: int = 256,
+    gap: int = 8,
+    background: str = "#ffffff",
+) -> Path:
+    """
+    Lay out images as thumbnails in a grid, on one picture, and return ``output``.
+
+    Each thumbnail fits a ``size`` x ``size`` square, ``gap`` pixels apart,
+    in ``columns`` columns, on a ``background`` color. Handy to see many
+    photos, or a video's frames, at a glance::
+
+        frames = macos.video.frames("talk.mov", every=30, size=320)
+        shots = []
+        for index, png in enumerate(frames):
+            shot = Path("frame-{}.png".format(index)); shot.write_bytes(png); shots.append(shot)
+        macos.image.contact_sheet(shots, "talk-overview.jpg", columns=5)
+    """
+    if not images:
+        raise ValueError("contact_sheet() needs at least one image")
+    if columns < 1 or size < 1 or gap < 0:
+        raise ValueError("columns and size must be positive, and gap not negative")
+    target, kind = _output(output)
+    red, green, blue = _hex_color(background)
+    sources = [Path(image).expanduser().absolute() for image in images]
+    for source in sources:
+        if not source.exists():
+            raise FileNotFoundError(str(source))
+    rows = (len(sources) + columns - 1) // columns
+    width = columns * size + (columns + 1) * gap
+    height = rows * size + (rows + 1) * gap
+    framework("CoreImage")
+    io = _io()
+    with _objc.autorelease_pool():
+        canvas_color = _objc.send(
+            _objc.cls("CIColor"),
+            "colorWithRed:green:blue:",
+            red,
+            green,
+            blue,
+            argtypes=(ctypes.c_double, ctypes.c_double, ctypes.c_double),
+        )
+        sheet = _objc.send(_objc.cls("CIImage"), "imageWithColor:", canvas_color, argtypes=(_objc.id,))
+        sheet = _objc.send(
+            sheet,
+            "imageByCroppingToRect:",
+            _objc.CGRect(_objc.CGPoint(0, 0), _objc.CGSize(width, height)),
+            argtypes=(_objc.CGRect,),
+        )
+        for index, source in enumerate(sources):
+            thumbnail = _to_origin(_objc.ciimage(source))
+            extent = _extent(thumbnail)
+            scale = min(size / extent.size.width, size / extent.size.height, 1.0)
+            thumb_width, thumb_height = extent.size.width * scale, extent.size.height * scale
+            row, column = divmod(index, columns)
+            # Core Image measures from the bottom-left corner: the first row is at the top.
+            x = gap + column * (size + gap) + (size - thumb_width) / 2
+            y = height - (gap + row * (size + gap)) - size + (size - thumb_height) / 2
+            placed = _transform(thumbnail, scale, 0, 0, scale, x, y)
+            sheet = _objc.send(placed, "imageByCompositingOverImage:", sheet, argtypes=(_objc.id,))
+        pixels = _objc.ciimage_cgimage(sheet)
+    with _cf.owned(pixels):
+        return _write(target, kind, lambda destination: io.CGImageDestinationAddImage(destination, pixels, None))
 
 
 _CORRECTION_LEVELS = {"L", "M", "Q", "H"}

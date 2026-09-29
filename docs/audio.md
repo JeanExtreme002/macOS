@@ -2,7 +2,8 @@
 
 {mod}`macos.audio` lists the audio devices and switches the default output
 (speakers, headphones, a display's audio...) and input (microphones), like
-System Settings › Sound.
+System Settings › Sound. It also records the microphone, and converts, edits
+and recognizes the sounds in audio files.
 
 ```python
 import macos
@@ -70,7 +71,7 @@ instead. To know whether an app is recording, see
 when the recording ends:
 
 ```python
-macos.audio.record("memo.m4a", 30)             # AAC, small
+macos.audio.record("memo.m4a", 30)              # AAC, small
 macos.audio.record("take.wav", 10, channels=2)  # uncompressed, stereo
 ```
 
@@ -92,6 +93,69 @@ Both need the [Microphone permission](permissions.md#camera-and-microphone),
 which macOS asks for the first time. They keep nothing but the file you ask
 for.
 
+To record just what someone says, {func}`~macos.audio.record_until_silence`
+waits for speech and stops after a pause:
+
+```python
+note = macos.audio.record_until_silence("note.m4a")   # stops 1.5 s after the speaker does
+```
+
+It stops after `max_seconds` (60 by default) in any case. `silence` and
+`threshold` tune what counts as a pause.
+
+## Audio files
+
+{func}`~macos.audio.info` tells what an audio file (or a video's sound)
+contains, and {func}`~macos.audio.convert` converts it:
+
+```python
+macos.audio.info("song.mp3")
+# AudioInfo(duration=215.3, sample_rate=44100, channels=2, codec='mp3', bitrate=192)
+
+macos.audio.convert("podcast.wav", "podcast.m4a", quality="medium")
+macos.audio.convert("song.mp3", "song.m4a", lossless=True)   # Apple Lossless
+```
+
+It reads anything macOS plays (MP3, AAC, WAV, AIFF, FLAC...) and writes
+`.m4a` (AAC, or Apple Lossless with `lossless=True`), `.wav`, `.aiff` and
+`.caf`. `quality` (`"high"`, `"medium"` or `"low"`) sets the AAC quality.
+It uses the `afconvert` command that ships with macOS.
+
+## Editing
+
+```python
+macos.audio.trim("interview.m4a", "answer.m4a", start=95, duration=30)
+macos.audio.concat(["intro.m4a", "episode.wav", "outro.m4a"], "podcast.m4a")
+macos.audio.fade("song.m4a", "song-faded.m4a", fade_in=2, fade_out=5)
+macos.audio.gain("quiet.m4a", "louder.m4a", 6)        # +6 dB, about twice as loud
+macos.audio.reverse("word.wav", "drow.wav")
+macos.audio.speed("lecture.m4a", "lecture-fast.m4a", 1.5)
+```
+
+- {func}`~macos.audio.concat` accepts files of different formats, sample
+  rates and channels: they're all converted to the first one's.
+- {func}`~macos.audio.gain` clips the loudest parts if pushed past the maximum.
+- {func}`~macos.audio.speed` keeps the pitch by default, so voices don't turn
+  into chipmunks; `keep_pitch=False` changes it with the speed.
+
+The output's extension sets the format, and `quality` and `lossless` work as
+for {func}`~macos.audio.convert`. Editing a `.wav` into a `.wav` loses nothing.
+
+## What's in a recording
+
+{func}`~macos.audio.classify` tells what an audio (or video) file sounds
+like, with Apple's classifier of more than 300 sounds: speech, laughter,
+music and instruments, dogs, birds, cars, sirens, applause, rain...
+
+```python
+macos.audio.classify("clip.m4a")
+# [('speech', 0.88), ('laughter', 0.31), ('music', 0.12)]
+```
+
+It listens to the whole file, a few seconds at a time, and averages what it
+hears, most likely first. It runs offline and needs no permission. `limit`
+and `min_confidence` work as for {func}`macos.vision.classify`.
+
 ## Reference
 
 - {func}`macos.audio.devices`
@@ -109,4 +173,15 @@ for.
 - {func}`macos.audio.input_level`
 - {func}`macos.audio.has_permission`
 - {func}`macos.audio.request_permission`
+- {func}`macos.audio.record_until_silence`
+- {func}`macos.audio.info`
+- {func}`macos.audio.convert`
+- {func}`macos.audio.trim`
+- {func}`macos.audio.concat`
+- {func}`macos.audio.fade`
+- {func}`macos.audio.gain`
+- {func}`macos.audio.reverse`
+- {func}`macos.audio.speed`
+- {func}`macos.audio.classify`
+- {class}`macos.audio.AudioInfo`
 - {class}`macos.audio.Device`

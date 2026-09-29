@@ -215,6 +215,46 @@ macos.vision.horizon("beach.jpg")                      # 4.5
 macos.image.straighten("beach.jpg", "beach-level.jpg")
 ```
 
+## How good a photo looks
+
+{func}`~macos.vision.aesthetics` scores a photo from -1.0 to 1.0, as Photos
+judges it (focus, exposure, composition...), and tells whether it's a
+"utility" picture: a screenshot, a photo of a receipt or a document.
+
+```python
+macos.vision.aesthetics("sunset.jpg")    # Aesthetics(score=0.71, utility=False)
+macos.vision.aesthetics("receipt.jpg")   # Aesthetics(score=0.29, utility=True)
+```
+
+With {func}`~macos.vision.duplicates` and {func}`~macos.vision.best_shot`, it
+keeps the best photos of a trip, or sorts screenshots out of a photo folder.
+It's the judgment of Apple's model, so not every picture of text counts as a
+utility one. It needs macOS 15 or later.
+
+## Body and hand poses
+
+{func}`~macos.vision.body_pose` finds each person's joints, and
+{func}`~macos.vision.hand_pose` each hand's:
+
+```python
+for person in macos.vision.body_pose("dance.jpg"):
+    wrist, shoulder = person.joints.get("right_wrist"), person.joints.get("right_shoulder")
+    if wrist and shoulder and wrist[1] < shoulder[1]:
+        print("a raised right hand")
+
+for hand in macos.vision.hand_pose("photo.jpg"):
+    thumb, index = hand.joints.get("thumb_tip"), hand.joints.get("index_tip")
+    if thumb and index and thumb[1] < index[1]:
+        print(hand.side, "thumbs up")
+```
+
+Each joint is `(x, y, confidence)`: fractions of the image from its top-left
+corner, and how sure Vision is. A {class}`~macos.vision.Pose` has 19 joints
+(`nose`, `left_shoulder`, `right_knee`...) and a {class}`~macos.vision.Hand`
+21 (`wrist`, `thumb_tip`, `index_mcp`...), with its `side` (`'left'` or
+`'right'`, the person's own). Only the joints Vision sees are there. With
+{func}`macos.camera.photo`, they make a posture check or a gesture trigger.
+
 ## Reference
 
 - {func}`macos.vision.text`
@@ -234,3 +274,9 @@ macos.image.straighten("beach.jpg", "beach-level.jpg")
 - {func}`macos.vision.duplicates`
 - {func}`macos.vision.best_shot`
 - {func}`macos.vision.horizon`
+- {func}`macos.vision.aesthetics`
+- {class}`macos.vision.Aesthetics`
+- {func}`macos.vision.body_pose`
+- {class}`macos.vision.Pose`
+- {func}`macos.vision.hand_pose`
+- {class}`macos.vision.Hand`

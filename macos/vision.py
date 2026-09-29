@@ -20,7 +20,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from . import _objc
 from ._objc import BOOL, NSInteger, NSUInteger
@@ -41,6 +41,12 @@ __all__ = [
     "duplicates",
     "best_shot",
     "horizon",
+    "aesthetics",
+    "Aesthetics",
+    "body_pose",
+    "hand_pose",
+    "Pose",
+    "Hand",
     "smart_crop",
     "TextLine",
     "Barcode",
@@ -121,6 +127,31 @@ def _request(languages: Optional[Sequence[str]], fast: bool) -> int:
         codes = _objc.nsarray_of([_objc.nsstring(code) for code in languages])
         _objc.send(request, "setRecognitionLanguages:", codes, argtypes=(_objc.id,), restype=None)
     return request
+
+
+def _perform_on(picture: int, request: int) -> List[int]:
+    """Run a Vision request on a ``CIImage`` (already upright) and return its observations (autoreleased)."""
+    handler = _objc.send(_objc.cls("VNImageRequestHandler"), "alloc")
+    handler = _objc.send(
+        handler,
+        "initWithCIImage:options:",
+        picture,
+        _objc.send(_objc.cls("NSDictionary"), "dictionary"),
+        argtypes=(_objc.id, _objc.id),
+    )
+    _objc.send(handler, "autorelease")
+    error = ctypes.c_void_p()
+    ok = _objc.send(
+        handler,
+        "performRequests:error:",
+        _objc.nsarray_of([request]),
+        ctypes.byref(error),
+        argtypes=(_objc.id, ctypes.c_void_p),
+        restype=BOOL,
+    )
+    if not ok:
+        raise _error(error, "the image could not be analyzed", prefix="the image could not be analyzed: ")
+    return list(_objc.nsarray(_objc.send(request, "results")))
 
 
 def _perform(image: Image, request: int) -> List[int]:
@@ -588,3 +619,209 @@ def smart_crop(image: Image, width: int, height: int) -> bytes:
             argtypes=(_objc.CGAffineTransform,),
         )
         return _objc.ciimage_png(moved)
+
+
+@dataclass(frozen=True)
+class Aesthetics:
+    """How good a photo looks, as Photos judges it."""
+
+    score: float
+    """From -1.0 (poor) to 1.0 (great): focus, exposure, composition..."""
+    utility: bool
+    """
+    Whether it's a "utility" picture rather than a memory: a screenshot, a
+    photo of a receipt or a document... as Apple's model judges it, so not
+    every picture of text counts.
+    """
+
+
+def aesthetics(image: Image) -> Aesthetics:
+    """
+    Score how good a photo looks, and tell whether it's a "utility" picture (screenshot, receipt, document).
+
+    The score goes from -1.0 to 1.0. Handy with :func:`duplicates` and
+    :func:`best_shot` to keep the best photos, or to tell screenshots and
+    receipts apart from real photos::
+
+        photos = [path for path in Path("~/Pictures/Trip").expanduser().glob("*.jpg")]
+        best = sorted(photos, key=lambda path: macos.vision.aesthetics(path).score, reverse=True)[:10]
+
+    Needs macOS 15 or later.
+    """
+    _load()
+    try:
+        _objc.cls("VNCalculateImageAestheticsScoresRequest")
+    except LookupError:
+        raise NotSupportedError("aesthetics() needs macOS 15 or later") from None
+    with _objc.autorelease_pool():
+        observations = _perform(image, _objc.new("VNCalculateImageAestheticsScoresRequest"))
+        if not observations:
+            raise MacOSError("the photo could not be scored")
+        return Aesthetics(
+            score=round(float(_objc.send(observations[0], "overallScore", restype=ctypes.c_float)), 3),
+            utility=bool(_objc.send(observations[0], "isUtility", restype=BOOL)),
+        )
+
+
+Joint = Tuple[float, float, float]
+"""``(x, y, confidence)``: fractions of the image from its top-left corner, and how sure Vision is (0 to 1)."""
+
+
+@dataclass(frozen=True)
+class Pose:
+    """The body of one person in an image."""
+
+    joints: Dict[str, Joint]
+    """
+    Each joint Vision found, by name: ``nose``, ``left_eye``, ``right_eye``,
+    ``left_ear``, ``right_ear``, ``neck``, ``left_shoulder``,
+    ``right_shoulder``, ``left_elbow``, ``right_elbow``, ``left_wrist``,
+    ``right_wrist``, ``root`` (the middle of the hips), ``left_hip``,
+    ``right_hip``, ``left_knee``, ``right_knee``, ``left_ankle`` and
+    ``right_ankle``. Left and right are the person's own.
+    """
+    confidence: float
+
+
+@dataclass(frozen=True)
+class Hand:
+    """One hand in an image."""
+
+    side: Optional[str]
+    """``'left'`` or ``'right'`` (the person's own), or ``None`` when Vision can't tell."""
+    joints: Dict[str, Joint]
+    """
+    Each joint Vision found, by name: ``wrist``, then for each finger
+    (``thumb``, ``index``, ``middle``, ``ring``, ``little``) its joints from
+    the palm out and its ``tip``: ``thumb_cmc``, ``thumb_mp``, ``thumb_ip``,
+    ``thumb_tip``, ``index_mcp``, ``index_pip``, ``index_dip``,
+    ``index_tip``...
+    """
+    confidence: float
+
+
+_BODY_JOINTS = (
+    "Nose LeftEye RightEye LeftEar RightEar Neck LeftShoulder RightShoulder LeftElbow RightElbow "
+    "LeftWrist RightWrist Root LeftHip RightHip LeftKnee RightKnee LeftAnkle RightAnkle"
+).split()
+_HAND_JOINTS = ["Wrist"] + [
+    finger + joint
+    for finger, joints in (
+        ("Thumb", ("CMC", "MP", "IP", "Tip")),
+        ("Index", ("MCP", "PIP", "DIP", "Tip")),
+        ("Middle", ("MCP", "PIP", "DIP", "Tip")),
+        ("Ring", ("MCP", "PIP", "DIP", "Tip")),
+        ("Little", ("MCP", "PIP", "DIP", "Tip")),
+    )
+    for joint in joints
+]
+
+
+def _snake(name: str) -> str:
+    """``LeftShoulder`` -> ``left_shoulder``; ``ThumbCMC`` -> ``thumb_cmc``."""
+    import re
+
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", "_", name).lower()
+
+
+@lru_cache(maxsize=None)
+def _joint_names(prefix: str, names: Tuple[str, ...]) -> Dict[str, str]:
+    """Vision's key for each joint (``"VNHLKWRI"``...) -> its readable name."""
+    library = framework("Vision")
+    found = {}
+    for name in names:
+        try:
+            key = _objc.pystring(ctypes.c_void_p.in_dll(library, prefix + name).value)
+        except ValueError:
+            continue
+        if key:
+            found[key] = _snake(name)
+    return found
+
+
+def _joints(observation: int, group: str, names: Dict[str, str]) -> Dict[str, Joint]:
+    error = ctypes.c_void_p()
+    group_key = ctypes.c_void_p.in_dll(framework("Vision"), group).value
+    points = _objc.send(
+        observation,
+        "recognizedPointsForJointsGroupName:error:",
+        group_key,
+        ctypes.byref(error),
+        argtypes=(_objc.id, ctypes.c_void_p),
+    )
+    found: Dict[str, Joint] = {}
+    if not points:
+        return found
+    for key in _objc.nsarray(_objc.send(points, "allKeys")):
+        point = _objc.send(points, "objectForKey:", key, argtypes=(_objc.id,))
+        confidence = float(_objc.send(point, "confidence", restype=ctypes.c_float))
+        if confidence <= 0:
+            continue  # not seen
+        location = _objc.send(point, "location", restype=_objc.CGPoint)
+        name = names.get(_objc.pystring(key) or "", _objc.pystring(key) or "")
+        # Vision measures from the bottom-left corner.
+        found[name] = (round(location.x, 4), round(1.0 - location.y, 4), round(confidence, 3))
+    return found
+
+
+def body_pose(image: Image) -> List[Pose]:
+    """
+    Find the people in an image and where their joints are: head, shoulders, elbows, wrists, hips, knees, ankles.
+
+    Returns one :class:`Pose` per person. Each joint is ``(x, y,
+    confidence)``, as fractions of the image from its top-left corner, so a
+    raised hand is one whose wrist is above the shoulder::
+
+        for person in macos.vision.body_pose("dance.jpg"):
+            wrist, shoulder = person.joints.get("right_wrist"), person.joints.get("right_shoulder")
+            if wrist and shoulder and wrist[1] < shoulder[1]:
+                print("a raised right hand")
+
+    It finds bodies; it doesn't tell who they are.
+    """
+    _load()
+    names = _joint_names("VNHumanBodyPoseObservationJointName", tuple(_BODY_JOINTS))
+    with _objc.autorelease_pool():
+        return [
+            Pose(
+                joints=_joints(observation, "VNHumanBodyPoseObservationJointsGroupNameAll", names),
+                confidence=_confidence(observation),
+            )
+            for observation in _perform(image, _objc.new("VNDetectHumanBodyPoseRequest"))
+        ]
+
+
+def hand_pose(image: Image, *, max_hands: int = 4) -> List[Hand]:
+    """
+    Find hands in an image and where their joints are: the wrist and each finger's joints and tip.
+
+    Returns up to ``max_hands`` :class:`Hand` objects, with the ``side``
+    (``'left'`` or ``'right'``) when Vision can tell. Joints are ``(x, y,
+    confidence)`` as in :func:`body_pose`. A thumbs-up, for instance, has the
+    thumb tip well above the other fingertips::
+
+        for hand in macos.vision.hand_pose("photo.jpg"):
+            print(hand.side, hand.joints.get("index_tip"))
+    """
+    if max_hands < 1:
+        raise ValueError("max_hands must be at least 1, not {}".format(max_hands))
+    _load()
+    names = _joint_names("VNHumanHandPoseObservationJointName", tuple(_HAND_JOINTS))
+    sides = {-1: "left", 1: "right"}  # VNChirality
+    found = []
+    with _objc.autorelease_pool():
+        request = _objc.new("VNDetectHumanHandPoseRequest")
+        _objc.send(request, "setMaximumHandCount:", max_hands, argtypes=(_objc.NSUInteger,), restype=None)
+        for observation in _perform(image, request):
+            responds = _objc.send(
+                observation, "respondsToSelector:", _objc.sel("chirality"), argtypes=(_objc.SEL,), restype=BOOL
+            )
+            side = sides.get(int(_objc.send(observation, "chirality", restype=NSInteger))) if responds else None
+            found.append(
+                Hand(
+                    side=side,
+                    joints=_joints(observation, "VNHumanHandPoseObservationJointsGroupNameAll", names),
+                    confidence=_confidence(observation),
+                )
+            )
+    return found

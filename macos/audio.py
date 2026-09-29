@@ -17,19 +17,22 @@ permission; recording needs the *Microphone* one, which macOS asks for the
 first time.
 """
 
+import array
 import ctypes
 import math
 import os
 import struct
+import sys
 import tempfile
 import time
+import wave
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
-from . import _capture, _cf, _objc
-from ._system import framework
+from . import _capture, _cf, _media, _objc
+from ._system import framework, run
 from .errors import MacOSError, NotSupportedError
 
 __all__ = [
@@ -49,6 +52,17 @@ __all__ = [
     "input_level",
     "has_permission",
     "request_permission",
+    "AudioInfo",
+    "info",
+    "convert",
+    "trim",
+    "concat",
+    "fade",
+    "gain",
+    "reverse",
+    "speed",
+    "classify",
+    "record_until_silence",
 ]
 
 
@@ -482,3 +496,502 @@ def input_level(seconds: float = 0.3) -> float:
         scratch.unlink(missing_ok=True)
     level = sum(levels) / len(levels) if levels else 0.0
     return round(min(max(level, 0.0), 1.0), 4) if not math.isnan(level) else 0.0
+
+
+# Audio files: read with AVFoundation, converted with afconvert (which ships
+# with macOS), and edited as 16-bit samples in Python.
+
+PathLike = Union[str, "os.PathLike[str]"]
+
+_CODECS = {"aac ": "aac", "alac": "alac", "lpcm": "pcm", ".mp3": "mp3", "opus": "opus", "flac": "flac", "ac-3": "ac3"}
+_QUALITY = {"high": 127, "medium": 90, "low": 50}  # AAC variable-bit-rate quality, 0 to 127
+_WRITE = {".m4a", ".wav", ".aiff", ".aif", ".caf"}
+
+
+@dataclass(frozen=True)
+class AudioInfo:
+    """What an audio file contains."""
+
+    duration: float
+    """In seconds."""
+    sample_rate: int
+    """Samples per second, such as 44100 or 48000."""
+    channels: int
+    """1 (mono), 2 (stereo)..."""
+    codec: str
+    """``'aac'``, ``'alac'``, ``'pcm'`` (uncompressed), ``'mp3'``... or the codec's four-character code for others."""
+    bitrate: Optional[int]
+    """In kilobits per second, when the file says."""
+
+
+class _StreamDescription(ctypes.Structure):
+    # AudioStreamBasicDescription
+    _fields_ = [
+        ("sample_rate", ctypes.c_double),
+        ("format_id", ctypes.c_uint32),
+        ("format_flags", ctypes.c_uint32),
+        ("bytes_per_packet", ctypes.c_uint32),
+        ("frames_per_packet", ctypes.c_uint32),
+        ("bytes_per_frame", ctypes.c_uint32),
+        ("channels", ctypes.c_uint32),
+        ("bits_per_channel", ctypes.c_uint32),
+        ("reserved", ctypes.c_uint32),
+    ]
+
+
+def _existing(path: PathLike) -> Path:
+    resolved = Path(path).expanduser().absolute()
+    if not resolved.exists():
+        raise FileNotFoundError(str(resolved))
+    return resolved
+
+
+def info(path: PathLike) -> AudioInfo:
+    """Return the duration, sample rate, channels, codec and bitrate of an audio (or video) file's sound."""
+    from . import video
+
+    source = _existing(path)
+    framework("AVFoundation")
+    media = framework("CoreMedia")
+    media.CMAudioFormatDescriptionGetStreamBasicDescription.argtypes = (ctypes.c_void_p,)
+    media.CMAudioFormatDescriptionGetStreamBasicDescription.restype = ctypes.POINTER(_StreamDescription)
+    with _objc.autorelease_pool():
+        asset = video._asset(source)
+        tracks = video._tracks(asset, "soun")
+        if not tracks:
+            raise ValueError("{} has no sound".format(source))
+        formats = list(_objc.nsarray(_objc.send(tracks[0], "formatDescriptions")))
+        description = media.CMAudioFormatDescriptionGetStreamBasicDescription(formats[0]) if formats else None
+        if not description:
+            raise MacOSError("could not read the sound's format in {}".format(source))
+        stream = description.contents
+        rate = float(_objc.send(tracks[0], "estimatedDataRate", restype=ctypes.c_float))
+        code = struct.pack(">I", stream.format_id).decode("latin-1")
+        return AudioInfo(
+            duration=round(video._seconds(_objc.send(asset, "duration", restype=video._CMTime)), 3),
+            sample_rate=int(round(stream.sample_rate)),
+            channels=int(stream.channels),
+            codec=_CODECS.get(code, code.strip()),
+            bitrate=int(round(rate / 1000)) if rate > 0 else None,
+        )
+
+
+def _encoding(target: Path, quality: str, lossless: bool) -> List[str]:
+    """afconvert's options to write ``target``'s format."""
+    extension = target.suffix.lower()
+    if extension not in _WRITE:
+        raise ValueError("can't write {!r} audio; use one of {}".format(target.suffix, ", ".join(sorted(_WRITE))))
+    if quality not in _QUALITY:
+        raise ValueError("quality must be 'high', 'medium' or 'low', not {!r}".format(quality))
+    if extension == ".m4a":
+        if lossless:
+            return ["-f", "m4af", "-d", "alac"]
+        return ["-f", "m4af", "-d", "aac", "-s", "3", "-ue", "vbrq", str(_QUALITY[quality])]
+    if lossless:
+        raise ValueError("lossless=True is for .m4a files (Apple Lossless); {} is lossless already".format(extension))
+    return {
+        ".wav": ["-f", "WAVE", "-d", "LEI16"],
+        ".aiff": ["-f", "AIFF", "-d", "BEI16"],
+        ".aif": ["-f", "AIFF", "-d", "BEI16"],
+        ".caf": ["-f", "caff", "-d", "LEI16"],
+    }[extension]
+
+
+def _afconvert(source: Path, target: Path, options: List[str]) -> Path:
+    """Convert with afconvert through a temporary file next to ``target``, so the source may be the target."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    handle, name = tempfile.mkstemp(dir=str(target.parent), suffix=target.suffix)
+    os.close(handle)
+    try:
+        run(["afconvert", *options, str(source), name])
+        os.replace(name, str(target))
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+    return target
+
+
+def convert(source: PathLike, output: PathLike, *, quality: str = "high", lossless: bool = False) -> Path:
+    """
+    Convert an audio file to the format of ``output``'s extension, and return ``output``.
+
+    Writes ``.m4a`` (AAC, or Apple Lossless with ``lossless=True``), ``.wav``,
+    ``.aiff`` and ``.caf``; reads anything macOS plays, MP3 and the sound of
+    videos included. ``quality`` (``"high"``, ``"medium"`` or ``"low"``)
+    sets the AAC quality: lower is smaller::
+
+        macos.audio.convert("podcast.wav", "podcast.m4a", quality="medium")
+        macos.audio.convert("song.mp3", "song.m4a", lossless=True)
+    """
+    original = _existing(source)
+    target = Path(output).expanduser().absolute()
+    return _afconvert(original, target, _encoding(target, quality, lossless))
+
+
+# Editing: decode to 16-bit PCM, change the samples, encode to the output's format.
+
+
+def _read_wav(data: bytes) -> Tuple[int, int, bytes]:
+    """``(channels, sample rate, sample bytes)`` of a 16-bit WAV file, the extensible variant included."""
+    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        raise MacOSError("afconvert didn't write a WAV file")
+    channels = rate = 0
+    samples = b""
+    offset = 12
+    while offset + 8 <= len(data):
+        kind, size = data[offset : offset + 4], struct.unpack("<I", data[offset + 4 : offset + 8])[0]
+        body = data[offset + 8 : offset + 8 + size]
+        if kind == b"fmt ":
+            channels, rate = struct.unpack("<HI", body[2:8])
+        elif kind == b"data":
+            samples = body
+        offset += 8 + size + (size & 1)  # chunks are padded to an even size
+    if not channels or not rate:
+        raise MacOSError("afconvert wrote a WAV file without a format")
+    return channels, rate, samples[: len(samples) - len(samples) % 2]
+
+
+def _decode(path: Path, rate: Optional[int] = None, channels: Optional[int] = None) -> Tuple[int, int, "array.array[int]"]:
+    """``(channels, sample rate, 16-bit samples)`` of an audio file, optionally resampled and remixed."""
+    with tempfile.TemporaryDirectory() as folder:
+        decoded = Path(folder) / "decoded.wav"
+        options = ["-f", "WAVE", "-d", "LEI16" + ("@{}".format(rate) if rate else "")]
+        if channels:
+            options += ["-c", str(channels)]
+        run(["afconvert", *options, str(path), str(decoded)])
+        count, frequency, data = _read_wav(decoded.read_bytes())
+        samples = array.array("h", data)
+    if sys.byteorder == "big":
+        samples.byteswap()  # WAV is little-endian
+    return count, frequency, samples
+
+
+def _encode(samples: "array.array[int]", channels: int, rate: int, output: PathLike, quality: str, lossless: bool) -> Path:
+    target = Path(output).expanduser().absolute()
+    options = _encoding(target, quality, lossless)
+    with tempfile.TemporaryDirectory() as folder:
+        plain = Path(folder) / "edited.wav"
+        data = array.array("h", samples)
+        if sys.byteorder == "big":
+            data.byteswap()
+        with wave.open(str(plain), "wb") as writer:
+            writer.setnchannels(channels)
+            writer.setsampwidth(2)
+            writer.setframerate(rate)
+            writer.writeframes(data.tobytes())
+        return _afconvert(plain, target, options)
+
+
+def _clip(value: float) -> int:
+    return -32768 if value < -32768 else 32767 if value > 32767 else int(value)
+
+
+def trim(
+    source: PathLike,
+    output: PathLike,
+    start: float = 0.0,
+    duration: Optional[float] = None,
+    *,
+    quality: str = "high",
+    lossless: bool = False,
+) -> Path:
+    """
+    Keep ``duration`` seconds of an audio file from ``start`` (to the end by default), and return ``output``.
+
+    ``output``'s extension sets the format, and ``quality`` and ``lossless``
+    work as in :func:`convert`::
+
+        macos.audio.trim("interview.m4a", "answer.m4a", start=95, duration=30)
+    """
+    if start < 0 or (duration is not None and duration <= 0):
+        raise ValueError("start must not be negative and duration must be positive")
+    channels, rate, samples = _decode(_existing(source))
+    first = int(start * rate) * channels
+    if first >= len(samples):
+        raise ValueError("start={} is past the end of the audio".format(start))
+    last = len(samples) if duration is None else min(len(samples), first + int(duration * rate) * channels)
+    return _encode(samples[first:last], channels, rate, output, quality, lossless)
+
+
+def concat(
+    files: Sequence[PathLike], output: PathLike, *, quality: str = "high", lossless: bool = False
+) -> Path:
+    """
+    Join audio files one after another into ``output``, and return it.
+
+    The files may differ in format, sample rate and channels: they're all
+    converted to the first one's. ``quality`` and ``lossless`` work as in
+    :func:`convert`::
+
+        macos.audio.concat(["intro.m4a", "episode.wav", "outro.m4a"], "podcast.m4a")
+    """
+    if not files:
+        raise ValueError("concat() needs at least one file")
+    channels, rate, joined = _decode(_existing(files[0]))
+    for path in files[1:]:
+        joined.extend(_decode(_existing(path), rate, channels)[2])
+    return _encode(joined, channels, rate, output, quality, lossless)
+
+
+def fade(
+    source: PathLike,
+    output: PathLike,
+    *,
+    fade_in: float = 0.0,
+    fade_out: float = 0.0,
+    quality: str = "high",
+    lossless: bool = False,
+) -> Path:
+    """
+    Raise the volume from silence over ``fade_in`` seconds and lower it to silence over the last ``fade_out``.
+
+    Returns ``output``. ``quality`` and ``lossless`` work as in :func:`convert`::
+
+        macos.audio.fade("song.m4a", "song-faded.m4a", fade_in=2, fade_out=5)
+    """
+    if fade_in < 0 or fade_out < 0:
+        raise ValueError("fade_in and fade_out must not be negative")
+    channels, rate, samples = _decode(_existing(source))
+    frames = len(samples) // channels
+    for seconds, at_start in ((fade_in, True), (fade_out, False)):
+        length = min(frames, int(seconds * rate))
+        for step in range(length):
+            factor = step / length
+            frame = step if at_start else frames - 1 - step
+            for channel in range(channels):
+                index = frame * channels + channel
+                samples[index] = int(samples[index] * factor)
+    return _encode(samples, channels, rate, output, quality, lossless)
+
+
+def gain(
+    source: PathLike, output: PathLike, decibels: float, *, quality: str = "high", lossless: bool = False
+) -> Path:
+    """
+    Make an audio file louder (positive ``decibels``) or quieter (negative), and return ``output``.
+
+    +6 dB is about twice as loud, -6 dB half. Loud parts pushed past the
+    maximum are clipped. ``quality`` and ``lossless`` work as in :func:`convert`.
+    """
+    factor = 10 ** (decibels / 20)
+    channels, rate, samples = _decode(_existing(source))
+    louder = array.array("h", (_clip(value * factor) for value in samples))
+    return _encode(louder, channels, rate, output, quality, lossless)
+
+
+def reverse(source: PathLike, output: PathLike, *, quality: str = "high", lossless: bool = False) -> Path:
+    """
+    Save an audio file played backwards to ``output``, and return it.
+
+    ``quality`` and ``lossless`` work as in :func:`convert`.
+    """
+    channels, rate, samples = _decode(_existing(source))
+    backwards = array.array("h", samples)
+    for channel in range(channels):
+        # Reverse the frames, keeping each frame's channels in order.
+        backwards[channel::channels] = samples[channel::channels][::-1]
+    return _encode(backwards, channels, rate, output, quality, lossless)
+
+
+def speed(
+    source: PathLike,
+    output: PathLike,
+    factor: float,
+    *,
+    keep_pitch: bool = True,
+    quality: str = "high",
+    lossless: bool = False,
+) -> Path:
+    """
+    Play an audio file ``factor`` times faster (1.5) or slower (0.75), and return ``output``.
+
+    By default the pitch stays the same, to listen to a lecture or a podcast
+    faster without the chipmunk voices; ``keep_pitch=False`` changes it with
+    the speed, like a record played faster. ``quality`` and ``lossless`` work
+    as in :func:`convert`::
+
+        macos.audio.speed("lecture.m4a", "lecture-fast.m4a", 1.5)
+    """
+    if factor <= 0:
+        raise ValueError("factor must be positive, not {}".format(factor))
+    target = Path(output).expanduser().absolute()
+    options = _encoding(target, quality, lossless)
+    with tempfile.TemporaryDirectory() as folder:
+        stretched = Path(folder) / "stretched.m4a"
+        with _objc.autorelease_pool():
+            edited = _media.editable(_media.asset(_existing(source)))
+            length = _media.duration(edited)
+            _objc.send(
+                edited,
+                "scaleTimeRange:toDuration:",
+                _media.time_range(0, length),
+                _media.time(length / factor),
+                argtypes=(_media.CMTimeRange, _media.CMTime),
+                restype=None,
+            )
+            _media.export(
+                edited,
+                stretched,
+                preset="AVAssetExportPresetAppleM4A",
+                time_pitch="Spectral" if keep_pitch else "Varispeed",
+                length=length / factor,
+            )
+        return _afconvert(stretched, target, options)
+
+
+# Sound classification, through SoundAnalysis.
+
+_Produced = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+_Failed = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+_Completed = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+_heard: dict = {}  # observer -> {"labels": {label: [confidence...]}, "error": ...}
+
+
+def _on_result(observer: int, _cmd: int, request: int, result: int) -> None:
+    labels = _heard.setdefault(observer, {"labels": {}})["labels"]
+    for item in _objc.nsarray(_objc.send(result, "classifications")):
+        label = _objc.pystring(_objc.send(item, "identifier")) or ""
+        confidence = float(_objc.send(item, "confidence", restype=ctypes.c_double))
+        labels.setdefault(label, []).append(confidence)
+
+
+def _on_failure(observer: int, _cmd: int, request: int, error: int) -> None:
+    _heard.setdefault(observer, {"labels": {}})["error"] = _objc.error_message(ctypes.c_void_p(error))
+
+
+def _on_complete(observer: int, _cmd: int, request: int) -> None:
+    _heard.setdefault(observer, {"labels": {}})["done"] = True
+
+
+def classify(path: PathLike, *, limit: int = 5, min_confidence: float = 0.1) -> List[Tuple[str, float]]:
+    """
+    Tell what an audio (or video) file sounds like: ``[('speech', 0.97), ('music', 0.4), ...]``, most likely first.
+
+    Apple's sound classifier knows more than 300 sounds: speech, laughter,
+    music and instruments, dogs, birds, cars, sirens, applause, rain... It
+    listens to the whole file, a few seconds at a time, and averages what it
+    hears. Runs offline and needs no permission::
+
+        if dict(macos.audio.classify("clip.m4a")).get("dog_bark", 0) > 0.5:
+            print("a dog!")
+
+    ``limit`` and ``min_confidence`` work as in :func:`macos.vision.classify`.
+    """
+    if limit < 1:
+        raise ValueError("limit must be at least 1, not {}".format(limit))
+    source = _existing(path)
+    framework("SoundAnalysis")
+    _objc.define_class(
+        "PymacosSoundObserver",
+        {
+            "request:didProduceResult:": ("v@:@@", _Produced, _on_result),
+            "request:didFailWithError:": ("v@:@@", _Failed, _on_failure),
+            "requestDidComplete:": ("v@:@", _Completed, _on_complete),
+        },
+        protocols=("SNResultsObserving",),
+    )
+    with _objc.autorelease_pool():
+        error = ctypes.c_void_p()
+        identifier = ctypes.c_void_p.in_dll(framework("SoundAnalysis"), "SNClassifierIdentifierVersion1").value
+        request = _objc.send(
+            _objc.send(_objc.cls("SNClassifySoundRequest"), "alloc"),
+            "initWithClassifierIdentifier:error:",
+            identifier,
+            ctypes.byref(error),
+            argtypes=(_objc.id, ctypes.c_void_p),
+        )
+        if not request:
+            raise MacOSError("the sound classifier isn't available: {}".format(_objc.error_message(error)))
+        _objc.send(request, "autorelease")
+        analyzer = _objc.send(
+            _objc.send(_objc.cls("SNAudioFileAnalyzer"), "alloc"),
+            "initWithURL:error:",
+            _objc.file_url(source),
+            ctypes.byref(error),
+            argtypes=(_objc.id, ctypes.c_void_p),
+        )
+        if not analyzer:
+            raise ValueError("{} has no sound macOS can read: {}".format(source, _objc.error_message(error)))
+        _objc.send(analyzer, "autorelease")
+        observer = _objc.new("PymacosSoundObserver")
+        if not _objc.send(
+            analyzer,
+            "addRequest:withObserver:error:",
+            request,
+            observer,
+            ctypes.byref(error),
+            argtypes=(_objc.id, _objc.id, ctypes.c_void_p),
+            restype=_objc.BOOL,
+        ):
+            raise MacOSError("could not analyze {}: {}".format(source, _objc.error_message(error)))
+        try:
+            _objc.send(analyzer, "analyze", restype=None)  # synchronous: the observer is called meanwhile
+            heard = _heard.get(observer, {"labels": {}})
+        finally:
+            _heard.pop(observer, None)
+    if heard.get("error"):
+        raise MacOSError("could not analyze {}: {}".format(source, heard["error"]))
+    windows = max((len(values) for values in heard["labels"].values()), default=0)
+    averages = [(label, sum(values) / windows) for label, values in heard["labels"].items()] if windows else []
+    ranked = sorted(((label, round(score, 3)) for label, score in averages if score >= min_confidence), key=lambda pair: -pair[1])
+    return ranked[:limit]
+
+
+def record_until_silence(
+    path: PathLike,
+    max_seconds: float = 60.0,
+    *,
+    silence: float = 1.5,
+    threshold: float = 0.02,
+    channels: int = 1,
+) -> Path:
+    """
+    Record the microphone until the speaker stops talking, and return ``path``.
+
+    It waits for sound (a level above ``threshold``, see :func:`input_level`),
+    then stops after ``silence`` seconds of quiet, or after ``max_seconds``
+    in any case. Made for voice notes and spoken commands::
+
+        memo = macos.audio.record_until_silence("note.m4a")
+
+    ``path`` and ``channels`` work as in :func:`record`. Needs the
+    Microphone permission.
+    """
+    if max_seconds <= 0 or silence <= 0:
+        raise ValueError("max_seconds and silence must be positive")
+    if not 0 < threshold < 1:
+        raise ValueError("threshold must be between 0 and 1, not {}".format(threshold))
+    if channels not in (1, 2):
+        raise ValueError("channels must be 1 or 2, not {}".format(channels))
+    target = Path(path).expanduser().absolute()
+    if target.suffix.lower() not in _RECORD_FORMATS:
+        raise ValueError(
+            "can't record {!r} files; use one of {}".format(target.suffix, ", ".join(sorted(_RECORD_FORMATS)))
+        )
+    _capture.require_permission(_capture.AUDIO)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with _objc.autorelease_pool():
+        recorder = _recorder(target, channels, metering=True)
+        if not _objc.send(recorder, "record", restype=_objc.BOOL):
+            raise MacOSError("the microphone could not start recording")
+        try:
+            started = time.monotonic()
+            heard_at: Optional[float] = None
+            while True:
+                time.sleep(0.05)
+                now = time.monotonic()
+                _objc.send(recorder, "updateMeters", restype=None)
+                power = _objc.send(
+                    recorder, "averagePowerForChannel:", 0, argtypes=(_objc.NSUInteger,), restype=ctypes.c_float
+                )
+                if 10 ** (float(power) / 20) > threshold:
+                    heard_at = now
+                if now - started >= max_seconds:
+                    break
+                if heard_at is not None and now - heard_at >= silence:
+                    break
+        finally:
+            _objc.send(recorder, "stop", restype=None)
+    if not target.exists():
+        raise MacOSError("the recording wasn't saved")
+    return target

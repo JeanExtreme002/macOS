@@ -78,6 +78,54 @@ macos.image.straighten("beach.jpg", "beach-level.jpg")
 
 A photo without a tilted horizon is saved unchanged.
 
+## Enhancing and effects
+
+```python
+macos.image.enhance("dim.jpg", "better.jpg")             # like Enhance in Photos
+macos.image.effect("portrait.jpg", "noir.jpg", "noir")   # like the Photos filters
+```
+
+{func}`~macos.image.enhance` fixes the exposure, contrast, colors and red
+eyes as Core Image judges best for the photo. {func}`~macos.image.effect`
+applies one of the Photos filters: `"noir"`, `"mono"` and `"tonal"` (black and
+white, each its own way), `"chrome"`, `"fade"`, `"instant"`, `"process"` and
+`"transfer"` (vintage colors).
+
+## Backgrounds
+
+```python
+macos.image.blur_background("me.jpg", "me-portrait.jpg")                  # like Portrait mode
+macos.image.replace_background("me.jpg", "beach.jpg", "me-at-the-beach.jpg")
+```
+
+Vision finds the people in the photo and keeps them sharp, in front of a
+blurred background or of another picture (scaled to fill it). `strength`
+sets the blur. Both raise `ValueError` when the photo shows no person. With
+{func}`macos.camera.photo`, they make a quick portrait from the webcam.
+
+## Watermarks
+
+{func}`~macos.image.watermark` writes a text across a photo, diagonally and
+see-through, sized to fit it:
+
+```python
+macos.image.watermark("house.jpg", "house-listing.jpg", "Acme Realty")
+macos.image.watermark("draft.png", "draft-marked.png", "DRAFT", color="#d00000", opacity=0.5)
+```
+
+## Contact sheets
+
+{func}`~macos.image.contact_sheet` lays images out as thumbnails in a grid,
+on one picture, to see many at a glance:
+
+```python
+photos = sorted(Path("~/Pictures/Trip").expanduser().glob("*.jpg"))
+macos.image.contact_sheet(photos, "trip-overview.jpg", columns=6, size=200)
+```
+
+Each thumbnail fits a `size` × `size` square, `gap` pixels apart, on a
+`background` color.
+
 ## Hiding faces
 
 {func}`~macos.image.blur_faces` saves a copy with every face pixelated, for
@@ -194,6 +242,12 @@ default), `"Q"` or `"H"`. To read QR codes, see {func}`macos.vision.barcodes`.
 - {func}`macos.image.flip`
 - {func}`macos.image.straighten`
 - {func}`macos.image.blur_faces`
+- {func}`macos.image.enhance`
+- {func}`macos.image.effect`
+- {func}`macos.image.blur_background`
+- {func}`macos.image.replace_background`
+- {func}`macos.image.watermark`
+- {func}`macos.image.contact_sheet`
 - {func}`macos.image.dominant_colors`
 - {func}`macos.image.qr_code`
 - {class}`macos.image.ImageInfo`
