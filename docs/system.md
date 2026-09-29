@@ -165,7 +165,7 @@ macos.say("Welcome back")
 | {func}`~macos.system.battery_percentage_shown` | {func}`~macos.system.set_show_battery_percentage` | the percentage next to the battery in the menu bar |
 
 ```python
-macos.system.set_ds_store_on_network(False)   # colleagues on the share will thank you
+macos.system.set_ds_store_on_network(False)      # colleagues on the share will thank you
 macos.system.set_show_battery_percentage(True)
 ```
 
