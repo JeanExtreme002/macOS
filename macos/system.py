@@ -489,9 +489,20 @@ def mount_image(path: Union[str, "os.PathLike[str]"]) -> Path:
     # "Y" answers the license agreement some images show before mounting.
     output = _run(["hdiutil", "attach", "-nobrowse", "-noautoopen", "-plist", str(image)], input="Y\n")
     start = output.find("<?xml")
-    details = plistlib.loads(output[start:].encode()) if start >= 0 else {}
-    points = [entity["mount-point"] for entity in details.get("system-entities", []) if entity.get("mount-point")]
+    try:
+        details = plistlib.loads(output[start:].encode()) if start >= 0 else {}
+    except (plistlib.InvalidFileException, ValueError):
+        details = {}
+    entities = details.get("system-entities", [])
+    points = [entity["mount-point"] for entity in entities if entity.get("mount-point")]
     if not points:
+        # Attached without a volume: detach its disk, so the image isn't left attached.
+        devices = sorted((entity["dev-entry"] for entity in entities if entity.get("dev-entry")), key=len)
+        for device in devices[:1]:
+            try:
+                _run(["hdiutil", "detach", device, "-force"])
+            except MacOSError:
+                pass
         raise MacOSError("{} has no volume to mount".format(image))
     return Path(points[0])
 

@@ -541,11 +541,26 @@ def install_from_dmg(
             raise AppNotFoundError("{} has no app at its top".format(Path(image).name))
         source = found[0]
         target = target_folder / source.name
-        if target.exists():
-            if not replace:
-                raise FileExistsError(str(target))
-            shutil.rmtree(str(target))
-        _run(["ditto", str(source), str(target)])  # keeps the signature, attributes and links
+        if target.exists() and not replace:
+            raise FileExistsError(str(target))
+        # Copied beside it first, then swapped in: a failed copy leaves the installed app as it was.
+        staged = target_folder / ".{}.installing-{}".format(source.name, os.getpid())
+        try:
+            _run(["ditto", str(source), str(staged)])  # keeps the signature, attributes and links
+            if target.exists():
+                old = target_folder / ".{}.replaced-{}".format(source.name, os.getpid())
+                os.rename(str(target), str(old))
+                try:
+                    os.rename(str(staged), str(target))
+                except OSError:
+                    os.rename(str(old), str(target))  # put the old app back
+                    raise
+                shutil.rmtree(str(old), ignore_errors=True)
+            else:
+                os.rename(str(staged), str(target))
+        finally:
+            if staged.exists():
+                shutil.rmtree(str(staged), ignore_errors=True)
     finally:
         system.unmount_image(mounted, force=True)
     return str(target)

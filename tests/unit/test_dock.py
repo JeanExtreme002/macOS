@@ -55,3 +55,21 @@ def test_dock_apps(dock_settings):
     assert [entry.name for entry in macos.dock.apps()] == ["Code", "Safari"] and len(restarts) == 1
     assert macos.dock.remove_app("safari") is True and macos.dock.remove_app("Safari") is False
     assert [entry.name for entry in macos.dock.apps()] == ["Code"]
+
+
+def test_dock_apps_leave_out_spacers(dock_settings):
+    store, _, _ = dock_settings
+    store["persistent-apps"].append({"tile-data": {}, "tile-type": "spacer-tile"})
+    store["persistent-apps"].append({"tile-data": {}, "tile-type": "small-spacer-tile"})
+
+    assert [entry.name for entry in macos.dock.apps()] == ["Safari"]
+
+
+def test_dock_restart_fails_when_no_dock_comes_back(monkeypatch, fake_run):
+    clock = {"now": 0.0}
+    monkeypatch.setattr(dock, "_pid", lambda: 42)  # the same Dock, never replaced
+    monkeypatch.setattr(dock.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(dock.time, "sleep", lambda seconds: clock.update(now=clock["now"] + seconds))
+
+    with pytest.raises(macos.MacOSError, match="didn't start again"):
+        dock.restart()

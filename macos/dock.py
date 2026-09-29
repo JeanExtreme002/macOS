@@ -8,7 +8,7 @@ Configure the Dock: hide it, size and place it, and choose the apps kept in it.
     macos.dock.set_autohide(True)
     macos.dock.set_size(48)                      # icons of 48 points
     macos.dock.set_position("left")
-    [app.name for app in macos.dock.apps()]      # ['Finder', 'Safari', 'Mail', ...]
+    [app.name for app in macos.dock.apps()]      # ['Safari', 'Mail', 'Music', ...]
     macos.dock.add_app("Visual Studio Code")
     macos.dock.remove_app("Podcasts")
 
@@ -25,7 +25,7 @@ from urllib.parse import quote, unquote, urlparse
 
 from . import apps as _apps, defaults
 from ._system import require_macos, run as _run
-from .errors import AppNotFoundError
+from .errors import AppNotFoundError, MacOSError
 
 __all__ = [
     "DockApp",
@@ -77,10 +77,12 @@ def restart() -> None:
     # launchd starts a new one right away.
     _run(["killall", "-KILL", "Dock"])
     deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
+    while True:
         pid = _pid()
         if pid is not None and pid != old:
             break
+        if time.monotonic() > deadline:
+            raise MacOSError("the Dock didn't start again within 10 seconds")
         time.sleep(0.1)
     time.sleep(_SETTLE)
 
@@ -136,11 +138,20 @@ def _tile_path(tile: Dict[str, Any]) -> Optional[Path]:
 
 
 def apps() -> List[DockApp]:
-    """The apps kept in the Dock, left to right (or top to bottom): not the running ones that aren't kept."""
+    """
+    The apps kept in the Dock, left to right (or top to bottom).
+
+    Finder, which always comes first, and the running apps that aren't kept
+    aren't listed; nor are spacers.
+    """
     found = []
     for tile in _tiles():
+        if tile.get("tile-type") not in ("file-tile", None):
+            continue  # spacers and the like
         data = tile.get("tile-data", {})
         path = _tile_path(tile)
+        if path is None and not data.get("file-label"):
+            continue
         name = data.get("file-label") or (path.stem if path else "")
         found.append(DockApp(name=name, path=path, bundle_id=data.get("bundle-identifier")))
     return found
@@ -159,7 +170,7 @@ def _matches(tile: Dict[str, Any], app: str) -> bool:
 
 def add_app(app: str, *, index: Optional[int] = None) -> DockApp:
     """
-    Keep ``app`` in the Dock, at the end or at ``index``, and return it.
+    Keep ``app`` in the Dock, at the end or at ``index`` (in :func:`apps`, so 0 is right after Finder), and return it.
 
     ``app`` is a name (``"Safari"``), a bundle ID or the path of a ``.app``,
     found as :func:`macos.apps.open` finds apps. An app already kept isn't

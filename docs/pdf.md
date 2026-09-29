@@ -124,8 +124,9 @@ macos.pdf.text("scan-searchable.pdf")   # the scan's text
 ```
 
 The pages look the same, and their text can be selected, copied and searched,
-in Preview and Spotlight too. Pages that already have text are kept as they
-are, unless `redo=True`. `languages` (`["pt-BR", "en-US"]`) helps Vision with
+in Preview and Spotlight too. Pages that already have text aren't read again,
+unless `redo=True`. Every page is redrawn into the new PDF, so links and form
+fields aren't kept. `languages` (`["pt-BR", "en-US"]`) helps Vision with
 accents and words. To only read a page, render it and use OCR:
 
 ```python

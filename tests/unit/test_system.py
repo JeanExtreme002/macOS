@@ -177,3 +177,17 @@ def test_cpu_and_memory_argument_checks():
         macos.system.cpu_usage(0)
     usage = macos.system.MemoryUsage(total=100, used=25, wired=5, compressed=5, cached=10)
     assert (usage.free, usage.percent) == (75, 0.25)
+
+
+def test_mount_image_detaches_an_image_without_a_volume(fake_run, tmp_path):
+    image = tmp_path / "Disk.dmg"
+    image.write_bytes(b"dmg")
+    fake_run.stdout = (
+        '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>system-entities</key><array>'
+        "<dict><key>dev-entry</key><string>/dev/disk9s1</string></dict>"
+        "<dict><key>dev-entry</key><string>/dev/disk9</string></dict></array></dict></plist>"
+    )
+
+    with pytest.raises(macos.MacOSError, match="no volume to mount"):
+        macos.system.mount_image(image)
+    assert fake_run.args == ["hdiutil", "detach", "/dev/disk9", "-force"]  # the whole disk, not left attached

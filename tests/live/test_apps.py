@@ -117,6 +117,8 @@ def test_install_from_dmg(tmp_path):
 @SETTINGS
 def test_login_items():
     before = macos.apps.login_items()
+    if any(item.path and item.path.endswith("/Chess.app") for item in before):
+        pytest.skip("Chess is already a login item: removing it would change this Mac")
     try:
         item = macos.apps.add_login_item("Chess")
         assert item.path and item.path.endswith("Chess.app")

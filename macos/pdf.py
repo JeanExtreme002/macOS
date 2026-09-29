@@ -395,7 +395,8 @@ def ocr(
 
     The pages look the same, and their text can now be selected, copied and
     searched, in Preview, Spotlight or :func:`text`. Pages that already have
-    text are kept as they are, unless ``redo=True``. ``languages`` works as in
+    text aren't read again, unless ``redo=True``. As with :func:`watermark`,
+    every page is redrawn into the new PDF, so links and form fields aren't kept. ``languages`` works as in
     :func:`macos.vision.lines` (``["pt-BR", "en-US"]``). ``password`` opens an
     encrypted PDF; the result isn't encrypted.
     """

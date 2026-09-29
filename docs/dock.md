@@ -28,12 +28,12 @@ permission is needed.
 
 {func}`~macos.dock.apps` lists the apps kept in the Dock, in order, as
 {class}`~macos.dock.DockApp` objects with their `name`, `path` and `bundle_id`.
-The running apps that aren't kept aren't listed.
+Finder, always first, isn't listed, nor are the running apps that aren't kept.
 
 ```python
-[app.name for app in macos.dock.apps()]   # ['Finder', 'Safari', 'Mail', ...]
+[app.name for app in macos.dock.apps()]   # ['Safari', 'Mail', 'Music', ...]
 
-macos.dock.add_app("Terminal", index=1)   # second, after Finder
+macos.dock.add_app("Terminal", index=0)   # first, right after Finder
 macos.dock.remove_app("com.apple.Maps")   # by name, bundle ID or path
 ```
 
