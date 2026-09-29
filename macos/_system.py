@@ -45,11 +45,11 @@ def applescript(app: str, script: str, *args: str) -> str:
     Run an AppleScript that controls ``app``, and return its output.
 
     ``args`` reach the script's ``on run argv`` handler as text, never
-    pasted into the source. A missing Automation permission raises
+    pasted into the source, even when they start with ``-``. A missing Automation permission raises
     :class:`PermissionDeniedError`, saying where to allow it.
     """
     try:
-        return run(["osascript", "-e", script, *args])
+        return run(["osascript", "-e", script, *(["--", *args] if args else [])])
     except CommandError as error:
         if "-1743" in error.stderr:  # errAEEventNotPermitted
             raise PermissionDeniedError(

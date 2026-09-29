@@ -15,6 +15,7 @@ The events come from ``NSWorkspace`` and the system's distributed
 notifications, the same ones apps listen to. No permission is needed.
 """
 
+import collections
 import ctypes
 import inspect
 import threading
@@ -163,7 +164,7 @@ def _center(kind: str) -> int:
 
 _DELIVER_IMMEDIATELY = 4  # NSNotificationSuspensionBehaviorDeliverImmediately
 
-_received: List[Event] = []
+_received: "collections.deque[Event]" = collections.deque()
 _Handle = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 
 
@@ -289,7 +290,7 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
                 restype=None,
             )
     _stop.clear()
-    del _received[:]
+    _received.clear()
     power = _PowerWatch() if any(kind == _POWER for kind, _ in wanted.values()) else None
     deadline = None if timeout is None else time.monotonic() + timeout
     try:
@@ -299,7 +300,7 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
                 break
             _objc.run_until(lambda: bool(_received) or _stop.is_set(), remaining)
             while _received:
-                if on_event(_received.pop(0)):
+                if on_event(_received.popleft()):
                     return
     finally:
         if power is not None:

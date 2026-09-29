@@ -65,9 +65,9 @@ def test_browser_tab_actions_pass_numbers_as_arguments(browsers):
     tab = macos.browser.tabs()[0]
 
     tab.activate()
-    assert browsers.args[3:] == ["7", "1"] and "active tab index" in browsers.args[2]
+    assert browsers.args[3:] == ["--", "7", "1"] and "active tab index" in browsers.args[2]
     tab.close()
-    assert browsers.args[3:] == ["7", "1"] and "close tab" in browsers.args[2]
+    assert browsers.args[3:] == ["--", "7", "1"] and "close tab" in browsers.args[2]
 
 
 def test_browser_run_js(browsers):
@@ -75,7 +75,9 @@ def test_browser_run_js(browsers):
     script = 'document.querySelector("h1").textContent'
 
     assert macos.browser.run_js(script) == "pymacos"
-    assert browsers.args[3:] == [script]  # an argument, never pasted into the AppleScript
+    assert browsers.args[3:] == ["--", script]  # an argument, never pasted into the AppleScript
+    macos.browser.run_js("-1")
+    assert browsers.args[3:] == ["--", "-1"]  # not an option of osascript
     browsers.stdout = "missing value\n"
     assert macos.browser.run_js("undefined") is None
 
@@ -112,7 +114,7 @@ def test_browser_tab_reload_and_go(browsers):
     tab = macos.browser.tabs()[1]
 
     tab.reload()
-    assert browsers.args[3:] == ["7", "2"] and "reload tab" in browsers.args[2]
+    assert browsers.args[3:] == ["--", "7", "2"] and "reload tab" in browsers.args[2]
     tab.go("https://example.com/?q=\"quoted\"")
-    assert browsers.args[3:] == ["7", "2", "https://example.com/?q=\"quoted\""]  # the URL is an argument
+    assert browsers.args[3:] == ["--", "7", "2", "https://example.com/?q=\"quoted\""]  # the URL is an argument
     assert "set URL of tab" in browsers.args[2]

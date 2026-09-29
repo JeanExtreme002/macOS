@@ -125,3 +125,25 @@ def test_schedule_pause_and_resume(fake_run, home):
     assert [call["args"][1] for call in fake_run.calls] == ["bootout", "enable", "bootstrap"]
     with pytest.raises(ValueError, match="no job named"):
         macos.schedule.pause("missing")
+
+
+def test_schedule_remove_only_ignores_a_job_that_isnt_loaded(fake_run, home, monkeypatch):
+    import subprocess
+
+    from macos import _system
+
+    macos.schedule.add("backup", home / "backup.py", every=60)
+    answers = {"bootout": (3, "Boot-out failed: 3: No such process")}
+
+    def launchctl(args, **kwargs):
+        code, error = answers.get(args[1], (0, ""))
+        return subprocess.CompletedProcess(args, code, "", error)
+
+    monkeypatch.setattr(_system.subprocess, "run", launchctl)
+    assert macos.schedule.remove("backup") is True  # not loaded: fine
+
+    macos.schedule.add("backup", home / "backup.py", every=60)
+    answers["bootout"] = (5, "Boot-out failed: 5: Input/output error")
+    with pytest.raises(macos.CommandError):
+        macos.schedule.remove("backup")
+    assert macos.schedule.get("backup") is not None  # still managed, since it may still be loaded

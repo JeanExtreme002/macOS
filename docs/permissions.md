@@ -23,8 +23,10 @@ The other features (clipboard, appearance, apps, Keychain, speech, power,
 Shortcuts, Finder, volume, Spotlight, dialogs, system info, Vision, images,
 PDFs, language, audio devices, sounds, network, brightness, the keyboard
 backlight, the mouse position, listing Bluetooth devices, Caps Lock, microphone
-volume, camera and microphone use, locking the screen, watching folders, system
-events, scheduling scripts) need no permission.
+volume, camera and microphone use, locking the screen, system events, scheduling
+scripts) need no permission. Watching folders needs none either, except that
+the Desktop, Documents and Downloads folders ask for access the first time,
+like any access to them.
 
 ## Screen Recording
 

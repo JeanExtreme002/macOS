@@ -196,14 +196,11 @@ def add(
 
 
 def remove(name: str) -> bool:
-    """Stop and delete the job ``name``; return whether there was one. Its log stays."""
+    """Stop and delete the job ``name`` (and a run in progress); return whether there was one. Its log stays."""
     _check_name(name)
     require_macos()
     path = _plist(name)
-    try:
-        _run(["launchctl", "bootout", _target(name)])
-    except CommandError:
-        pass  # not loaded
+    _bootout(name)
     if name in _paused():
         _run(["launchctl", "enable", _target(name)])  # a paused job's name is free again
     if path.exists():
@@ -214,6 +211,18 @@ def remove(name: str) -> bool:
 
 def _target(name: str) -> str:
     return "{}/{}{}".format(_domain(), _PREFIX, name)
+
+
+_NOT_LOADED = 3  # launchctl bootout: "No such process"
+
+
+def _bootout(name: str) -> None:
+    """Unload the job (stopping a run in progress); fine if it isn't loaded, an error otherwise."""
+    try:
+        _run(["launchctl", "bootout", _target(name)])
+    except CommandError as error:
+        if error.returncode != _NOT_LOADED:
+            raise
 
 
 def _paused() -> List[str]:
@@ -290,23 +299,17 @@ def pause(name: str) -> None:
     """
     Stop the job ``name`` from running on its schedule, without deleting it; :func:`resume` restarts it.
 
-    It stays paused after a restart. A run that already started finishes.
+    It stays paused after a restart. A run in progress is stopped too.
     """
     _existing_job(name)
-    try:
-        _run(["launchctl", "bootout", _target(name)])
-    except CommandError:
-        pass  # already unloaded
+    _bootout(name)
     _run(["launchctl", "disable", _target(name)])
 
 
 def resume(name: str) -> None:
     """Put a job paused with :func:`pause` back on its schedule (with ``at_login``, it also runs now)."""
     path = _existing_job(name)
-    try:
-        _run(["launchctl", "bootout", _target(name)])  # resuming a job that isn't paused: reload it
-    except CommandError:
-        pass
+    _bootout(name)  # resuming a job that isn't paused: reload it
     _run(["launchctl", "enable", _target(name)])
     _run(["launchctl", "bootstrap", _domain(), str(path)])
 

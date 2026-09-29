@@ -72,15 +72,15 @@ def test_events_power_changes_only_between_charger_and_battery(monkeypatch):
 
     states = iter([True, True, False, False, True])  # the first is read when listening starts
     monkeypatch.setattr(events, "_on_charger", lambda: next(states))
-    del events._received[:]
+    events._received.clear()
     watch = events._PowerWatch()
     try:
         for _ in range(4):  # IOKit calls back as the battery drains too
             watch.changed(0)
     finally:
         watch.close()
-    assert events._received == [events.Event("power_disconnected"), events.Event("power_connected")]
-    del events._received[:]
+    assert list(events._received) == [events.Event("power_disconnected"), events.Event("power_connected")]
+    events._received.clear()
 
 
 def test_events_space_changed():

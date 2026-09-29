@@ -19,6 +19,7 @@ APIs Finder itself uses: a trashed file can be restored with *Put Back*, and
 tags show up in Finder's sidebar and in Spotlight.
 """
 
+import collections
 import ctypes
 import os
 import time
@@ -506,14 +507,15 @@ def watch(path: PathLike, *, recursive: bool = True, timeout: Optional[float] = 
     pass. ``recursive=False`` ignores what happens in subfolders. Writing a
     new file usually yields ``'created'`` and then ``'modified'``; saving
     over a file yields ``'modified'``. Uses FSEvents, like Spotlight and Time
-    Machine: no polling, and no permission needed outside the protected
-    folders (Desktop, Documents, Downloads ask once).
+    Machine: no polling, and no permission needed, except that the
+    Desktop, Documents and Downloads folders ask for access the first time,
+    like any access to them.
     """
     folder = Path(os.path.realpath(os.path.expanduser(str(path))))
     if not folder.is_dir():
         raise NotADirectoryError(str(folder))
     services, run_loop = _core_services(), framework("CoreFoundation")
-    pending: List[Event] = []
+    pending: "collections.deque[Event]" = collections.deque()
     seen: Set[Path] = set()
 
     def changed(stream: int, info: int, count: int, paths: int, flags: "ctypes._Pointer", ids: "ctypes._Pointer") -> None:
@@ -537,7 +539,7 @@ def watch(path: PathLike, *, recursive: bool = True, timeout: Optional[float] = 
             raise MacOSError("could not watch {}".format(folder))
         while True:
             while pending:
-                yield pending.pop(0)
+                yield pending.popleft()
             remaining = 0.1 if deadline is None else min(0.1, deadline - time.monotonic())
             if remaining <= 0:
                 return

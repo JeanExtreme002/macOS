@@ -59,7 +59,7 @@ last run ended (`last_exit_status`, 0 for success). The script's output and
 errors go to `job.log`, in `~/Library/Logs/pymacos`.
 {func}`~macos.schedule.pause` keeps a job without running it, even after a
 restart, and `job.paused` tells; {func}`~macos.schedule.resume` puts it back on
-its schedule.
+its schedule. Pausing or removing a job also stops a run in progress.
 
 ## Reference
 
