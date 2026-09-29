@@ -23,7 +23,7 @@ full guide.
 ### Apps & Automation
 
 ```python
-safari = macos.apps.open("Safari")                   # App(name='Safari', pid=...)
+safari = macos.apps.open("Safari")                   # App(name='Safari', ...)
 safari.quit()
 
 macos.apps.open_with("report.pdf", "Preview")
@@ -79,12 +79,12 @@ See [Finder](finder.md), [Spotlight](spotlight.md), [Images](image.md),
 ### Intelligence
 
 ```python
-macos.vision.text("receipt.png")            # the text in the image
-macos.vision.classify("beach.jpg")          # [('beach', 0.91), ('sky', 0.84), ('people', 0.62)]
-macos.vision.barcodes("poster.jpg")         # [Barcode(payload='https://...', kind='QR', ...)]
-macos.vision.remove_background("dog.jpg")   # PNG bytes of the dog alone
-macos.vision.duplicates(photos)             # the look-alike photos, in groups
-macos.vision.body_pose("dance.jpg")         # every person's joints: shoulders, wrists, knees...
+macos.vision.text("receipt.png")                       # the text in the image
+macos.vision.classify("beach.jpg")                     # [('beach', 0.91), ('sky', 0.84), ('people', 0.62)]
+macos.vision.barcodes("poster.jpg")                    # [Barcode(payload='https://...', kind='QR', ...)]
+macos.vision.remove_background("dog.jpg")              # PNG bytes of the dog alone
+macos.vision.duplicates(["a.jpg", "b.jpg", "c.jpg"])   # the look-alike photos, in groups
+macos.vision.body_pose("dance.jpg")                    # every person's joints: shoulders, wrists, knees...
 
 macos.audio.classify("clip.m4a")            # [('dog_bark', 0.93), ('speech', 0.41)]
 
