@@ -50,6 +50,18 @@ __all__ = [
     "set_show_recents",
     "minimize_effect",
     "set_minimize_effect",
+    "show_indicators",
+    "set_show_indicators",
+    "minimize_to_app",
+    "set_minimize_to_app",
+    "autohide_duration",
+    "set_autohide_duration",
+    "add_spacer",
+    "remove_spacers",
+    "auto_rearrange_spaces",
+    "set_auto_rearrange_spaces",
+    "separate_spaces_per_display",
+    "set_separate_spaces_per_display",
 ]
 
 _DOMAIN = "com.apple.dock"
@@ -208,15 +220,19 @@ def add_app(app: str, *, index: Optional[int] = None) -> DockApp:
         },
         "tile-type": "file-tile",
     }
+    _insert(tiles, tile, index)
+    defaults.write(_DOMAIN, "persistent-apps", tiles)
+    restart()
+    return DockApp(name=name, path=path, bundle_id=bundle_id)
+
+
+def _insert(tiles: List[Dict[str, Any]], tile: Dict[str, Any], index: Optional[int]) -> None:
     # index counts the apps apps() lists: find its place among all the tiles, spacers included.
     app_positions = [position for position, entry in enumerate(tiles) if _is_app(entry)]
     if index is None or index >= len(app_positions):
         tiles.append(tile)
     else:
         tiles.insert(app_positions[max(index, 0)], tile)
-    defaults.write(_DOMAIN, "persistent-apps", tiles)
-    restart()
-    return DockApp(name=name, path=path, bundle_id=bundle_id)
 
 
 def remove_app(app: str) -> bool:
@@ -342,3 +358,98 @@ def set_minimize_effect(effect: str) -> None:
         raise ValueError("effect must be 'genie' or 'scale', not {!r}".format(effect))
     defaults.write(_DOMAIN, "mineffect", effect)
     restart()
+
+
+def show_indicators() -> bool:
+    """Whether the Dock shows a dot under the apps that are open."""
+    return bool(defaults.read(_DOMAIN, "show-process-indicators", default=True))
+
+
+def set_show_indicators(on: bool = True) -> None:
+    """Show a dot under open apps, or not."""
+    defaults.write(_DOMAIN, "show-process-indicators", bool(on))
+    restart()
+
+
+def minimize_to_app() -> bool:
+    """Whether minimized windows go into their app's icon, instead of their own place in the Dock."""
+    return bool(defaults.read(_DOMAIN, "minimize-to-application", default=False))
+
+
+def set_minimize_to_app(on: bool = True) -> None:
+    """Minimize windows into their app's icon, or each into its own place at the end of the Dock."""
+    defaults.write(_DOMAIN, "minimize-to-application", bool(on))
+    restart()
+
+
+def autohide_duration() -> Optional[float]:
+    """Seconds a hidden Dock takes to slide in and out; ``None`` for macOS's own."""
+    found = defaults.read(_DOMAIN, "autohide-time-modifier")
+    return None if found is None else float(found)
+
+
+def set_autohide_duration(seconds: Optional[float]) -> None:
+    """
+    Make a hidden Dock slide in and out in ``seconds``: ``0`` has no animation. ``None`` goes back to macOS's own.
+
+    It adds to the wait of :func:`set_autohide_delay`.
+    """
+    if seconds is None:
+        defaults.delete(_DOMAIN, "autohide-time-modifier")
+    else:
+        if seconds < 0:
+            raise ValueError("seconds must not be negative, not {}".format(seconds))
+        defaults.write(_DOMAIN, "autohide-time-modifier", float(seconds))
+    restart()
+
+
+_SPACERS = ("spacer-tile", "small-spacer-tile")
+
+
+def add_spacer(*, index: Optional[int] = None, small: bool = False) -> None:
+    """
+    Add a blank space between the Dock's apps, at the end or before the app at ``index`` in :func:`apps`.
+
+    ``small=True`` adds a narrower one. They group the apps, and
+    :func:`remove_spacers` takes them all out.
+    """
+    tiles = _tiles()
+    _insert(tiles, {"tile-data": {}, "tile-type": _SPACERS[1] if small else _SPACERS[0]}, index)
+    defaults.write(_DOMAIN, "persistent-apps", tiles)
+    restart()
+
+
+def remove_spacers() -> int:
+    """Take every blank space out of the Dock's apps; return how many there were."""
+    tiles = _tiles()
+    kept = [tile for tile in tiles if tile.get("tile-type") not in _SPACERS]
+    removed = len(tiles) - len(kept)
+    if removed:
+        defaults.write(_DOMAIN, "persistent-apps", kept)
+        restart()
+    return removed
+
+
+def auto_rearrange_spaces() -> bool:
+    """Whether Mission Control reorders the spaces (desktops) by the most recently used."""
+    return bool(defaults.read(_DOMAIN, "mru-spaces", default=True))
+
+
+def set_auto_rearrange_spaces(on: bool = True) -> None:
+    """Let Mission Control reorder the spaces by use, or keep them where you put them (``False``)."""
+    defaults.write(_DOMAIN, "mru-spaces", bool(on))
+    restart()
+
+
+def separate_spaces_per_display() -> bool:
+    """Whether each display has its own spaces (and menu bar), as by default."""
+    return not defaults.read("com.apple.spaces", "spans-displays", default=False)
+
+
+def set_separate_spaces_per_display(on: bool = True) -> None:
+    """
+    Give each display its own spaces, or share them across the displays (``False``).
+
+    Takes effect at the next login.
+    """
+    defaults.write("com.apple.spaces", "spans-displays", not on)

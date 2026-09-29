@@ -51,6 +51,10 @@ __all__ = [
     "set_tracking_speed",
     "has_permission",
     "request_permission",
+    "scroll_speed",
+    "set_scroll_speed",
+    "double_click_speed",
+    "set_double_click_speed",
 ]
 
 has_permission = _events.has_permission
@@ -291,3 +295,48 @@ def set_tracking_speed(speed: float) -> None:
         raise ValueError("speed must be from 0.0 to 1.0, not {}".format(speed))
     defaults.write(defaults.GLOBAL, "com.apple.mouse.scaling", round(speed * _SPEED_MAX, 3))
     apply_input_settings()
+
+
+_SCROLL_DEFAULT = 0.3125  # com.apple.scrollwheel.scaling when it isn't set
+
+
+def scroll_speed() -> float:
+    """How fast a mouse's wheel scrolls, as macOS keeps it: 0.3125 by default, higher is faster."""
+    from . import defaults
+
+    return float(defaults.read(defaults.GLOBAL, "com.apple.scrollwheel.scaling", default=_SCROLL_DEFAULT))
+
+
+def set_scroll_speed(speed: float) -> None:
+    """
+    Set how fast a mouse's wheel scrolls: ``0`` is the slowest, 0.3125 the default, and higher is faster.
+
+    Takes effect at the next login.
+    """
+    from . import defaults
+    from ._system import apply_input_settings
+
+    if speed < 0:
+        raise ValueError("speed must not be negative, not {}".format(speed))
+    defaults.write(defaults.GLOBAL, "com.apple.scrollwheel.scaling", float(speed))
+    apply_input_settings()
+
+
+def double_click_speed() -> float:
+    """The most seconds between two clicks that still make a double click (0.5 by default)."""
+    from . import defaults
+
+    return float(defaults.read(defaults.GLOBAL, "com.apple.mouse.doubleClickThreshold", default=0.5))
+
+
+def set_double_click_speed(seconds: float) -> None:
+    """
+    Make two clicks up to ``seconds`` apart a double click, for the mouse and the trackpad.
+
+    Shorter asks for quicker clicks. Apps pick it up when they're reopened.
+    """
+    from . import defaults
+
+    if seconds <= 0:
+        raise ValueError("seconds must be positive, not {}".format(seconds))
+    defaults.write(defaults.GLOBAL, "com.apple.mouse.doubleClickThreshold", float(seconds))

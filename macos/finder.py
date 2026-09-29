@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Sequence, Set, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
@@ -74,6 +74,14 @@ __all__ = [
     "show_full_path_in_title",
     "set_show_full_path_in_title",
     "restart",
+    "folders_first",
+    "set_folders_first",
+    "extension_change_warning",
+    "set_extension_change_warning",
+    "remove_old_trash_items",
+    "set_remove_old_trash_items",
+    "drives_on_desktop",
+    "set_show_drives_on_desktop",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -903,3 +911,79 @@ def show_full_path_in_title() -> bool:
 def set_show_full_path_in_title(on: bool = True) -> None:
     """Show the folder's full path (``/Users/alice/Projects``) in Finder windows' title. Relaunches Finder."""
     _set(_FINDER, "_FXShowPosixPathInTitle", on)
+
+
+def folders_first() -> bool:
+    """Whether folders come before files when windows are sorted by name."""
+    return _setting_default(_FINDER, "_FXSortFoldersFirst", False)
+
+
+def set_folders_first(on: bool = True) -> None:
+    """Keep folders before files when sorting by name, in windows and on the desktop, or mix them."""
+    from . import defaults
+
+    defaults.write(_FINDER, "_FXSortFoldersFirstOnDesktop", bool(on))
+    _set(_FINDER, "_FXSortFoldersFirst", on)
+
+
+def extension_change_warning() -> bool:
+    """Whether Finder asks before a file's extension is changed."""
+    return _setting_default(_FINDER, "FXEnableExtensionChangeWarning", True)
+
+
+def set_extension_change_warning(on: bool = True) -> None:
+    """Ask before changing a file's extension, or rename it straight away (``False``)."""
+    _set(_FINDER, "FXEnableExtensionChangeWarning", on)
+
+
+def remove_old_trash_items() -> bool:
+    """Whether items are deleted from the Trash after 30 days."""
+    return _setting_default(_FINDER, "FXRemoveOldTrashItems", False)
+
+
+def set_remove_old_trash_items(on: bool = True) -> None:
+    """Delete items from the Trash after 30 days, or keep them until it's emptied."""
+    _set(_FINDER, "FXRemoveOldTrashItems", on)
+
+
+_DESKTOP_DRIVES = {
+    "internal": ("ShowHardDrivesOnDesktop", False),
+    "external": ("ShowExternalHardDrivesOnDesktop", True),
+    "removable": ("ShowRemovableMediaOnDesktop", True),
+    "servers": ("ShowMountedServersOnDesktop", False),
+}
+
+
+def drives_on_desktop() -> Dict[str, bool]:
+    """
+    Which disks show on the desktop: ``{"internal": False, "external": True, "removable": True, "servers": False}``.
+    """
+    return {kind: _setting_default(_FINDER, key, default) for kind, (key, default) in _DESKTOP_DRIVES.items()}
+
+
+def set_show_drives_on_desktop(
+    *,
+    internal: Optional[bool] = None,
+    external: Optional[bool] = None,
+    removable: Optional[bool] = None,
+    servers: Optional[bool] = None,
+) -> None:
+    """
+    Show or hide each kind of disk on the desktop; the ones left out stay as they are.
+
+    ::
+
+        macos.finder.set_show_drives_on_desktop(external=False, servers=True)
+
+    ``internal`` is the Mac's own disk, ``external`` the USB and Thunderbolt
+    ones, ``removable`` CDs and the like, ``servers`` the network shares.
+    """
+    from . import defaults
+
+    wanted = {"internal": internal, "external": external, "removable": removable, "servers": servers}
+    if all(on is None for on in wanted.values()):
+        raise ValueError("say which disks to show or hide: internal=, external=, removable= or servers=")
+    for kind, on in wanted.items():
+        if on is not None:
+            defaults.write(_FINDER, _DESKTOP_DRIVES[kind][0], bool(on))
+    restart()

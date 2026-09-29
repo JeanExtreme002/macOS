@@ -27,6 +27,9 @@ permission is needed.
 | {func}`~macos.dock.magnification` | {func}`~macos.dock.set_magnification` | the size icons grow to under the pointer, or `None` |
 | {func}`~macos.dock.show_recents` | {func}`~macos.dock.set_show_recents` | recent apps in their own section |
 | {func}`~macos.dock.minimize_effect` | {func}`~macos.dock.set_minimize_effect` | `"genie"` or `"scale"` |
+| {func}`~macos.dock.autohide_duration` | {func}`~macos.dock.set_autohide_duration` | seconds a hidden Dock takes to slide in; `0` has no animation, `None` is macOS's own |
+| {func}`~macos.dock.show_indicators` | {func}`~macos.dock.set_show_indicators` | a dot under the open apps |
+| {func}`~macos.dock.minimize_to_app` | {func}`~macos.dock.set_minimize_to_app` | `True` minimizes windows into their app's icon |
 
 ## Hot corners
 
@@ -62,6 +65,27 @@ macos.dock.remove_app("com.apple.Maps")   # by name, bundle ID or path
 doesn't add it twice. {func}`~macos.dock.remove_app` takes it out of the Dock;
 the app stays installed.
 
+Blank spaces group the apps: {func}`~macos.dock.add_spacer` adds one, at the
+end or before the app at `index`, and {func}`~macos.dock.remove_spacers`
+takes them all out:
+
+```python
+macos.dock.add_spacer(index=3)
+macos.dock.add_spacer(small=True)
+macos.dock.remove_spacers()   # 2
+```
+
+## Spaces
+
+Mission Control's settings live with the Dock's:
+
+```python
+macos.dock.set_auto_rearrange_spaces(False)        # keep the spaces where you put them
+macos.dock.set_separate_spaces_per_display(False)  # one set of spaces across the displays
+```
+
+The second takes effect at the next login.
+
 ## Reference
 
 - {func}`macos.dock.autohide`
@@ -86,3 +110,15 @@ the app stays installed.
 - {func}`macos.dock.set_show_recents`
 - {func}`macos.dock.minimize_effect`
 - {func}`macos.dock.set_minimize_effect`
+- {func}`macos.dock.show_indicators`
+- {func}`macos.dock.set_show_indicators`
+- {func}`macos.dock.minimize_to_app`
+- {func}`macos.dock.set_minimize_to_app`
+- {func}`macos.dock.autohide_duration`
+- {func}`macos.dock.set_autohide_duration`
+- {func}`macos.dock.add_spacer`
+- {func}`macos.dock.remove_spacers`
+- {func}`macos.dock.auto_rearrange_spaces`
+- {func}`macos.dock.set_auto_rearrange_spaces`
+- {func}`macos.dock.separate_spaces_per_display`
+- {func}`macos.dock.set_separate_spaces_per_display`

@@ -297,6 +297,18 @@ def test_other_platforms_raise_not_supported(monkeypatch):
         lambda: macos.system.set_ds_store_on_network(False),
         lambda: macos.system.set_show_battery_percentage(True),
         lambda: macos.auth.required("test")(lambda: None)(),
+        lambda: macos.keyboard.set_full_keyboard_access(True),
+        lambda: macos.keyboard.remap("caps_lock", "escape"),
+        lambda: macos.keyboard.remappings(),
+        lambda: macos.trackpad.set_secondary_click(None),
+        lambda: macos.mouse.set_double_click_speed(0.5),
+        lambda: macos.dock.add_spacer(),
+        lambda: macos.dock.separate_spaces_per_display(),
+        lambda: macos.finder.drives_on_desktop(),
+        lambda: macos.windows.set_tiling(True),
+        lambda: macos.appearance.scroll_bars(),
+        lambda: macos.screen.set_screenshot_thumbnail(True),
+        lambda: macos.system.clock_format(),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):

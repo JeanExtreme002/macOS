@@ -35,6 +35,8 @@ __all__ = [
     "menu_bar_hidden",
     "set_hide_menu_bar",
     "wait_for_change",
+    "scroll_bars",
+    "set_scroll_bars",
 ]
 
 
@@ -202,3 +204,25 @@ def set_hide_menu_bar(on: bool = True) -> None:
 
     defaults.write(defaults.GLOBAL, "_HIHideMenuBar", bool(on))
     _announce("AppleInterfaceMenuBarHidingChangedNotification")
+
+
+_SCROLL_BARS = {"automatic": "Automatic", "when_scrolling": "WhenScrolling", "always": "Always"}
+
+
+def scroll_bars() -> str:
+    """When scroll bars show: ``'automatic'`` (by the mouse or trackpad), ``'when_scrolling'`` or ``'always'``."""
+    from . import defaults
+
+    found = defaults.read(defaults.GLOBAL, "AppleShowScrollBars", default="Automatic")
+    names = {value: name for name, value in _SCROLL_BARS.items()}
+    return names.get(found, "automatic")
+
+
+def set_scroll_bars(when: str) -> None:
+    """Show scroll bars ``"always"``, ``"when_scrolling"``, or ``"automatic"``-ally, like System Settings › Appearance."""
+    from . import defaults
+
+    if when not in _SCROLL_BARS:
+        raise ValueError("when must be 'automatic', 'when_scrolling' or 'always', not {!r}".format(when))
+    defaults.write(defaults.GLOBAL, "AppleShowScrollBars", _SCROLL_BARS[when])
+    _announce("AppleShowScrollBarsSettingChanged")

@@ -90,6 +90,7 @@ Where and how the keyboard shortcuts (⌘⇧3, ⌘⇧4, ⌘⇧5) save screenshot
 macos.screen.set_screenshot_folder("~/Pictures/Screenshots")   # the folder must exist
 macos.screen.set_screenshot_format("jpg")                      # png, jpg, heic, tiff, gif, pdf, bmp
 macos.screen.set_screenshot_shadow(False)                      # tight window captures
+macos.screen.set_screenshot_thumbnail(False)                   # saved at once, no floating preview
 
 macos.screen.screenshot_folder()    # PosixPath('/Users/alice/Pictures/Screenshots')
 ```
@@ -256,5 +257,7 @@ macos.screen.set_screensaver_delay(None)
 - {func}`macos.screen.set_screenshot_format`
 - {func}`macos.screen.screenshot_shadow`
 - {func}`macos.screen.set_screenshot_shadow`
+- {func}`macos.screen.screenshot_thumbnail`
+- {func}`macos.screen.set_screenshot_thumbnail`
 - {func}`macos.screen.screensaver_delay`
 - {func}`macos.screen.set_screensaver_delay`

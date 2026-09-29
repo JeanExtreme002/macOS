@@ -55,6 +55,36 @@ def test_settings_are_read():
     assert delay is None or delay > 0
 
 
+def test_more_settings_are_read():
+    for setting in (
+        macos.keyboard.auto_capitalization,
+        macos.keyboard.double_space_period,
+        macos.keyboard.full_keyboard_access,
+        macos.trackpad.three_finger_drag,
+        macos.dock.show_indicators,
+        macos.dock.minimize_to_app,
+        macos.dock.auto_rearrange_spaces,
+        macos.dock.separate_spaces_per_display,
+        macos.finder.folders_first,
+        macos.finder.extension_change_warning,
+        macos.finder.remove_old_trash_items,
+        macos.windows.tiling,
+        macos.windows.click_wallpaper_to_show_desktop,
+        macos.screen.screenshot_thumbnail,
+        macos.system.save_to_icloud_by_default,
+        macos.system.expanded_save_dialog,
+    ):
+        assert isinstance(setting(), bool), setting.__name__
+    assert macos.trackpad.secondary_click() in ("two_fingers", "bottom_right", "bottom_left", None)
+    assert macos.mouse.scroll_speed() >= 0 and macos.mouse.double_click_speed() > 0
+    assert macos.dock.autohide_duration() is None or macos.dock.autohide_duration() >= 0
+    assert set(macos.finder.drives_on_desktop()) == {"internal", "external", "removable", "servers"}
+    assert macos.windows.double_click_title_bar() in ("zoom", "fill", "minimize", None)
+    assert macos.appearance.scroll_bars() in ("automatic", "when_scrolling", "always")
+    assert macos.system.clock_format()["date"] in ("auto", "always", "never")
+    assert isinstance(macos.keyboard.remappings(), dict)
+
+
 @SETTINGS
 def test_keyboard_and_system_settings_round_trip():
     keys = [
@@ -96,3 +126,37 @@ def test_dock_and_finder_settings_round_trip():
     finally:
         macos.dock.restart()
         macos.finder.restart()
+
+
+@SETTINGS
+def test_remap_round_trip():
+    before = macos.keyboard._mappings()
+    try:
+        macos.keyboard.remap("f13", "f14")  # keys few keyboards have
+        assert macos.keyboard.remappings()["f13"] == "f14"
+        macos.keyboard.remap("f13", None)
+        assert "f13" not in macos.keyboard.remappings()
+    finally:
+        macos.keyboard._set_mappings(before)
+
+
+@SETTINGS
+def test_more_settings_round_trip():
+    keys = [
+        (macos.defaults.GLOBAL, "NSAutomaticPeriodSubstitutionEnabled"),
+        (macos.defaults.GLOBAL, "AppleKeyboardUIMode"),
+        (macos.defaults.GLOBAL, "NSNavPanelExpandedStateForSaveMode"),
+        (macos.defaults.GLOBAL, "NSNavPanelExpandedStateForSaveMode2"),
+        (macos.defaults.GLOBAL, "com.apple.mouse.doubleClickThreshold"),
+        ("com.apple.spaces", "spans-displays"),
+    ]
+    with restored(*keys):
+        for on in (True, False):
+            macos.keyboard.set_double_space_period(on)
+            macos.keyboard.set_full_keyboard_access(on)
+            macos.system.set_expanded_save_dialog(on)
+            macos.dock.set_separate_spaces_per_display(on)
+            assert macos.keyboard.double_space_period() is on and macos.keyboard.full_keyboard_access() is on
+            assert macos.system.expanded_save_dialog() is on and macos.dock.separate_spaces_per_display() is on
+        macos.mouse.set_double_click_speed(0.8)
+        assert macos.mouse.double_click_speed() == 0.8

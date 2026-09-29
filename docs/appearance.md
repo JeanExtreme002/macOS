@@ -58,7 +58,7 @@ apps update at once; a few only when reopened.
 macos.appearance.set_accent_color("purple")
 ```
 
-## Auto mode and the menu bar
+## Auto mode, the menu bar and scroll bars
 
 {func}`~macos.appearance.set_auto_mode` switches between Light and Dark by the
 time of day, like *Auto* in System Settings › Appearance; macOS may apply it
@@ -71,7 +71,14 @@ macos.appearance.set_hide_menu_bar(True)
 macos.appearance.menu_bar_hidden()   # True
 ```
 
-Neither needs a permission.
+{func}`~macos.appearance.set_scroll_bars` shows scroll bars `"always"`,
+`"when_scrolling"`, or `"automatic"`-ally, by the mouse or trackpad:
+
+```python
+macos.appearance.set_scroll_bars("always")
+```
+
+None of them needs a permission.
 
 ## Waiting for a switch
 
@@ -99,3 +106,5 @@ With `timeout`, it raises `TimeoutError` if nothing changes in time.
 - {data}`macos.appearance.ACCENT_COLORS`
 - {func}`macos.appearance.menu_bar_hidden`
 - {func}`macos.appearance.set_hide_menu_bar`
+- {func}`macos.appearance.scroll_bars`
+- {func}`macos.appearance.set_scroll_bars`

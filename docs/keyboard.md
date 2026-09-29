@@ -145,6 +145,9 @@ The settings of System Settings › Keyboard, each with its reader:
 | {func}`~macos.keyboard.autocorrect` | {func}`~macos.keyboard.set_autocorrect` | spelling corrected as you type |
 | {func}`~macos.keyboard.smart_quotes` | {func}`~macos.keyboard.set_smart_quotes` | `"` typed as “ ” |
 | {func}`~macos.keyboard.smart_dashes` | {func}`~macos.keyboard.set_smart_dashes` | `--` typed as — |
+| {func}`~macos.keyboard.auto_capitalization` | {func}`~macos.keyboard.set_auto_capitalization` | the first letter of sentences capitalized |
+| {func}`~macos.keyboard.double_space_period` | {func}`~macos.keyboard.set_double_space_period` | two spaces typed as a period and a space |
+| {func}`~macos.keyboard.full_keyboard_access` | {func}`~macos.keyboard.set_full_keyboard_access` | `True` lets Tab reach every control, buttons included |
 
 ```python
 macos.keyboard.set_key_repeat(0.03, delay=0.225)   # System Settings' fastest
@@ -154,6 +157,26 @@ macos.keyboard.set_smart_quotes(False)             # code pasted in Notes stays 
 
 The function keys apply at once. The key repeat waits for the next login;
 the other settings reach apps when they're reopened. No permission is needed.
+
+## Remapping keys
+
+{func}`~macos.keyboard.remap` makes a key act as another, on every keyboard,
+without an app such as Karabiner:
+
+```python
+macos.keyboard.remap("caps_lock", "escape")   # a favorite of Vim users
+macos.keyboard.remap("right_option", "ctrl")
+macos.keyboard.remappings()                   # {'caps_lock': 'escape', 'right_option': 'ctrl'}
+macos.keyboard.remap("caps_lock", None)       # Caps Lock again
+macos.keyboard.clear_remappings()
+```
+
+Keys are named as for {func}`~macos.keyboard.press`: letters, digits, `f1` to
+`f20`, the modifiers (`cmd`, `right_cmd`, `option`, `right_option`, `ctrl`,
+`right_ctrl`, `shift`, `right_shift`, `fn`), `caps_lock`, `escape`, `enter`,
+`tab`, `space`, `delete`, the arrows... It applies at once, with no
+permission, and lasts until the Mac restarts: to keep it, run it at login
+with [`macos.schedule`](schedule.md).
 
 ## Reference
 
@@ -184,3 +207,12 @@ the other settings reach apps when they're reopened. No permission is needed.
 - {func}`macos.keyboard.set_smart_quotes`
 - {func}`macos.keyboard.smart_dashes`
 - {func}`macos.keyboard.set_smart_dashes`
+- {func}`macos.keyboard.auto_capitalization`
+- {func}`macos.keyboard.set_auto_capitalization`
+- {func}`macos.keyboard.double_space_period`
+- {func}`macos.keyboard.set_double_space_period`
+- {func}`macos.keyboard.full_keyboard_access`
+- {func}`macos.keyboard.set_full_keyboard_access`
+- {func}`macos.keyboard.remap`
+- {func}`macos.keyboard.remappings`
+- {func}`macos.keyboard.clear_remappings`

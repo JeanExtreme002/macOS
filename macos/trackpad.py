@@ -13,6 +13,8 @@ No permission is needed. Most settings apply at once, as in System
 Settings; the pointer speed waits for the next login.
 """
 
+from typing import Optional
+
 from . import defaults
 from ._system import apply_input_settings
 
@@ -23,6 +25,10 @@ __all__ = [
     "set_natural_scrolling",
     "tracking_speed",
     "set_tracking_speed",
+    "three_finger_drag",
+    "set_three_finger_drag",
+    "secondary_click",
+    "set_secondary_click",
 ]
 
 # The built-in trackpad and Bluetooth ones (Magic Trackpad) keep their own copy.
@@ -68,4 +74,49 @@ def set_tracking_speed(speed: float) -> None:
     if not 0.0 <= speed <= 1.0:
         raise ValueError("speed must be from 0.0 to 1.0, not {}".format(speed))
     defaults.write(defaults.GLOBAL, "com.apple.trackpad.scaling", round(speed * _SPEED_MAX, 3))
+    apply_input_settings()
+
+
+def three_finger_drag() -> bool:
+    """Whether dragging with three fingers moves windows and selects text, without pressing."""
+    return bool(defaults.read(_TRACKPADS[0], "TrackpadThreeFingerDrag", default=False))
+
+
+def set_three_finger_drag(on: bool = True) -> None:
+    """
+    Drag with three fingers, without pressing the trackpad, or not.
+
+    Swipes with three fingers (between spaces, to Mission Control) then
+    clash with it: set them to four fingers in System Settings › Trackpad ›
+    More Gestures.
+    """
+    for domain in _TRACKPADS:
+        defaults.write(domain, "TrackpadThreeFingerDrag", bool(on))
+    apply_input_settings()
+
+
+# How: (TrackpadRightClick, TrackpadCornerSecondaryClick).
+_SECONDARY_CLICKS = {"two_fingers": (True, 0), "bottom_right": (False, 2), "bottom_left": (False, 1), None: (False, 0)}
+
+
+def secondary_click() -> Optional[str]:
+    """
+    How the trackpad right-clicks: ``'two_fingers'``, ``'bottom_right'`` or ``'bottom_left'`` (a corner), or ``None``.
+    """
+    if defaults.read(_TRACKPADS[0], "TrackpadRightClick", default=True):
+        return "two_fingers"
+    corner = int(defaults.read(_TRACKPADS[0], "TrackpadCornerSecondaryClick", default=0))
+    return {1: "bottom_left", 2: "bottom_right"}.get(corner)
+
+
+def set_secondary_click(how: Optional[str]) -> None:
+    """
+    Right-click with two fingers (``"two_fingers"``), in a corner (``"bottom_right"``, ``"bottom_left"``), or not (``None``).
+    """
+    if how not in _SECONDARY_CLICKS:
+        raise ValueError("how must be 'two_fingers', 'bottom_right', 'bottom_left' or None, not {!r}".format(how))
+    two_fingers, corner = _SECONDARY_CLICKS[how]
+    for domain in _TRACKPADS:
+        defaults.write(domain, "TrackpadRightClick", two_fingers)
+        defaults.write(domain, "TrackpadCornerSecondaryClick", corner)
     apply_input_settings()

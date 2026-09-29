@@ -162,6 +162,8 @@ macos.say("Welcome back")
 | {func}`~macos.system.ds_store_on_network` | {func}`~macos.system.set_ds_store_on_network` | `False` stops Finder leaving `.DS_Store` files on network shares |
 | {func}`~macos.system.ds_store_on_usb` | {func}`~macos.system.set_ds_store_on_usb` | the same on USB drives and other external disks |
 | {func}`~macos.system.keep_windows_on_quit` | {func}`~macos.system.set_keep_windows_on_quit` | `True` makes apps reopen the windows they had |
+| {func}`~macos.system.save_to_icloud_by_default` | {func}`~macos.system.set_save_to_icloud_by_default` | iCloud Drive offered first when saving a new document |
+| {func}`~macos.system.expanded_save_dialog` | {func}`~macos.system.set_expanded_save_dialog` | the Save dialog opened with the sidebar and every folder |
 | {func}`~macos.system.battery_percentage_shown` | {func}`~macos.system.set_show_battery_percentage` | the percentage next to the battery in the menu bar |
 
 ```python
@@ -171,6 +173,17 @@ macos.system.set_show_battery_percentage(True)
 
 The `.DS_Store` settings take effect at the next login; the others at once or
 when apps are reopened. No permission is needed.
+
+{func}`~macos.system.set_clock_format` changes the menu bar's clock; the
+options left out stay as they are:
+
+```python
+macos.system.set_clock_format(seconds=True, date="always")   # date: "auto", "always" or "never"
+macos.system.clock_format()   # {'seconds': True, 'day_of_week': True, 'am_pm': True, 'analog': False, 'date': 'always'}
+```
+
+It also takes `day_of_week`, `am_pm` and `analog`. Whether it's 12 or 24 hours
+follows System Settings › General › Date & Time.
 
 ## Reference
 
@@ -208,3 +221,9 @@ when apps are reopened. No permission is needed.
 - {func}`macos.system.set_keep_windows_on_quit`
 - {func}`macos.system.battery_percentage_shown`
 - {func}`macos.system.set_show_battery_percentage`
+- {func}`macos.system.save_to_icloud_by_default`
+- {func}`macos.system.set_save_to_icloud_by_default`
+- {func}`macos.system.expanded_save_dialog`
+- {func}`macos.system.set_expanded_save_dialog`
+- {func}`macos.system.clock_format`
+- {func}`macos.system.set_clock_format`
