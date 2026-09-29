@@ -435,7 +435,7 @@ def default_for(kind: str) -> Optional[str]:
             return _app_path(services.LSCopyDefaultApplicationURLForContentType(identifier, _ALL_ROLES, None))
 
 
-def set_default_for(kind: str, app: str) -> None:
+def set_default_for(kind: str, app: str, *, timeout: float = 60.0) -> None:
     """
     Make ``app`` open a kind of file by default, like Get Info › Open with › Change All.
 
@@ -445,8 +445,11 @@ def set_default_for(kind: str, app: str) -> None:
 
         macos.apps.set_default_for("md", "Visual Studio Code")
 
-    The default browser can't be set this way: macOS asks the user to confirm
-    that one, in System Settings.
+    Since macOS 26, macOS asks the user to confirm the change: this waits up
+    to ``timeout`` seconds for the answer, and raises
+    :class:`~macos.errors.MacOSError` if it's declined or doesn't come. The
+    default browser can't be set this way: macOS asks for that one in System
+    Settings.
     """
     path = _locate(app)
     with _cf.owned(_content_type(kind)) as identifier:
@@ -455,7 +458,7 @@ def set_default_for(kind: str, app: str) -> None:
         workspace = _workspace()
         selector = "setDefaultApplicationAtURL:toOpenContentType:completionHandler:"
         if _objc.send(workspace, "respondsToSelector:", _objc.sel(selector), argtypes=(_objc.SEL,), restype=BOOL):
-            _set_default_with_workspace(workspace, path, type_name, app, kind)
+            _set_default_with_workspace(workspace, path, type_name, app, kind, timeout)
             return
     # Before macOS 12: LaunchServices' older call, which recent systems ignore.
     bundle_id = _bundle_id(path)
@@ -467,7 +470,7 @@ def set_default_for(kind: str, app: str) -> None:
         raise MacOSError("could not make {} the default for {!r} (error {})".format(app, kind, status))
 
 
-def _set_default_with_workspace(workspace: int, path: str, type_name: str, app: str, kind: str) -> None:
+def _set_default_with_workspace(workspace: int, path: str, type_name: str, app: str, kind: str, timeout: float) -> None:
     """``NSWorkspace``'s way (macOS 12+), which reports back through a completion handler."""
     framework("UniformTypeIdentifiers")
     content_type = _objc.send(_objc.cls("UTType"), "typeWithIdentifier:", _objc.nsstring(type_name), argtypes=(_objc.id,))
@@ -488,8 +491,9 @@ def _set_default_with_workspace(workspace: int, path: str, type_name: str, app: 
         argtypes=(_objc.id, _objc.id, ctypes.c_void_p),
         restype=None,
     )
-    if not _objc.run_until(lambda: bool(results), 10):
-        raise MacOSError("macOS didn't confirm {} as the default for {!r}".format(app, kind))
+    # Since macOS 26 the user is asked to confirm: the handler comes with their answer.
+    if not _objc.run_until(lambda: bool(results), timeout):
+        raise MacOSError("{} wasn't confirmed as the default for {!r} within {} seconds".format(app, kind, timeout))
     if results[0]:
         raise MacOSError("could not make {} the default for {!r}: {}".format(app, kind, results[0]))
 

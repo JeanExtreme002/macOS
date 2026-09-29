@@ -115,7 +115,7 @@ def test_install_from_dmg(tmp_path):
 
 
 @SETTINGS
-def test_login_items_and_default_apps():
+def test_login_items():
     before = macos.apps.login_items()
     try:
         item = macos.apps.add_login_item("Chess")
@@ -125,6 +125,13 @@ def test_login_items_and_default_apps():
         macos.apps.remove_login_item("Chess")
     assert macos.apps.login_items() == before
 
+
+@SETTINGS
+def test_set_default_for():
+    import platform
+
+    if int(platform.mac_ver()[0].split(".")[0]) >= 26:
+        pytest.skip("macOS 26 asks the user to confirm, and the prompt would stay on the screen")
     original = macos.apps.default_for("txt")
     try:
         macos.apps.set_default_for("txt", "Script Editor")

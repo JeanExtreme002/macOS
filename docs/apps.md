@@ -141,8 +141,9 @@ Open with › Change All:
 macos.apps.set_default_for("md", "Visual Studio Code")
 ```
 
-The default browser can't be changed this way: macOS asks the user to confirm
-that one, in System Settings.
+Since macOS 26, macOS asks the user to confirm the change, and the function
+waits for the answer (`timeout`, one minute by default). The default browser
+can't be changed this way: macOS asks for that one in System Settings.
 
 ## Login items
 
