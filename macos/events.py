@@ -24,12 +24,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import _objc, apps
+from . import _cf, _objc, apps
 from ._system import framework
 
 __all__ = ["Event", "Handler", "NAMES", "on", "off", "run", "stop", "wait"]
 
-_WORKSPACE, _DISTRIBUTED = "workspace", "distributed"
+_WORKSPACE, _DISTRIBUTED, _POWER = "workspace", "distributed", "power"
 
 # Our name: (notification center, notification name).
 _NOTIFICATIONS: Dict[str, Tuple[str, str]] = {
@@ -39,11 +39,18 @@ _NOTIFICATIONS: Dict[str, Tuple[str, str]] = {
     "display_wake": (_WORKSPACE, "NSWorkspaceScreensDidWakeNotification"),
     "screen_locked": (_DISTRIBUTED, "com.apple.screenIsLocked"),
     "screen_unlocked": (_DISTRIBUTED, "com.apple.screenIsUnlocked"),
+    "space_changed": (_WORKSPACE, "NSWorkspaceActiveSpaceDidChangeNotification"),
     "app_launched": (_WORKSPACE, "NSWorkspaceDidLaunchApplicationNotification"),
     "app_quit": (_WORKSPACE, "NSWorkspaceDidTerminateApplicationNotification"),
     "app_activated": (_WORKSPACE, "NSWorkspaceDidActivateApplicationNotification"),
+    "app_hidden": (_WORKSPACE, "NSWorkspaceDidHideApplicationNotification"),
+    "app_unhidden": (_WORKSPACE, "NSWorkspaceDidUnhideApplicationNotification"),
     "volume_mounted": (_WORKSPACE, "NSWorkspaceDidMountNotification"),
     "volume_unmounted": (_WORKSPACE, "NSWorkspaceDidUnmountNotification"),
+    # IOKit's power-source notification, which also comes as the battery drains: only the
+    # changes between the charger and the battery are events.
+    "power_connected": (_POWER, ""),
+    "power_disconnected": (_POWER, ""),
 }
 
 NAMES = tuple(_NOTIFICATIONS)
@@ -96,10 +103,14 @@ def on(name: str, callback: Callable[..., object]) -> Handler:
     - ``'sleep'`` and ``'wake'``: the Mac goes to sleep, and wakes up.
     - ``'display_sleep'`` and ``'display_wake'``: the displays turn off and on.
     - ``'screen_locked'`` and ``'screen_unlocked'``.
-    - ``'app_launched'``, ``'app_quit'`` and ``'app_activated'`` (came to the
-      front), with the :class:`~macos.apps.App` in ``event.app``.
+    - ``'space_changed'``: another Space (desktop) or full-screen app is shown.
+    - ``'app_launched'``, ``'app_quit'``, ``'app_activated'`` (came to the
+      front), ``'app_hidden'`` and ``'app_unhidden'``, with the
+      :class:`~macos.apps.App` in ``event.app``.
     - ``'volume_mounted'`` and ``'volume_unmounted'`` (disks, USB drives,
       disk images), with the mount point in ``event.path``.
+    - ``'power_connected'`` and ``'power_disconnected'``: the Mac starts or
+      stops running on its charger (never on a Mac without a battery).
 
     To wait for dark or light mode to switch, see :func:`macos.appearance.wait_for_change`.
 
@@ -135,6 +146,8 @@ def _notification_names() -> Dict[str, str]:
     appkit = framework("AppKit")
     names = {}
     for ours, (center, notification) in _NOTIFICATIONS.items():
+        if center == _POWER:
+            continue
         if center == _WORKSPACE:
             constant = ctypes.c_void_p.in_dll(appkit, notification).value
             notification = _objc.pystring(constant) or notification
@@ -180,6 +193,59 @@ def _handle(self: int, selector: int, notification: int) -> None:
         _received.append(event)
 
 
+_PowerCallback = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
+
+
+@lru_cache(maxsize=None)
+def _iokit() -> ctypes.CDLL:
+    io = framework("IOKit")
+    io.IOPSCopyPowerSourcesInfo.argtypes = ()
+    io.IOPSCopyPowerSourcesInfo.restype = ctypes.c_void_p
+    io.IOPSGetProvidingPowerSourceType.argtypes = (ctypes.c_void_p,)
+    io.IOPSGetProvidingPowerSourceType.restype = ctypes.c_void_p
+    io.IOPSNotificationCreateRunLoopSource.argtypes = (_PowerCallback, ctypes.c_void_p)
+    io.IOPSNotificationCreateRunLoopSource.restype = ctypes.c_void_p
+    return io
+
+
+def _on_charger() -> bool:
+    """Whether the Mac runs on its charger (or on mains power, without a battery)."""
+    with _cf.owned(_iokit().IOPSCopyPowerSourcesInfo()) as info:
+        return _cf.to_str(_iokit().IOPSGetProvidingPowerSourceType(info)) != "Battery Power"
+
+
+class _PowerWatch:
+    """Turns IOKit's power-source notifications, on this thread's run loop, into power events."""
+
+    def __init__(self) -> None:
+        self.plugged = _on_charger()
+        self.callback = _PowerCallback(self.changed)  # kept alive while the source is scheduled
+        self.source = _iokit().IOPSNotificationCreateRunLoopSource(self.callback, None)
+        run_loop = framework("CoreFoundation")
+        run_loop.CFRunLoopGetCurrent.restype = ctypes.c_void_p
+        run_loop.CFRunLoopAddSource.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+        run_loop.CFRunLoopRemoveSource.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+        self.loop = run_loop.CFRunLoopGetCurrent()
+        self.mode = ctypes.c_void_p.in_dll(run_loop, "kCFRunLoopDefaultMode")
+        if self.source:
+            run_loop.CFRunLoopAddSource(self.loop, self.source, self.mode)
+
+    def changed(self, context: int) -> None:
+        try:
+            plugged = _on_charger()
+        except Exception:  # an exception must not cross back into IOKit
+            return
+        if plugged != self.plugged:
+            self.plugged = plugged
+            _received.append(Event("power_connected" if plugged else "power_disconnected"))
+
+    def close(self) -> None:
+        if self.source:
+            framework("CoreFoundation").CFRunLoopRemoveSource(self.loop, self.source, self.mode)
+            _cf.release(self.source)
+            self.source = None
+
+
 def _observer() -> int:
     _objc.define_class("PymacosEventObserver", {"handle:": ("v@:@", _Handle, _handle)})
     return _objc.new("PymacosEventObserver")
@@ -195,6 +261,8 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
     # The notification names, as AppKit spells them.
     spelled = {ours: notification for notification, ours in _notification_names().items()}
     for name, (kind, _) in wanted.items():
+        if kind == _POWER:
+            continue
         if kind == _WORKSPACE:
             _objc.send(
                 centers[kind],
@@ -222,6 +290,7 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
             )
     _stop.clear()
     del _received[:]
+    power = _PowerWatch() if any(kind == _POWER for kind, _ in wanted.values()) else None
     deadline = None if timeout is None else time.monotonic() + timeout
     try:
         while not _stop.is_set():
@@ -233,6 +302,8 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
                 if on_event(_received.pop(0)):
                     return
     finally:
+        if power is not None:
+            power.close()
         for center in centers.values():
             _objc.send(center, "removeObserver:", observer, argtypes=(_objc.id,), restype=None)
         _objc.send(observer, "release", restype=None)

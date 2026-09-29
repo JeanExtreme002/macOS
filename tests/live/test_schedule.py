@@ -31,6 +31,10 @@ def test_schedule_runs_the_script(tmp_path):
         job = macos.schedule.get(name)
         assert job.last_exit_status == 0 and "done" in job.log.read_text()
         assert job.args == (str(output), "two words")
+        macos.schedule.pause(name)
+        assert macos.schedule.get(name).paused
+        macos.schedule.resume(name)
+        assert not macos.schedule.get(name).paused
     finally:
         assert macos.schedule.remove(name)
         (macos.schedule._log(name)).unlink(missing_ok=True)

@@ -106,3 +106,13 @@ def test_browser_argument_checks(browsers):
         macos.browser.tabs("Firefox")
     with pytest.raises(ValueError, match="app must be one of"):
         macos.browser.tabs("Netscape")
+
+
+def test_browser_tab_reload_and_go(browsers):
+    tab = macos.browser.tabs()[1]
+
+    tab.reload()
+    assert browsers.args[3:] == ["7", "2"] and "reload tab" in browsers.args[2]
+    tab.go("https://example.com/?q=\"quoted\"")
+    assert browsers.args[3:] == ["7", "2", "https://example.com/?q=\"quoted\""]  # the URL is an argument
+    assert "set URL of tab" in browsers.args[2]

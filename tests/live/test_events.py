@@ -65,3 +65,37 @@ def test_events_get_distributed_notifications_from_other_processes(monkeypatch):
         assert events.wait("test_ping", timeout=10) == events.Event("test_ping")
     finally:
         events._notification_names.cache_clear()
+
+
+def test_events_power_changes_only_between_charger_and_battery(monkeypatch):
+    from macos import events
+
+    states = iter([True, True, False, False, True])  # the first is read when listening starts
+    monkeypatch.setattr(events, "_on_charger", lambda: next(states))
+    del events._received[:]
+    watch = events._PowerWatch()
+    try:
+        for _ in range(4):  # IOKit calls back as the battery drains too
+            watch.changed(0)
+    finally:
+        watch.close()
+    assert events._received == [events.Event("power_disconnected"), events.Event("power_connected")]
+    del events._received[:]
+
+
+def test_events_space_changed():
+    center = _objc.send(_objc.send(_objc.cls("NSWorkspace"), "sharedWorkspace"), "notificationCenter")
+
+    def post():
+        time.sleep(0.5)
+        _objc.send(
+            center,
+            "postNotificationName:object:",
+            _objc.nsstring("NSWorkspaceActiveSpaceDidChangeNotification"),
+            None,
+            argtypes=(_objc.id, _objc.id),
+            restype=None,
+        )
+
+    threading.Thread(target=post).start()
+    assert macos.events.wait("space_changed", timeout=10) == macos.events.Event("space_changed")

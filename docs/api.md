@@ -157,6 +157,8 @@ explain how to use each part.
 .. autofunction:: macos.schedule.jobs
 .. autofunction:: macos.schedule.get
 .. autofunction:: macos.schedule.run_now
+.. autofunction:: macos.schedule.pause
+.. autofunction:: macos.schedule.resume
 .. autoclass:: macos.schedule.Job
 ```
 
@@ -170,7 +172,7 @@ explain how to use each part.
 .. autofunction:: macos.browser.open
 .. autofunction:: macos.browser.run_js
 .. autoclass:: macos.browser.Tab
-   :members: activate, close
+   :members: activate, close, reload, go
 .. autodata:: macos.browser.BROWSERS
    :no-value:
 ```

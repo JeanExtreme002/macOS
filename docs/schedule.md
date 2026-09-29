@@ -21,9 +21,9 @@ when it wakes up.
 {func}`~macos.schedule.add` takes a name (letters, digits, `.`, `_`, `-`),
 the script, and when to run it:
 
-- `every`: seconds between runs.
-- `at`: a time of day, `"09:00"`, or a list of them; with `weekdays`
-  (`["mon", "wed", "fri"]`), only on those days.
+- `every`: seconds between runs, or a {class}`~datetime.timedelta`.
+- `at`: a time of day, `"09:00"` or a {class}`~datetime.time`, or a list of
+  them; with `weekdays` (`["mon", "wed", "fri"]`), only on those days.
 - `at_login=True`: each time you log in, and once right away.
 
 ```python
@@ -50,12 +50,16 @@ job = macos.schedule.get("backup")
 print(job.log.read_text())         # what the script printed, and its errors
 
 macos.schedule.run_now("backup")   # run it once now, besides its schedule
+macos.schedule.pause("backup")     # off its schedule, until resume("backup")
 macos.schedule.remove("backup")
 ```
 
 Each {class}`~macos.schedule.Job` tells whether it's `running`, and how the
 last run ended (`last_exit_status`, 0 for success). The script's output and
 errors go to `job.log`, in `~/Library/Logs/pymacos`.
+{func}`~macos.schedule.pause` keeps a job without running it, even after a
+restart, and `job.paused` tells; {func}`~macos.schedule.resume` puts it back on
+its schedule.
 
 ## Reference
 
@@ -64,4 +68,6 @@ errors go to `job.log`, in `~/Library/Logs/pymacos`.
 - {func}`macos.schedule.jobs`
 - {func}`macos.schedule.get`
 - {func}`macos.schedule.run_now`
+- {func}`macos.schedule.pause`
+- {func}`macos.schedule.resume`
 - {class}`macos.schedule.Job`

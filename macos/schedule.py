@@ -12,6 +12,7 @@ Run Python scripts on a schedule, or at login, with launchd: the Mac's cron.
 
     macos.schedule.jobs()          # [Job(name='backup', every=3600, ...), ...]
     macos.schedule.run_now("backup")
+    macos.schedule.pause("backup")   # and resume("backup")
     macos.schedule.remove("backup")
 
 Jobs are launch agents (``~/Library/LaunchAgents/pymacos.<name>.plist``):
@@ -19,6 +20,7 @@ they keep running after your script ends and after a restart, while you're
 logged in. A job missed while the Mac slept runs when it wakes up.
 """
 
+import datetime
 import os
 import plistlib
 import re
@@ -30,7 +32,7 @@ from typing import List, Optional, Sequence, Tuple, Union
 from ._system import run as _run, require_macos
 from .errors import CommandError
 
-__all__ = ["Job", "add", "remove", "jobs", "get", "run_now"]
+__all__ = ["Job", "add", "remove", "jobs", "get", "run_now", "pause", "resume"]
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -54,6 +56,8 @@ class Job:
     weekdays: Tuple[str, ...]
     """The days ``at`` applies to (``'mon'``...); empty for every day."""
     at_login: bool
+    paused: bool
+    """Whether :func:`pause` stopped it."""
     log: Path
     """Where the script's output and errors go."""
     running: bool
@@ -83,11 +87,18 @@ def _check_name(name: str) -> None:
         raise ValueError("name must be letters, digits, '.', '_' or '-', not {!r}".format(name))
 
 
-def _times(at: Union[str, Sequence[str], None]) -> List[Tuple[int, int]]:
+Moment = Union[str, datetime.time]
+
+
+def _times(at: Union[Moment, Sequence[Moment], None]) -> List[Tuple[int, int]]:
     if at is None:
         return []
     found = []
-    for text in [at] if isinstance(at, str) else list(at):
+    for moment in [at] if isinstance(at, (str, datetime.time)) else list(at):
+        if isinstance(moment, datetime.time):
+            found.append((moment.hour, moment.minute))
+            continue
+        text = moment
         match = _TIME.match(text.strip())
         if not match:
             raise ValueError("at must be a time such as '09:00' or '18:30', not {!r}".format(text))
@@ -113,8 +124,8 @@ def add(
     name: str,
     script: PathLike,
     *,
-    every: Optional[float] = None,
-    at: Union[str, Sequence[str], None] = None,
+    every: Union[float, datetime.timedelta, None] = None,
+    at: Union[Moment, Sequence[Moment], None] = None,
     weekdays: Optional[Sequence[str]] = None,
     at_login: bool = False,
     args: Sequence[str] = (),
@@ -123,9 +134,10 @@ def add(
     """
     Run the Python ``script`` on a schedule, from now on, and return the :class:`Job`.
 
-    - ``every``: seconds between runs.
-    - ``at``: a time of day, ``"09:00"``, or several, ``["09:00", "18:00"]``;
-      with ``weekdays`` (``["mon", "fri"]``), only on those days.
+    - ``every``: seconds between runs, or a :class:`~datetime.timedelta`.
+    - ``at``: a time of day, ``"09:00"`` or a :class:`~datetime.time`, or
+      several, ``["09:00", "18:00"]``; with ``weekdays`` (``["mon", "fri"]``),
+      only on those days. Seconds are ignored: launchd counts minutes.
     - ``at_login``: run it each time you log in, and once right away.
 
     It runs with this Python (``python=`` picks another, such as a virtual
@@ -140,6 +152,8 @@ def add(
     them again, for Python itself.
     """
     _check_name(name)
+    if isinstance(every, datetime.timedelta):
+        every = every.total_seconds()
     if every is not None and at is not None:
         raise ValueError("use either every or at, not both")
     if every is not None and every < 1:
@@ -171,7 +185,7 @@ def add(
     if times:
         moments = [{"Hour": hour, "Minute": minute} for hour, minute in times]
         job["StartCalendarInterval"] = [dict(moment, Weekday=day) for moment in moments for day in days] if days else moments
-    remove(name)  # replacing a job: unload the old one first
+    remove(name)  # replacing a job: unload the old one first (and forget it was paused)
     path = _plist(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(plistlib.dumps(job))
@@ -187,13 +201,28 @@ def remove(name: str) -> bool:
     require_macos()
     path = _plist(name)
     try:
-        _run(["launchctl", "bootout", "{}/{}{}".format(_domain(), _PREFIX, name)])
+        _run(["launchctl", "bootout", _target(name)])
     except CommandError:
         pass  # not loaded
+    if name in _paused():
+        _run(["launchctl", "enable", _target(name)])  # a paused job's name is free again
     if path.exists():
         path.unlink()
         return True
     return False
+
+
+def _target(name: str) -> str:
+    return "{}/{}{}".format(_domain(), _PREFIX, name)
+
+
+def _paused() -> List[str]:
+    """The names of the paused jobs, from ``launchctl print-disabled``."""
+    try:
+        output = _run(["launchctl", "print-disabled", _domain()])
+    except CommandError:
+        return []
+    return re.findall(r'"{}([^"]+)"\s*=>\s*(?:disabled|true)'.format(re.escape(_PREFIX)), output)
 
 
 def _state(name: str) -> Tuple[bool, Optional[int]]:
@@ -207,7 +236,7 @@ def _state(name: str) -> Tuple[bool, Optional[int]]:
     return bool(pid), int(status.group(1)) if status else None
 
 
-def _job(path: Path) -> Optional[Job]:
+def _job(path: Path, paused: Sequence[str]) -> Optional[Job]:
     try:
         data = plistlib.loads(path.read_bytes())
     except (OSError, plistlib.InvalidFileException, ValueError):
@@ -228,6 +257,7 @@ def _job(path: Path) -> Optional[Job]:
         at=times,
         weekdays=days,
         at_login=bool(data.get("RunAtLoad")),
+        paused=name in paused,
         log=Path(data.get("StandardOutPath", str(_log(name)))),
         running=running,
         last_exit_status=status,
@@ -237,7 +267,8 @@ def _job(path: Path) -> Optional[Job]:
 def jobs() -> List[Job]:
     """The jobs added with :func:`add`, by name."""
     require_macos()
-    found = [_job(path) for path in sorted(_agents().glob(_PREFIX + "*.plist"))]
+    paused = _paused()
+    found = [_job(path, paused) for path in sorted(_agents().glob(_PREFIX + "*.plist"))]
     return [job for job in found if job is not None]
 
 
@@ -246,13 +277,44 @@ def get(name: str) -> Optional[Job]:
     _check_name(name)
     require_macos()
     path = _plist(name)
-    return _job(path) if path.exists() else None
+    return _job(path, _paused()) if path.exists() else None
 
 
 def run_now(name: str) -> None:
     """Start the job ``name`` right away, besides its schedule. Does nothing if it's already running."""
+    _existing_job(name)
+    _run(["launchctl", "kickstart", _target(name)])
+
+
+def pause(name: str) -> None:
+    """
+    Stop the job ``name`` from running on its schedule, without deleting it; :func:`resume` restarts it.
+
+    It stays paused after a restart. A run that already started finishes.
+    """
+    _existing_job(name)
+    try:
+        _run(["launchctl", "bootout", _target(name)])
+    except CommandError:
+        pass  # already unloaded
+    _run(["launchctl", "disable", _target(name)])
+
+
+def resume(name: str) -> None:
+    """Put a job paused with :func:`pause` back on its schedule (with ``at_login``, it also runs now)."""
+    path = _existing_job(name)
+    try:
+        _run(["launchctl", "bootout", _target(name)])  # resuming a job that isn't paused: reload it
+    except CommandError:
+        pass
+    _run(["launchctl", "enable", _target(name)])
+    _run(["launchctl", "bootstrap", _domain(), str(path)])
+
+
+def _existing_job(name: str) -> Path:
     _check_name(name)
     require_macos()
-    if not _plist(name).exists():
+    path = _plist(name)
+    if not path.exists():
         raise ValueError("no job named {!r}".format(name))
-    _run(["launchctl", "kickstart", "{}/{}{}".format(_domain(), _PREFIX, name)])
+    return path

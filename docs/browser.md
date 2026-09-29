@@ -32,6 +32,8 @@ for tab in macos.browser.tabs():
 
 docs = next(tab for tab in macos.browser.tabs() if "readthedocs" in tab.url)
 docs.activate()   # shows that tab, and brings its window and the browser to the front
+docs.reload()
+docs.go("https://macos.readthedocs.io/en/latest/browser.html")   # another page, in the same tab
 ```
 
 A tab is read once: after tabs close or move, read them again.

@@ -124,6 +124,30 @@ on run argv
 end run
 """
 
+_RELOAD = {
+    # Safari's reload is JavaScript, which needs a setting: loading the same URL again doesn't.
+    _SAFARI: """
+on run argv
+    tell application "{app}"
+        set t to tab ((item 2 of argv) as integer) of window id ((item 1 of argv) as integer)
+        set URL of t to (URL of t)
+    end tell
+end run
+""",
+    _CHROMIUM: """
+on run argv
+    tell application "{app}" to reload tab ((item 2 of argv) as integer) of window id ((item 1 of argv) as integer)
+end run
+""",
+}
+
+_GO = """
+on run argv
+    tell application "{app}" to set URL of tab ((item 2 of argv) as integer) of window id ((item 1 of argv) as integer) ¬
+        to (item 3 of argv)
+end run
+"""
+
 _RUN_JS = {
     _SAFARI: """
 on run argv
@@ -160,6 +184,14 @@ class Tab:
     def close(self) -> None:
         """Close this tab."""
         _script(self.app, _CLOSE, str(self.window), str(self.index))
+
+    def reload(self) -> None:
+        """Load the page again."""
+        _script(self.app, _RELOAD[_KINDS[self.app]], str(self.window), str(self.index))
+
+    def go(self, url: str) -> None:
+        """Load ``url`` in this tab, in place of its page."""
+        _script(self.app, _GO, str(self.window), str(self.index), url)
 
 
 def _script(app: str, source: str, *args: str) -> str:

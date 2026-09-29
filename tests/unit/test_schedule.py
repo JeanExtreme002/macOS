@@ -92,3 +92,36 @@ def test_schedule_argument_checks(fake_run, home):
     with pytest.raises(FileNotFoundError):
         macos.schedule.add("x", home / "missing.py", every=60)
     assert not Path(home / "Library/LaunchAgents").exists() or not list(Path(home / "Library/LaunchAgents").iterdir())
+
+
+def test_schedule_takes_timedelta_and_time(fake_run, home):
+    import datetime
+
+    macos.schedule.add("hourly", home / "backup.py", every=datetime.timedelta(minutes=90))
+    macos.schedule.add("morning", home / "backup.py", at=[datetime.time(7, 5, 30), "19:00"])
+
+    assert _plist(home, "hourly")["StartInterval"] == 5400
+    assert _plist(home, "morning")["StartCalendarInterval"] == [{"Hour": 7, "Minute": 5}, {"Hour": 19, "Minute": 0}]
+
+
+def test_schedule_pause_and_resume(fake_run, home):
+    macos.schedule.add("backup", home / "backup.py", every=60)
+    fake_run.calls.clear()
+
+    macos.schedule.pause("backup")
+    assert [call["args"][1] for call in fake_run.calls] == ["bootout", "disable"]
+    assert fake_run.args == ["launchctl", "disable", "gui/501/pymacos.backup"]
+
+    fake_run.stdout = '\tdisabled services = {\n\t\t"pymacos.backup" => disabled\n\t\t"pymacos.other" => enabled\n\t}\n'
+    assert macos.schedule.get("backup").paused is True
+    fake_run.calls.clear()
+    macos.schedule.remove("backup")  # a paused job is enabled again, so its name can be reused
+    assert ["launchctl", "enable", "gui/501/pymacos.backup"] in [call["args"] for call in fake_run.calls]
+
+    fake_run.stdout = ""
+    macos.schedule.add("backup", home / "backup.py", every=60)
+    fake_run.calls.clear()
+    macos.schedule.resume("backup")
+    assert [call["args"][1] for call in fake_run.calls] == ["bootout", "enable", "bootstrap"]
+    with pytest.raises(ValueError, match="no job named"):
+        macos.schedule.pause("missing")
