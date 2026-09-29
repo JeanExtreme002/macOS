@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 
 """
-Take screenshots.
+Take screenshots, and find text on the screen.
 
 ::
 
     path = macos.screenshot()                       # temporary PNG
     macos.screenshot("desk.jpg", region=(0, 0, 800, 600))
+    macos.screen.find_text("Submit")                # [TextMatch(text='Submit', x=812, y=640, ...)]
 
 Capturing other apps' windows needs the *Screen Recording* permission for the
 app running Python (your terminal or IDE). Without it macOS doesn't fail: it
@@ -18,10 +19,11 @@ module checks the permission first and raises
 import ctypes
 import os
 import tempfile
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework, private_framework, run as _run
@@ -29,6 +31,10 @@ from .errors import MacOSError, NotSupportedError, PermissionDeniedError
 
 __all__ = [
     "screenshot",
+    "TextMatch",
+    "find_text",
+    "wait_for_text",
+    "color_at",
     "has_permission",
     "request_permission",
     "displays",
@@ -103,6 +109,17 @@ def screenshot(
     - ``check_permission``: raise if the Screen Recording permission is
       missing. Pass ``False`` to accept a capture without other apps' windows.
     """
+    options = ["-C"] if cursor else []
+    if region is not None:
+        x, y, width, height = region
+        options.append("-R{},{},{},{}".format(x, y, width, height))
+    if display is not None:
+        options.append("-D{}".format(display))
+    return _capture(path, options, check_permission)
+
+
+def _capture(path: Union[str, "os.PathLike[str]", None], options: List[str], check_permission: bool = True) -> Path:
+    """Run ``screencapture`` with ``options`` into ``path`` (or a temporary PNG), and return the file."""
     if check_permission and not has_permission():
         raise PermissionDeniedError(
             "Screen Recording permission is missing: allow the app running Python (your terminal or IDE) in "
@@ -121,15 +138,7 @@ def screenshot(
             )
     extension = target.suffix.lower()
 
-    args = ["screencapture", "-x", "-t", _FORMATS[extension]]  # -x: no shutter sound
-    if cursor:
-        args.append("-C")
-    if region is not None:
-        x, y, width, height = region
-        args.append("-R{},{},{},{}".format(x, y, width, height))
-    if display is not None:
-        args.append("-D{}".format(display))
-    args.append(str(target))
+    args = ["screencapture", "-x", "-t", _FORMATS[extension], *options, str(target)]  # -x: no shutter sound
 
     try:
         _run(args)
@@ -138,6 +147,124 @@ def screenshot(
             target.unlink(missing_ok=True)
         raise
     return target
+
+
+@dataclass(frozen=True)
+class TextMatch:
+    """Where some text is on the screen, in points from the main display's top-left corner, like :func:`macos.mouse.click`."""
+
+    text: str
+    """The whole line of text the match is in."""
+    x: int
+    y: int
+    width: int
+    height: int
+
+    @property
+    def center(self) -> Tuple[int, int]:
+        """The middle of the match: where to click it."""
+        return (self.x + self.width // 2, self.y + self.height // 2)
+
+
+def _area(region: Optional[Tuple[int, int, int, int]], display: Optional[int]) -> Tuple[float, float, float, float]:
+    """The part of the screen a capture covers, in points."""
+    if region is not None:
+        return tuple(float(value) for value in region)  # type: ignore[return-value]
+    found = displays()
+    index = (1 if display is None else display) - 1
+    if not 0 <= index < len(found):
+        raise ValueError("there's no display {}: there are {}".format(display, len(found)))
+    screen = found[index]
+    return float(screen.x), float(screen.y), float(screen.width), float(screen.height)
+
+
+def find_text(
+    text: str,
+    *,
+    region: Optional[Tuple[int, int, int, int]] = None,
+    display: Optional[int] = None,
+    languages: Optional[Sequence[str]] = None,
+) -> List[TextMatch]:
+    """
+    Find ``text`` on the screen, ignoring case, and return where it is, top to bottom.
+
+    Reads the screen with Vision's text recognition, so it finds text in any
+    app, even in images. Each :class:`TextMatch` surrounds the matching
+    characters, and its :attr:`~TextMatch.center` is where to click::
+
+        match = macos.screen.find_text("Submit")[0]
+        macos.mouse.click(*match.center)
+
+    ``region`` (``(x, y, width, height)`` in points) or ``display`` (``1`` is
+    the main one) limit where to look; by default, the main display.
+    ``languages`` works as in :func:`macos.vision.lines`. Needs the Screen
+    Recording permission. See also :func:`macos.mouse.click_text`.
+    """
+    from . import vision
+
+    if not text.strip():
+        raise ValueError("text must not be empty")
+    left, top, width, height = _area(region, display)
+    shot = screenshot(region=region, display=None if region is not None else display)
+    try:
+        image = shot.read_bytes()
+    finally:
+        shot.unlink(missing_ok=True)
+    return [
+        TextMatch(
+            text=line,
+            x=round(left + box[0] * width),
+            y=round(top + box[1] * height),
+            width=max(1, round(box[2] * width)),
+            height=max(1, round(box[3] * height)),
+        )
+        for line, box in vision._occurrences(image, text, languages)
+    ]
+
+
+def wait_for_text(
+    text: str,
+    *,
+    timeout: Optional[float] = None,
+    interval: float = 0.5,
+    region: Optional[Tuple[int, int, int, int]] = None,
+    display: Optional[int] = None,
+    languages: Optional[Sequence[str]] = None,
+) -> Optional[TextMatch]:
+    """
+    Wait until ``text`` shows up on the screen, and return where; ``None`` if ``timeout`` seconds pass first.
+
+    Looks every ``interval`` seconds, as :func:`find_text` does::
+
+        macos.screen.wait_for_text("Export complete", timeout=120)
+    """
+    if interval <= 0:
+        raise ValueError("interval must be positive, not {}".format(interval))
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        found = find_text(text, region=region, display=display, languages=languages)
+        if found:
+            return found[0]
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
+            return None
+        time.sleep(interval if remaining is None else min(interval, remaining))  # then look one last time
+
+
+def color_at(x: float, y: float) -> str:
+    """
+    The color of the screen at ``(x, y)`` (points from the main display's top-left corner), as ``'#rrggbb'``.
+
+    Handy to check a status light or wait for a button to turn green.
+    Needs the Screen Recording permission.
+    """
+    from . import image
+
+    shot = screenshot(region=(int(x), int(y), 1, 1))
+    try:
+        return image.dominant_colors(shot, count=1)[0]
+    finally:
+        shot.unlink(missing_ok=True)
 
 
 @lru_cache(maxsize=None)

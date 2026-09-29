@@ -105,6 +105,17 @@ while True:
     time.sleep(60)
 ```
 
+{func}`~macos.system.wait_for_idle` waits until nobody has touched the Mac for a
+while, and {func}`~macos.system.wait_for_activity` until someone does:
+
+```python
+macos.system.wait_for_idle(timedelta(minutes=10))
+run_heavy_job()
+
+macos.system.wait_for_activity()
+macos.say("Welcome back")
+```
+
 ## Reference
 
 - {func}`macos.system.version`
@@ -124,3 +135,5 @@ while True:
 - {func}`macos.system.camera_in_use`
 - {func}`macos.system.microphone_in_use`
 - {class}`macos.system.Volume`
+- {func}`macos.system.wait_for_idle`
+- {func}`macos.system.wait_for_activity`

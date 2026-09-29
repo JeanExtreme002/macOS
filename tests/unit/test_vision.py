@@ -45,3 +45,12 @@ def test_vision_argument_checks():
         macos.vision.smart_crop(b"image", 0, 100)
     with pytest.raises(ValueError, match="max_hands"):
         macos.vision.hand_pose(b"image", max_hands=0)
+
+
+def test_text_spans_ignore_case_whatever_the_length():
+    from macos.vision import _spans
+
+    assert _spans("Click Submit, then submit", "SUBMIT") == [(6, 12), (19, 25)]
+    assert _spans("Straße STRASSE", "strasse") == [(0, 6), (7, 14)]  # "ß" folds to "ss"
+    assert _spans("ßA", "a") == [(1, 2)]
+    assert _spans("anything", "") == []

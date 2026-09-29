@@ -27,6 +27,9 @@ They are the notifications macOS sends apps, so no permission is needed.
 | `app_hidden`, `app_unhidden` | An app is hidden (⌘H), or shown again | `event.app` |
 | `volume_mounted`, `volume_unmounted` | A disk, USB drive or disk image is mounted or ejected | `event.path`, where it's mounted |
 | `power_connected`, `power_disconnected` | The Mac starts, or stops, running on its charger | |
+| `network_changed` | Another Wi-Fi network, a cable plugged in, offline or back online | |
+| `usb_connected`, `usb_disconnected` | A USB device is plugged in, or removed | `event.device`, its name |
+| `displays_changed` | A display is connected, removed, rearranged or set to another resolution | |
 
 To wait for dark or light mode to switch, see
 {func}`macos.appearance.wait_for_change`.

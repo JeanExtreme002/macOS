@@ -120,3 +120,17 @@ def test_watch_reports_changes_as_they_happen(tmp_path):
     threading.Timer(0.5, lambda: (folder / "sub" / "ignored.txt").write_text("x")).start()
     assert macos.finder.wait_for_change(folder, recursive=False, timeout=1.5) is None
     assert macos.finder.wait_for_change(folder, timeout=0.3) is None
+
+
+def test_watch_pattern(tmp_path):
+    import threading
+    import time
+
+    def work():
+        time.sleep(0.5)
+        (tmp_path / "notes.txt").write_text("x")
+        (tmp_path / "Report.PDF").write_text("x")
+
+    threading.Thread(target=work).start()
+    event = macos.finder.wait_for_change(tmp_path, pattern="*.pdf", timeout=5)
+    assert event is not None and event.path.name == "Report.PDF"

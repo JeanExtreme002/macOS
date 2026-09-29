@@ -118,3 +118,59 @@ def test_screen_argument_checks(tmp_path):
         macos.screen.record(tmp_path / "out.mov", 0)
     with pytest.raises(ValueError, match=".mov"):
         macos.screen.record(tmp_path / "out.mp4", 1)
+
+
+def test_find_text_maps_the_boxes_to_the_screen(monkeypatch, tmp_path):
+    from macos import vision
+
+    shot = tmp_path / "shot.png"
+    shot.write_bytes(b"png")
+    main = screen.Display(1, "Main", 1000, 800, 0, 0, 2000, 1600, 2.0, 60.0, True, False)
+    side = screen.Display(2, "Side", 500, 400, 1000, -100, 500, 400, 1.0, 60.0, False, False)
+    monkeypatch.setattr(screen, "displays", lambda: [main, side])
+
+    def capture(**kwargs):
+        shot.write_bytes(b"png")
+        return shot
+
+    monkeypatch.setattr(screen, "screenshot", capture)
+    boxes = [("Click Submit below", (0.5, 0.25, 0.1, 0.05))]
+    monkeypatch.setattr(vision, "_occurrences", lambda image, text, languages: boxes)
+
+    match = screen.find_text("submit")[0]
+    assert (match.text, match.x, match.y, match.width, match.height) == ("Click Submit below", 500, 200, 100, 40)
+    assert match.center == (550, 220)
+    assert not shot.exists()  # the capture is deleted
+    on_side = screen.find_text("x", display=2)[0]
+    assert (on_side.x, on_side.y) == (1250, 0)  # the side display starts at (1000, -100)
+    in_region = screen.find_text("x", region=(100, 100, 200, 100))[0]
+    assert (in_region.x, in_region.y) == (200, 125)
+    with pytest.raises(ValueError, match="no display 3"):
+        screen.find_text("x", display=3)
+    with pytest.raises(ValueError, match="no display 0"):  # displays count from 1
+        screen.find_text("x", display=0)
+
+
+def test_wait_for_text(monkeypatch):
+    results = iter([[], [], [screen.TextMatch("OK", 1, 2, 3, 4)]])
+    monkeypatch.setattr(screen, "find_text", lambda *args, **kwargs: next(results))
+    monkeypatch.setattr(screen.time, "sleep", lambda seconds: None)
+
+    assert screen.wait_for_text("ok") == screen.TextMatch("OK", 1, 2, 3, 4)
+    monkeypatch.setattr(screen, "find_text", lambda *args, **kwargs: [])
+    assert screen.wait_for_text("ok", timeout=0) is None
+
+    # A timeout shorter than the interval still gets a last look, when it ends.
+    clock, scans = {"now": 0.0}, []
+    monkeypatch.setattr(screen.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(screen.time, "sleep", lambda seconds: clock.update(now=clock["now"] + seconds))
+    monkeypatch.setattr(screen, "find_text", lambda *args, **kwargs: scans.append(clock["now"]) or [])
+    assert screen.wait_for_text("ok", timeout=0.4, interval=0.5) is None
+    assert scans == [0.0, 0.4]
+
+
+def test_find_text_argument_checks():
+    with pytest.raises(ValueError, match="empty"):
+        screen.find_text("  ")
+    with pytest.raises(ValueError, match="interval"):
+        screen.wait_for_text("ok", interval=0)

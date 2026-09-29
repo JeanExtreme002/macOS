@@ -146,3 +146,11 @@ def test_keyboard_argument_checks():
         macos.keyboard.press("cmd+launch")
     with pytest.raises(ValueError, match="at least one key"):
         macos.keyboard.hold().__enter__()
+
+
+def test_key_press_shortcut():
+    key = macos.keyboard.KeyPress(key="k", modifiers=("cmd", "shift"), text="K", code=40, repeat=False)
+
+    assert key.shortcut == "cmd+shift+k"
+    assert macos.keyboard.KeyPress("enter", (), "", 36, False).shortcut == "enter"
+    assert macos.keyboard._KEY_NAMES[36] == "enter" and macos.keyboard._KEY_NAMES[51] == "delete"

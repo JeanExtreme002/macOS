@@ -90,6 +90,8 @@ for event in macos.finder.watch("~/Downloads"):
 
 `event.kind` is `'created'`, `'modified'`, `'deleted'` or `'renamed'` (the new
 name of a moved or renamed item), and `event.is_dir` tells folders apart.
+`pattern="*.pdf"` (or a list of patterns) keeps only the files whose name
+matches.
 Subfolders are watched too, unless `recursive=False`. It goes on until you
 `break` out of the loop, or `timeout` seconds pass. To wait for one change,
 such as a download finishing:
@@ -100,6 +102,22 @@ event = macos.finder.wait_for_change("~/Downloads", timeout=60)
 
 It uses FSEvents, like Spotlight and Time Machine. Paths come with symbolic
 links resolved (`/private/tmp/...` for `/tmp/...`).
+
+## The selection
+
+{func}`~macos.finder.selection` returns what's selected in Finder, and
+{func}`~macos.finder.current_folder` the folder its front window shows, for
+scripts that act on what you picked:
+
+```python
+for path in macos.finder.selection():
+    macos.image.convert(path, path.with_suffix(".jpg"))
+
+macos.finder.current_folder()   # PosixPath('/Users/alice/Downloads')
+```
+
+They ask Finder through AppleScript, so the first time macOS asks to allow it
+([Automation](permissions.md#automation)).
 
 ## Reference
 
@@ -116,3 +134,5 @@ links resolved (`/private/tmp/...` for `/tmp/...`).
 - {func}`macos.finder.watch`
 - {func}`macos.finder.wait_for_change`
 - {class}`macos.finder.Event`
+- {func}`macos.finder.selection`
+- {func}`macos.finder.current_folder`

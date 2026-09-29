@@ -96,3 +96,36 @@ def test_camera_in_use(monkeypatch):
     assert macos.system.camera_in_use() is False
     running[35] = [1]
     assert macos.system.camera_in_use() is True
+
+
+def test_wait_for_idle_and_activity(monkeypatch):
+    from datetime import timedelta
+
+    system = macos.system
+    clock = {"now": 0.0}
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        clock["now"] += seconds
+
+    monkeypatch.setattr(system.time, "sleep", sleep)
+    monkeypatch.setattr(system.time, "monotonic", lambda: clock["now"])
+    idle = iter([10.0, 250.0, 300.0])
+    monkeypatch.setattr(system, "idle_time", lambda: timedelta(seconds=next(idle)))
+
+    assert system.wait_for_idle(timedelta(minutes=5)) is True
+    assert sleeps[:2] == [290.0, 50.0]  # it sleeps until the goal could be reached, not in small steps
+
+    # Idle for 0.01 s when it starts; input 0.1 s later, so 0.1 s idle after one 0.2 s interval:
+    # still more than the first reading, but less than the 0.21 s it would be without input.
+    readings = iter([0.01, 0.1])
+    monkeypatch.setattr(system, "idle_time", lambda: timedelta(seconds=next(readings)))
+    assert system.wait_for_activity() is True
+
+    monkeypatch.setattr(system, "idle_time", lambda: timedelta(seconds=clock["now"]))  # nobody around
+    assert system.wait_for_activity(timeout=1) is False
+    monkeypatch.setattr(system, "idle_time", lambda: timedelta(seconds=1))
+    assert system.wait_for_idle(60, timeout=0) is False
+    with pytest.raises(ValueError):
+        system.wait_for_idle(-1)

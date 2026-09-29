@@ -23,14 +23,17 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import _cf, _objc, apps
 from ._system import framework
 
 __all__ = ["Event", "Handler", "NAMES", "on", "off", "run", "stop", "wait"]
 
-_WORKSPACE, _DISTRIBUTED, _POWER = "workspace", "distributed", "power"
+_WORKSPACE, _DISTRIBUTED = "workspace", "distributed"
+# Events from other system sources than notification centers, each watched while listening.
+_POWER, _NETWORK, _USB, _DISPLAYS = "power", "network", "usb", "displays"
+_WATCHED = (_POWER, _NETWORK, _USB, _DISPLAYS)
 
 # Our name: (notification center, notification name).
 _NOTIFICATIONS: Dict[str, Tuple[str, str]] = {
@@ -52,6 +55,10 @@ _NOTIFICATIONS: Dict[str, Tuple[str, str]] = {
     # changes between the charger and the battery are events.
     "power_connected": (_POWER, ""),
     "power_disconnected": (_POWER, ""),
+    "network_changed": (_NETWORK, ""),
+    "usb_connected": (_USB, ""),
+    "usb_disconnected": (_USB, ""),
+    "displays_changed": (_DISPLAYS, ""),
 }
 
 NAMES = tuple(_NOTIFICATIONS)
@@ -68,6 +75,8 @@ class Event:
     """For the ``app_*`` events: the app that launched, quit or came to the front."""
     path: Optional[Path] = None
     """For ``volume_mounted`` and ``volume_unmounted``: where the volume is (or was) mounted."""
+    device: Optional[str] = None
+    """For ``usb_connected`` and ``usb_disconnected``: the device's name, such as ``'USB Keyboard'``."""
 
 
 class Handler:
@@ -112,6 +121,12 @@ def on(name: str, callback: Callable[..., object]) -> Handler:
       disk images), with the mount point in ``event.path``.
     - ``'power_connected'`` and ``'power_disconnected'``: the Mac starts or
       stops running on its charger (never on a Mac without a battery).
+    - ``'network_changed'``: the connection changed: another Wi-Fi network,
+      a cable plugged in, offline or back online.
+    - ``'usb_connected'`` and ``'usb_disconnected'``, with the device's name
+      in ``event.device``.
+    - ``'displays_changed'``: a display was connected, disconnected,
+      rearranged or set to another resolution.
 
     To wait for dark or light mode to switch, see :func:`macos.appearance.wait_for_change`.
 
@@ -147,7 +162,7 @@ def _notification_names() -> Dict[str, str]:
     appkit = framework("AppKit")
     names = {}
     for ours, (center, notification) in _NOTIFICATIONS.items():
-        if center == _POWER:
+        if center in _WATCHED:
             continue
         if center == _WORKSPACE:
             constant = ctypes.c_void_p.in_dll(appkit, notification).value
@@ -221,15 +236,7 @@ class _PowerWatch:
     def __init__(self) -> None:
         self.plugged = _on_charger()
         self.callback = _PowerCallback(self.changed)  # kept alive while the source is scheduled
-        self.source = _iokit().IOPSNotificationCreateRunLoopSource(self.callback, None)
-        run_loop = framework("CoreFoundation")
-        run_loop.CFRunLoopGetCurrent.restype = ctypes.c_void_p
-        run_loop.CFRunLoopAddSource.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
-        run_loop.CFRunLoopRemoveSource.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
-        self.loop = run_loop.CFRunLoopGetCurrent()
-        self.mode = ctypes.c_void_p.in_dll(run_loop, "kCFRunLoopDefaultMode")
-        if self.source:
-            run_loop.CFRunLoopAddSource(self.loop, self.source, self.mode)
+        self.source = _RunLoopSource(_iokit().IOPSNotificationCreateRunLoopSource(self.callback, None))
 
     def changed(self, context: int) -> None:
         try:
@@ -241,10 +248,211 @@ class _PowerWatch:
             _received.append(Event("power_connected" if plugged else "power_disconnected"))
 
     def close(self) -> None:
+        if self.source.source:
+            _cf.release(self.source.source)
+        self.source.close()
+
+
+_Store = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+_NETWORK_KEYS = ("State:/Network/Global/IPv4", "State:/Network/Global/IPv6")
+
+
+class _RunLoopSource:
+    """A CoreFoundation run loop source on this thread, removed and released by :meth:`close`."""
+
+    def __init__(self, source: Optional[int]) -> None:
+        run_loop = framework("CoreFoundation")
+        run_loop.CFRunLoopGetCurrent.restype = ctypes.c_void_p
+        run_loop.CFRunLoopAddSource.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+        run_loop.CFRunLoopRemoveSource.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+        self.source = source
+        self.loop = run_loop.CFRunLoopGetCurrent()
+        self.mode = ctypes.c_void_p.in_dll(run_loop, "kCFRunLoopDefaultMode")
+        if source:
+            run_loop.CFRunLoopAddSource(self.loop, source, self.mode)
+
+    def close(self) -> None:
         if self.source:
             framework("CoreFoundation").CFRunLoopRemoveSource(self.loop, self.source, self.mode)
-            _cf.release(self.source)
             self.source = None
+
+
+@lru_cache(maxsize=None)
+def _configuration() -> ctypes.CDLL:
+    sc = framework("SystemConfiguration")
+    pointer = ctypes.c_void_p
+    sc.SCDynamicStoreCreate.argtypes = (pointer, pointer, _Store, pointer)
+    sc.SCDynamicStoreCreate.restype = pointer
+    sc.SCDynamicStoreSetNotificationKeys.argtypes = (pointer, pointer, pointer)
+    sc.SCDynamicStoreSetNotificationKeys.restype = ctypes.c_bool
+    sc.SCDynamicStoreCreateRunLoopSource.argtypes = (pointer, pointer, ctypes.c_long)
+    sc.SCDynamicStoreCreateRunLoopSource.restype = pointer
+    sc.SCDynamicStoreCopyValue.argtypes = (pointer, pointer)
+    sc.SCDynamicStoreCopyValue.restype = pointer
+    return sc
+
+
+class _NetworkWatch:
+    """
+    Network events, from the dynamic store configd keeps: the global IPv4 and IPv6 state.
+
+    A change touches several keys at once; only a change of the state itself
+    (interface, router, addresses) is an event.
+    """
+
+    def __init__(self) -> None:
+        sc = _configuration()
+        self.callback = _Store(self.changed)
+        with _cf.owned(_cf.string("pymacos.events")) as name:
+            self.store = sc.SCDynamicStoreCreate(None, name, self.callback, None)
+        self.state = self.read()
+        with _cf.owned(_cf.from_python(list(_NETWORK_KEYS))) as keys:
+            sc.SCDynamicStoreSetNotificationKeys(self.store, keys, None)
+        self.source = _RunLoopSource(sc.SCDynamicStoreCreateRunLoopSource(None, self.store, 0) if self.store else None)
+
+    def read(self) -> Tuple[object, ...]:
+        values = []
+        for key in _NETWORK_KEYS:
+            with _cf.owned(_cf.string(key)) as name:
+                with _cf.owned(_configuration().SCDynamicStoreCopyValue(self.store, name)) as value:
+                    values.append(repr(_cf.to_python(value)) if value else None)
+        return tuple(values)
+
+    def changed(self, store: int, keys: int, info: int) -> None:
+        try:
+            state = self.read()
+        except Exception:  # an exception must not cross back into SystemConfiguration
+            return
+        if state != self.state:
+            self.state = state
+            _received.append(Event("network_changed"))
+
+    def close(self) -> None:
+        if self.source.source:
+            _cf.release(self.source.source)
+        self.source.close()
+        _cf.release(self.store)
+        self.store = None
+
+
+_Matched = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint32)
+
+
+@lru_cache(maxsize=None)
+def _io_registry() -> ctypes.CDLL:
+    io = framework("IOKit")
+    pointer, handle = ctypes.c_void_p, ctypes.c_uint32
+    io.IONotificationPortCreate.argtypes = (handle,)
+    io.IONotificationPortCreate.restype = pointer
+    io.IONotificationPortGetRunLoopSource.argtypes = (pointer,)
+    io.IONotificationPortGetRunLoopSource.restype = pointer
+    io.IONotificationPortDestroy.argtypes = (pointer,)
+    io.IONotificationPortDestroy.restype = None
+    io.IOServiceMatching.argtypes = (ctypes.c_char_p,)
+    io.IOServiceMatching.restype = pointer
+    io.IOServiceAddMatchingNotification.argtypes = (pointer, ctypes.c_char_p, pointer, _Matched, pointer, ctypes.POINTER(handle))
+    io.IOServiceAddMatchingNotification.restype = ctypes.c_int
+    io.IOIteratorNext.argtypes = (handle,)
+    io.IOIteratorNext.restype = handle
+    io.IOObjectRelease.argtypes = (handle,)
+    io.IOObjectRelease.restype = ctypes.c_int
+    io.IORegistryEntryCreateCFProperty.argtypes = (handle, pointer, pointer, handle)
+    io.IORegistryEntryCreateCFProperty.restype = pointer
+    io.IORegistryEntryGetName.argtypes = (handle, ctypes.c_char_p)
+    io.IORegistryEntryGetName.restype = ctypes.c_int
+    return io
+
+
+def _device_name(device: int) -> Optional[str]:
+    io = _io_registry()
+    with _cf.owned(_cf.string("USB Product Name")) as key, _cf.owned(
+        io.IORegistryEntryCreateCFProperty(device, key, None, 0)
+    ) as name:
+        if name:
+            return _cf.to_str(name)
+    buffer = ctypes.create_string_buffer(128)  # io_name_t
+    if io.IORegistryEntryGetName(device, buffer) == 0 and buffer.value:
+        return buffer.value.decode("utf-8", "replace")
+    return None
+
+
+class _USBWatch:
+    """USB events, from IOKit's matching notifications for USB devices."""
+
+    def __init__(self) -> None:
+        io = _io_registry()
+        self.port = io.IONotificationPortCreate(0)
+        self.iterators: List[int] = []
+        self.callbacks = []
+        for kind, name in ((b"IOServiceFirstMatch", "usb_connected"), (b"IOServiceTerminate", "usb_disconnected")):
+            callback = _Matched(lambda refcon, iterator, name=name: self.matched(iterator, name))
+            iterator = ctypes.c_uint32()
+            # The matching dictionary is consumed by the call.
+            io.IOServiceAddMatchingNotification(
+                self.port, kind, io.IOServiceMatching(b"IOUSBHostDevice"), callback, None, ctypes.byref(iterator)
+            )
+            self.callbacks.append(callback)
+            self.iterators.append(iterator.value)
+            self.drain(iterator.value, None)  # the devices already there: this also arms the notification
+        self.source = _RunLoopSource(io.IONotificationPortGetRunLoopSource(self.port))
+
+    def drain(self, iterator: int, name: Optional[str]) -> None:
+        io = _io_registry()
+        while True:
+            device = io.IOIteratorNext(iterator)
+            if not device:
+                return
+            try:
+                if name is not None:
+                    _received.append(Event(name, device=_device_name(device)))
+            finally:
+                io.IOObjectRelease(device)
+
+    def matched(self, iterator: int, name: str) -> None:
+        try:
+            self.drain(iterator, name)
+        except Exception:  # an exception must not cross back into IOKit
+            return
+
+    def close(self) -> None:
+        self.source.close()  # the port owns the source
+        io = _io_registry()
+        for iterator in self.iterators:
+            io.IOObjectRelease(iterator)
+        io.IONotificationPortDestroy(self.port)
+
+
+_Reconfigured = ctypes.CFUNCTYPE(None, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p)
+_BEGIN_CONFIGURATION = 1  # kCGDisplayBeginConfigurationFlag: the change is about to happen
+
+
+class _DisplayWatch:
+    """Display events, from CoreGraphics' reconfiguration callback: one event per change, whatever the displays."""
+
+    def __init__(self) -> None:
+        graphics = framework("CoreGraphics")
+        graphics.CGDisplayRegisterReconfigurationCallback.argtypes = (_Reconfigured, ctypes.c_void_p)
+        graphics.CGDisplayRegisterReconfigurationCallback.restype = ctypes.c_int32
+        graphics.CGDisplayRemoveReconfigurationCallback.argtypes = (_Reconfigured, ctypes.c_void_p)
+        graphics.CGDisplayRemoveReconfigurationCallback.restype = ctypes.c_int32
+        self.callback = _Reconfigured(self.changed)
+        graphics.CGDisplayRegisterReconfigurationCallback(self.callback, None)
+
+    def changed(self, display: int, flags: int, info: int) -> None:
+        # CoreGraphics calls back for each display, before and after: keep one event per change.
+        if not flags & _BEGIN_CONFIGURATION and Event("displays_changed") not in _received:
+            _received.append(Event("displays_changed"))
+
+    def close(self) -> None:
+        framework("CoreGraphics").CGDisplayRemoveReconfigurationCallback(self.callback, None)
+
+
+_WATCHERS: Dict[str, Callable[[], Any]] = {
+    _POWER: _PowerWatch,
+    _NETWORK: _NetworkWatch,
+    _USB: _USBWatch,
+    _DISPLAYS: _DisplayWatch,
+}
 
 
 def _observer() -> int:
@@ -262,7 +470,7 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
     # The notification names, as AppKit spells them.
     spelled = {ours: notification for notification, ours in _notification_names().items()}
     for name, (kind, _) in wanted.items():
-        if kind == _POWER:
+        if kind in _WATCHED:
             continue
         if kind == _WORKSPACE:
             _objc.send(
@@ -291,7 +499,8 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
             )
     _stop.clear()
     _received.clear()
-    power = _PowerWatch() if any(kind == _POWER for kind, _ in wanted.values()) else None
+    kinds = {kind for kind, _ in wanted.values()}
+    watchers = [watch() for kind, watch in _WATCHERS.items() if kind in kinds]
     deadline = None if timeout is None else time.monotonic() + timeout
     try:
         while not _stop.is_set():
@@ -303,8 +512,8 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
                 if on_event(_received.popleft()):
                     return
     finally:
-        if power is not None:
-            power.close()
+        for watcher in watchers:
+            watcher.close()
         for center in centers.values():
             _objc.send(center, "removeObserver:", observer, argtypes=(_objc.id,), restype=None)
         _objc.send(observer, "release", restype=None)

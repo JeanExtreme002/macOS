@@ -66,3 +66,8 @@ def test_camera_microphone_and_power_state():
     assert isinstance(macos.system.microphone_in_use(), bool)
     assert isinstance(macos.power.low_power_mode(), bool)
     assert isinstance(macos.keyboard.caps_lock(), bool)
+
+
+def test_wait_for_idle():
+    assert macos.system.wait_for_idle(0) is True
+    assert macos.system.wait_for_idle(3600, timeout=0.3) is False

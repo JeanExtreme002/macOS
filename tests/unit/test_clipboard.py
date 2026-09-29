@@ -47,3 +47,34 @@ def test_clipboard_wait_for_change_never_sleeps_past_the_timeout(monkeypatch):
 def test_copy_files_needs_paths():
     with pytest.raises(ValueError):
         macos.clipboard.copy_files([])
+
+
+def test_clipboard_watch_yields_each_copy(monkeypatch):
+    clipboard = macos.clipboard
+    # What the clipboard holds at each check, as (change count, content); a copy clears, then writes.
+    moments = iter([(1, "old"), (2, None), (3, "one"), (3, "one"), (4, "image")])
+    state = {"now": (1, "old"), "copy_while_reading": False}
+
+    def tick(seconds):
+        state["now"] = next(moments, state["now"])
+
+    def paste():
+        content = state["now"][1]
+        if state["copy_while_reading"]:
+            state["copy_while_reading"] = False
+            state["now"] = (5, "newer")  # copied again, between the count and the content
+        return None if content == "image" else content
+
+    monkeypatch.setattr(clipboard, "change_count", lambda: state["now"][0])
+    monkeypatch.setattr(clipboard, "_is_empty", lambda: state["now"][1] is None)
+    monkeypatch.setattr(clipboard, "paste", paste)
+    monkeypatch.setattr(clipboard.time, "sleep", tick)
+
+    watched = clipboard.watch()
+    assert next(watched) == "one"
+    state["copy_while_reading"] = True
+    state["now"] = (4, "image")
+    assert next(watched) == "newer"  # the image read mid-copy is skipped, not yielded twice
+    watched.close()
+    with pytest.raises(ValueError, match="interval"):
+        next(clipboard.watch(interval=0))

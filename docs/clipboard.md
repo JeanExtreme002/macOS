@@ -70,6 +70,17 @@ print("Copy a link...")
 link = macos.clipboard.wait_for_change(timeout=60)
 ```
 
+To follow every copy, {func}`~macos.clipboard.watch` yields each one, until you
+`break` or `timeout` seconds pass:
+
+```python
+history = []
+
+for text in macos.clipboard.watch():
+    if text:
+        history.append(text)
+```
+
 ## Detecting changes
 
 {func}`~macos.clipboard.change_count` returns a counter that increases every
@@ -104,3 +115,4 @@ while True:
 - {func}`macos.clipboard.copy_image`
 - {func}`macos.clipboard.paste_image`
 - {func}`macos.clipboard.has_image`
+- {func}`macos.clipboard.watch`

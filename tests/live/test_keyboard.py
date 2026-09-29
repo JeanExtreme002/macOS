@@ -1,5 +1,6 @@
 """Tests of :mod:`macos.keyboard` against the real system. Skipped outside macOS."""
 
+import time
 import uuid
 
 import pytest
@@ -42,3 +43,27 @@ def test_keyboard_layouts():
         assert macos.keyboard.layout() == current
     with pytest.raises(ValueError, match="no enabled keyboard layout"):
         macos.keyboard.set_layout("No Such Layout {}".format(uuid.uuid4()))
+
+
+def test_keyboard_watch(test_window):
+    import threading
+
+    if not (macos.hotkeys.has_permission() and macos.keyboard.has_permission()):
+        pytest.skip("needs the Input Monitoring and Accessibility permissions")
+    test_window.focus()
+    time.sleep(0.5)
+
+    def press():
+        time.sleep(0.5)
+        if macos.windows.focused() == test_window:  # never type into someone else's app
+            for keys in ("a", "shift+b", "cmd+shift+k", "enter", "f5"):
+                macos.keyboard.press(keys)
+
+    threading.Thread(target=press).start()
+    seen = []
+    for key in macos.keyboard.watch(timeout=4):
+        seen.append(key.shortcut)
+        if len(seen) == 5:
+            break
+    assert seen == ["a", "shift+b", "cmd+shift+k", "enter", "f5"]
+    assert list(macos.keyboard.watch(timeout=0.2)) == []
