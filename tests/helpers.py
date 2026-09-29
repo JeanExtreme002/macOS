@@ -33,6 +33,11 @@ def png_size(png):
 WALLPAPER_MOVIE = Path("/System/Library/Desktop Pictures/.wallpapers/Sequoia Sunrise/Sequoia Sunrise.mov")
 
 
+SETTINGS = pytest.mark.skipif(
+    not (os.environ.get("CI") or os.environ.get("PYMACOS_SETTINGS_TESTS")),
+    reason="changes (then restores) a setting of this Mac: set PYMACOS_SETTINGS_TESTS=1 to run",
+)
+
 CAPTURE = pytest.mark.skipif(
     not os.environ.get("PYMACOS_CAPTURE_TESTS"),
     reason="turns the camera or the microphone on: set PYMACOS_CAPTURE_TESTS=1 to run",

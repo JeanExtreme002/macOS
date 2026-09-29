@@ -134,3 +134,23 @@ def test_watch_pattern(tmp_path):
     threading.Thread(target=work).start()
     event = macos.finder.wait_for_change(tmp_path, pattern="*.pdf", timeout=5)
     assert event is not None and event.path.name == "Report.PDF"
+
+
+def test_compress_and_extract_keep_the_tags(tmp_path):
+    folder = tmp_path / "Project"
+    (folder / "sub").mkdir(parents=True)
+    (folder / "a.txt").write_text("hi")
+    (folder / "sub" / "b.txt").write_text("deep")
+    macos.finder.add_tags(folder / "a.txt", "Red")
+
+    archive = macos.finder.compress(folder)
+    out = macos.finder.extract(archive, tmp_path / "out")
+    assert sorted(path.relative_to(out).as_posix() for path in out.rglob("*")) == [
+        "Project", "Project/a.txt", "Project/sub", "Project/sub/b.txt",
+    ]  # fmt: skip
+    assert macos.finder.tags(out / "Project" / "a.txt") == ["Red"]
+
+
+def test_finder_settings_are_read():
+    for read in (macos.finder.show_hidden_files, macos.finder.show_extensions, macos.finder.show_path_bar):
+        assert isinstance(read(), bool)

@@ -114,14 +114,24 @@ macos.pdf.from_images(pages, "scan.pdf")
 ## Scanned PDFs
 
 Scanned documents are images with no text layer, so {func}`~macos.pdf.text`
-returns empty text for them. Render the page and read it with
-[OCR](vision.md) instead:
+returns empty text for them. {func}`~macos.pdf.ocr` makes them searchable: it
+reads each page with [Vision](vision.md) and adds the text, invisibly, over the
+words:
+
+```python
+macos.pdf.ocr("scan.pdf", "scan-searchable.pdf")
+macos.pdf.text("scan-searchable.pdf")   # the scan's text
+```
+
+The pages look the same, and their text can be selected, copied and searched,
+in Preview and Spotlight too. Pages that already have text aren't read again,
+unless `redo=True`. Every page is redrawn into the new PDF, so links and form
+fields aren't kept. `languages` (`["pt-BR", "en-US"]`) helps Vision with
+accents and words. To only read a page, render it and use OCR:
 
 ```python
 macos.vision.text(macos.pdf.render("scan.pdf", page=1, size=2048))
 ```
-
-Use a large `size`: text drawn small is hard to read.
 
 ## Encrypted PDFs
 
@@ -159,3 +169,4 @@ macos.pdf.encrypt("locked.pdf", "relocked.pdf", "new-pass", current_password="12
 - {func}`macos.pdf.render`
 - {func}`macos.pdf.from_images`
 - {class}`macos.pdf.Metadata`
+- {func}`macos.pdf.ocr`

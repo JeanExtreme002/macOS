@@ -36,7 +36,8 @@ The live tests talk to the real system. They restore your clipboard and delete
 the Keychain items they create. The ones that turn the camera or the microphone
 on only run when asked: `PYMACOS_CAPTURE_TESTS=1 pytest`. So do the ones that read
 your browser's tabs (`PYMACOS_BROWSER_TESTS=1`) and, outside CI, the one that adds
-a launch agent (`PYMACOS_SCHEDULE_TESTS=1`).
+a launch agent (`PYMACOS_SCHEDULE_TESTS=1`) or change, then restore, a setting of
+the Mac: the Dock, login items, a default app (`PYMACOS_SETTINGS_TESTS=1`).
 
 ## Lint and type check
 

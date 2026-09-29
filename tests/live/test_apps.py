@@ -2,10 +2,12 @@
 
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 
 import macos
+from tests.helpers import SETTINGS
 
 
 def test_running_apps():
@@ -86,3 +88,56 @@ def test_default_apps():
     assert macos.apps.default_for("backup.txt") == text_editor  # a dotted extension, not a type
     browser = macos.apps.default_browser()
     assert browser is None or browser.endswith(".app")
+
+
+def test_install_from_dmg(tmp_path):
+    import subprocess
+
+    app = tmp_path / "content" / "Pymacos Test.app" / "Contents"
+    app.mkdir(parents=True)
+    (app / "Info.plist").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>'
+        "<key>CFBundleIdentifier</key><string>com.github.pymacos.test</string></dict></plist>"
+    )
+    image = tmp_path / "test.dmg"
+    content = str(tmp_path / "content")
+    subprocess.run(["hdiutil", "create", "-quiet", "-volname", "PymacosApp", "-srcfolder", content, str(image)], check=True)
+    destination = tmp_path / "Applications"
+    destination.mkdir()
+
+    installed = macos.apps.install_from_dmg(image, destination=destination)
+    assert installed == str(destination / "Pymacos Test.app")
+    assert (destination / "Pymacos Test.app" / "Contents" / "Info.plist").exists()
+    with pytest.raises(FileExistsError):
+        macos.apps.install_from_dmg(image, destination=destination)
+    assert macos.apps.install_from_dmg(image, destination=destination, replace=True) == installed
+    assert not any("PymacosApp" in volume.name for volume in Path("/Volumes").iterdir())
+
+
+@SETTINGS
+def test_login_items():
+    before = macos.apps.login_items()
+    if any(item.path and item.path.endswith("/Chess.app") for item in before):
+        pytest.skip("Chess is already a login item: removing it would change this Mac")
+    try:
+        item = macos.apps.add_login_item("Chess")
+        assert item.path and item.path.endswith("Chess.app")
+        assert macos.apps.remove_login_item("Chess") is True
+    finally:
+        macos.apps.remove_login_item("Chess")
+    assert macos.apps.login_items() == before
+
+
+@SETTINGS
+def test_set_default_for():
+    import platform
+
+    if int(platform.mac_ver()[0].split(".")[0]) >= 26:
+        pytest.skip("macOS 26 asks the user to confirm, and the prompt would stay on the screen")
+    original = macos.apps.default_for("txt")
+    try:
+        macos.apps.set_default_for("txt", "Script Editor")
+        assert macos.apps.default_for("txt").endswith("Script Editor.app")
+    finally:
+        macos.apps.set_default_for("txt", original)
+    assert macos.apps.default_for("txt") == original

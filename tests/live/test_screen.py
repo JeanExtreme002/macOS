@@ -92,6 +92,13 @@ def test_find_text_on_the_screen(test_window):
     x, y = first.center
     assert 200 <= x <= 900 and 200 <= y <= 240  # in the window's title bar
     anywhere = [match.center for match in macos.screen.find_text(words)]
-    assert any(abs(mx - x) <= 4 and abs(my - y) <= 4 for mx, my in anywhere)  # the same place, on the whole display
+    # The same place on the whole display, where the text is smaller for OCR, so its box may shift a little.
+    assert any(abs(mx - x) <= 12 and abs(my - y) <= 12 for mx, my in anywhere)
     assert macos.screen.wait_for_text("no such text, surely", timeout=0.5) is None
     assert re.fullmatch(r"#[0-9a-f]{6}", macos.screen.color_at(550, 380))
+
+
+def test_screenshot_settings_are_read():
+    assert macos.screen.screenshot_format() in ("png", "jpg", "heic", "tiff", "gif", "pdf", "bmp")
+    assert isinstance(macos.screen.screenshot_shadow(), bool)
+    assert macos.screen.screenshot_folder().is_absolute()

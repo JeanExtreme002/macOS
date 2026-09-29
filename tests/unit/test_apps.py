@@ -1,5 +1,7 @@
 """Unit tests for :mod:`macos.apps`. They run on any platform."""
 
+from pathlib import Path
+
 import pytest
 
 import macos
@@ -32,3 +34,46 @@ def test_open_with_reports_failures_as_app_not_found(fake_run, monkeypatch, tmp_
 
     with pytest.raises(macos.AppNotFoundError, match="could not open"):
         macos.open_with(tmp_path, "Nope")
+
+
+def test_login_items(fake_run, monkeypatch):
+    from macos import apps
+
+    fake_run.stdout = "Rectangle\x1f/Applications/Rectangle.app\x1eBackup\x1fmissing value\x1e\n"
+    assert apps.login_items() == [
+        apps.LoginItem("Rectangle", "/Applications/Rectangle.app"),
+        apps.LoginItem("Backup", None),
+    ]
+    monkeypatch.setattr(apps, "_locate", lambda name: "/Applications/Rectangle.app")
+    monkeypatch.setattr(apps.os.path, "realpath", lambda path: path)
+    assert apps.add_login_item("Rectangle").name == "Rectangle"  # already there: nothing added
+    assert "make login item" not in fake_run.args[2]
+    assert apps.remove_login_item("Rectangle") is True
+    assert fake_run.args[3:] == ["--", "/Applications/Rectangle.app"]  # removed by path
+
+
+def test_install_from_dmg_checks_the_destination(tmp_path):
+    with pytest.raises(NotADirectoryError):
+        macos.apps.install_from_dmg(tmp_path / "Tool.dmg", destination=tmp_path / "missing")
+
+
+def test_install_from_dmg_keeps_the_old_app_when_the_copy_fails(monkeypatch, tmp_path):
+    from macos import apps, system
+
+    volume = tmp_path / "Volume"
+    (volume / "Tool.app" / "Contents").mkdir(parents=True)
+    installed = tmp_path / "Applications" / "Tool.app"
+    (installed / "Contents").mkdir(parents=True)
+    (installed / "Contents" / "old").write_text("old version")
+    monkeypatch.setattr(system, "mount_image", lambda image: volume)
+    monkeypatch.setattr(system, "unmount_image", lambda mounted, force=False: None)
+
+    def failing_copy(args):
+        Path(args[-1]).mkdir()  # a partial copy
+        raise macos.CommandError(args, 1, "No space left on device")
+
+    monkeypatch.setattr(apps, "_run", failing_copy)
+    with pytest.raises(macos.CommandError):
+        apps.install_from_dmg(tmp_path / "Tool.dmg", destination=tmp_path / "Applications", replace=True)
+    assert (installed / "Contents" / "old").read_text() == "old version"  # still installed
+    assert sorted(path.name for path in (tmp_path / "Applications").iterdir()) == ["Tool.app"]  # no leftovers

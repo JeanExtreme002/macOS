@@ -37,6 +37,7 @@ macos.mouse.click(300, 400)
 macos.mouse.click_text("Submit")                     # wherever it shows on the screen
 
 macos.windows.focused().set_frame(0, 25, 1280, 800)
+macos.windows.focused().snap("left")                 # the left half, like Rectangle
 
 macos.shortcuts.run("Translate", input="Olá")        # 'Hello'
 macos.music.now_playing()                            # Track(title='Imagine', artist='John Lennon', ...)
@@ -109,10 +110,13 @@ Everything runs on your Mac, offline, with Apple's own models. See
 
 ```python
 macos.keychain.set("my-app", "alice", "s3cret")
-macos.keychain.get("my-app", "alice")             # 's3cret'
+macos.keychain.get("my-app", "alice")              # 's3cret'
+
+if macos.auth.confirm("unlock the deploy token"):  # Touch ID or the password
+    token = macos.keychain.get("deploy", "prod")
 ```
 
-See [Keychain](keychain.md).
+See [Keychain](keychain.md) and [Authentication](auth.md).
 
 ### System & Hardware
 
@@ -121,6 +125,8 @@ macos.appearance.is_dark()                    # True
 macos.volume.set(30)
 macos.audio.set_output("AirPods")
 macos.power.battery()                         # Battery(percent=87, charging=True, ...)
+macos.dock.set_autohide(True)
+macos.defaults.write("com.apple.finder", "ShowPathbar", True)
 
 macos.screenshot("screen.png")
 macos.screen.record("demo.mov", 10)
@@ -132,6 +138,7 @@ for device in macos.bluetooth.devices():
 ```
 
 See [Appearance](appearance.md), [Volume](volume.md), [Audio](audio.md),
+[Dock](dock.md), [Defaults](defaults.md), [Time Machine](time_machine.md),
 [Power](power.md), [Screen](screen.md), [Camera](camera.md),
 [Bluetooth](bluetooth.md), [Network](network.md) and [System](system.md).
 

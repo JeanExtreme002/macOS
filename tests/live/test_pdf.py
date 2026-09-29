@@ -203,3 +203,16 @@ def test_pdf_grayscale(tmp_path):
     for color in macos.image.dominant_colors(page, count=3):
         red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
         assert max(red, green, blue) - min(red, green, blue) <= 3  # no color left
+
+
+def test_ocr_makes_a_scan_searchable(tmp_path):
+    source = _text_pdf(tmp_path, ["Invoice number 4821", "Second page about ocean waves"])
+    pages = [macos.pdf.render(source, number, size=1700) for number in (1, 2)]
+    scan = macos.pdf.from_images(pages, tmp_path / "scan.pdf")
+    assert macos.pdf.text(scan).strip() == ""  # images only
+
+    searchable = macos.pdf.ocr(scan, tmp_path / "searchable.pdf", languages=["en-US"])
+    assert "Invoice number 4821" in macos.pdf.text(searchable, [1])  # the words keep their spaces
+    assert "ocean waves" in macos.pdf.text(searchable, [2])
+    kept = macos.pdf.ocr(source, tmp_path / "kept.pdf")  # pages with text stay as they are
+    assert macos.pdf.text(kept) == macos.pdf.text(source)

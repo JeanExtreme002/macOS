@@ -17,6 +17,7 @@ Photos and Preview: nothing to install and no permission needed.
 import ctypes
 import math
 import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -241,6 +242,30 @@ def _spans(line: str, needle: str) -> List[Tuple[int, int]]:
         spans.append((origin[start], origin[start + len(wanted) - 1] + 1))
         start = folded.find(wanted, start + len(wanted))
     return spans
+
+
+def _words(image: Image, languages: Optional[Sequence[str]] = None) -> List[Tuple[str, Tuple[float, float, float, float]]]:
+    """Every word of the image's text, with its own box (fractions of the image from its top-left)."""
+    _load()
+    found = []
+    with _objc.autorelease_pool():
+        for observation in _perform(image, _request(languages, False)):
+            candidates = _objc.send(observation, "topCandidates:", 1, argtypes=(NSUInteger,))
+            for candidate in _objc.nsarray(candidates):
+                line = _objc.pystring(_objc.send(candidate, "string")) or ""
+                for match in re.finditer(r"\S+", line):
+                    first, last = _utf16(line, match.start()), _utf16(line, match.end())
+                    error = ctypes.c_void_p()
+                    part = _objc.send(
+                        candidate,
+                        "boundingBoxForRange:error:",
+                        _Range(first, last - first),
+                        ctypes.byref(error),
+                        argtypes=(_Range, ctypes.c_void_p),
+                    )
+                    if part:
+                        found.append((match.group(0), _box(part)))
+    return found
 
 
 def _occurrences(

@@ -456,8 +456,9 @@ _WATCHERS: Dict[str, Callable[[], Any]] = {
 
 
 def _observer() -> int:
-    _objc.define_class("PymacosEventObserver", {"handle:": ("v@:@", _Handle, _handle)})
-    return _objc.new("PymacosEventObserver")
+    """An observer this module owns, released when listening stops (``_objc.new`` would be autoreleased)."""
+    observer_class = _objc.define_class("PymacosEventObserver", {"handle:": ("v@:@", _Handle, _handle)})
+    return _objc.send(_objc.send(observer_class, "alloc"), "init")
 
 
 def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Optional[float]) -> None:

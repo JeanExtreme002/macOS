@@ -1,8 +1,12 @@
 # pymacos
 
-**A Pythonic interface to macOS.** Control your whole Mac from
-Python: apps, notifications, input, screen, camera, microphone, OCR, media
-and more, with one import and zero dependencies.
+<p class="wordmark"><img alt="pymacos" src="_static/brand/wordmark-light.svg" width="360"></p>
+
+<h2 class="tagline">A Pythonic interface to macOS</h2>
+
+Control your whole Mac from Python: apps, notifications, input, screen, camera,
+microphone, OCR, media, Keychain, Touch ID and more, with one import and zero
+dependencies.
 
 <table class="badge-table">
   <tr>
@@ -56,8 +60,8 @@ macos.finder.trash("old.log")                   # moved to the Trash
 | **User Interaction** | [Dialogs](dialog.md), [Notifications](notifications.md), [Sound](sound.md), [Speech](speech.md) |
 | **Files & Documents** | [Audio Files](audio-files.md), [Finder](finder.md), [Images](image.md), [PDF](pdf.md), [Spotlight](spotlight.md), [Video](video.md) |
 | **Intelligence** | [Language](language.md), [Vision](vision.md) |
-| **Security** | [Keychain](keychain.md) |
-| **System & Hardware** | [Appearance](appearance.md), [Audio](audio.md), [Bluetooth](bluetooth.md), [Camera](camera.md), [Network](network.md), [Power](power.md), [Screen](screen.md), [System](system.md), [Volume](volume.md) |
+| **Security** | [Authentication](auth.md), [Keychain](keychain.md) |
+| **System & Hardware** | [Appearance](appearance.md), [Audio](audio.md), [Bluetooth](bluetooth.md), [Camera](camera.md), [Defaults](defaults.md), [Dock](dock.md), [Network](network.md), [Power](power.md), [Screen](screen.md), [System](system.md), [Time Machine](time_machine.md), [Volume](volume.md) |
 
 New here? Read [Why pymacos?](why.md), then start with
 [Installation](installation.md) and the [Quick Start](quickstart.md).
@@ -123,6 +127,7 @@ vision
 :caption: Security
 :hidden:
 
+auth
 keychain
 ```
 
@@ -134,10 +139,13 @@ appearance
 audio
 bluetooth
 camera
+defaults
+dock
 network
 power
 screen
 system
+time_machine
 volume
 ```
 

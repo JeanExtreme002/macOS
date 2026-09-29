@@ -77,3 +77,19 @@ def test_window_screenshot_and_wait_for(test_window):
         shot.unlink()
     assert macos.windows.wait_for(title=test_window.title, timeout=5) == test_window
     assert macos.windows.wait_for(title="no such window, surely", timeout=0.3) is None
+
+
+def test_window_snap(test_window):
+    from macos.windows import _usable_areas
+
+    area_x, area_y, area_width, area_height = _usable_areas()[0]
+    test_window.snap("left", display=1)
+    time.sleep(0.3)
+    x, y, width, height = test_window.frame
+    assert (x, y) == (round(area_x), round(area_y)) and abs(width - area_width / 2) <= 2
+    test_window.snap("bottom_right")
+    time.sleep(0.3)
+    x, y, width, height = test_window.frame
+    assert abs(x - (area_x + area_width / 2)) <= 2 and abs(y + height - (area_y + area_height)) <= 2
+    with pytest.raises(ValueError, match="layout must be one of"):
+        test_window.snap("diagonal")

@@ -1,6 +1,15 @@
-# pymacos
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/JeanExtreme002/pymacos/main/docs/_static/brand/wordmark-dark.svg">
+    <img alt="pymacos" src="https://raw.githubusercontent.com/JeanExtreme002/pymacos/main/docs/_static/brand/wordmark-light.svg" width="360">
+  </picture>
+</p>
 
-**A Pythonic interface to macOS.** Control your whole Mac from Python: apps, notifications, input, screen, camera, microphone, OCR, media and more, with one import and zero dependencies.
+<br>
+
+## A Pythonic interface to macOS
+
+Control your whole Mac from Python: apps, notifications, input, screen, camera, microphone, OCR, media, Keychain, Touch ID and more, with one import and zero dependencies.
 
 <table>
     <tr>
@@ -70,8 +79,8 @@ macos.finder.trash("old.log")                   # moved to the Trash
 | **User Interaction** | [Dialogs](https://macos.readthedocs.io/en/latest/dialog.html), [Notifications](https://macos.readthedocs.io/en/latest/notifications.html), [Sound](https://macos.readthedocs.io/en/latest/sound.html), [Speech](https://macos.readthedocs.io/en/latest/speech.html) |
 | **Files & Documents** | [Audio Files](https://macos.readthedocs.io/en/latest/audio-files.html), [Finder](https://macos.readthedocs.io/en/latest/finder.html), [Images](https://macos.readthedocs.io/en/latest/image.html), [PDF](https://macos.readthedocs.io/en/latest/pdf.html), [Spotlight](https://macos.readthedocs.io/en/latest/spotlight.html), [Video](https://macos.readthedocs.io/en/latest/video.html) |
 | **Intelligence** | [Language](https://macos.readthedocs.io/en/latest/language.html), [Vision](https://macos.readthedocs.io/en/latest/vision.html) |
-| **Security** | [Keychain](https://macos.readthedocs.io/en/latest/keychain.html) |
-| **System & Hardware** | [Appearance](https://macos.readthedocs.io/en/latest/appearance.html), [Audio](https://macos.readthedocs.io/en/latest/audio.html), [Bluetooth](https://macos.readthedocs.io/en/latest/bluetooth.html), [Camera](https://macos.readthedocs.io/en/latest/camera.html), [Network](https://macos.readthedocs.io/en/latest/network.html), [Power](https://macos.readthedocs.io/en/latest/power.html), [Screen](https://macos.readthedocs.io/en/latest/screen.html), [System](https://macos.readthedocs.io/en/latest/system.html), [Volume](https://macos.readthedocs.io/en/latest/volume.html) |
+| **Security** | [Authentication](https://macos.readthedocs.io/en/latest/auth.html), [Keychain](https://macos.readthedocs.io/en/latest/keychain.html) |
+| **System & Hardware** | [Appearance](https://macos.readthedocs.io/en/latest/appearance.html), [Audio](https://macos.readthedocs.io/en/latest/audio.html), [Bluetooth](https://macos.readthedocs.io/en/latest/bluetooth.html), [Camera](https://macos.readthedocs.io/en/latest/camera.html), [Defaults](https://macos.readthedocs.io/en/latest/defaults.html), [Dock](https://macos.readthedocs.io/en/latest/dock.html), [Network](https://macos.readthedocs.io/en/latest/network.html), [Power](https://macos.readthedocs.io/en/latest/power.html), [Screen](https://macos.readthedocs.io/en/latest/screen.html), [System](https://macos.readthedocs.io/en/latest/system.html), [Time Machine](https://macos.readthedocs.io/en/latest/time_machine.html), [Volume](https://macos.readthedocs.io/en/latest/volume.html) |
 
 ## Install
 

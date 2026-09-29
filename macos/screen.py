@@ -35,6 +35,12 @@ __all__ = [
     "find_text",
     "wait_for_text",
     "color_at",
+    "screenshot_folder",
+    "set_screenshot_folder",
+    "screenshot_format",
+    "set_screenshot_format",
+    "screenshot_shadow",
+    "set_screenshot_shadow",
     "has_permission",
     "request_permission",
     "displays",
@@ -265,6 +271,76 @@ def color_at(x: float, y: float) -> str:
         return image.dominant_colors(shot, count=1)[0]
     finally:
         shot.unlink(missing_ok=True)
+
+
+_CAPTURE_SETTINGS = "com.apple.screencapture"
+_SETTING_FORMATS = ("png", "jpg", "heic", "tiff", "gif", "pdf", "bmp")
+
+
+def _apply_capture_settings() -> None:
+    # The screenshot shortcuts' UI reads the settings when it starts.
+    try:
+        _run(["killall", "SystemUIServer"])
+    except MacOSError:
+        pass  # not running: nothing to apply
+
+
+def screenshot_folder() -> Path:
+    """Where ⌘⇧3, ⌘⇧4 and ⌘⇧5 save screenshots: the Desktop unless changed."""
+    from . import defaults
+
+    location = defaults.read(_CAPTURE_SETTINGS, "location")
+    return Path(os.path.expanduser(location)) if location else Path.home() / "Desktop"
+
+
+def set_screenshot_folder(folder: Union[str, "os.PathLike[str]"]) -> None:
+    """Save the screenshots taken with the keyboard shortcuts in ``folder``, which must exist."""
+    from . import defaults
+
+    target = Path(folder).expanduser().resolve()
+    if not target.is_dir():
+        raise NotADirectoryError(str(target))
+    defaults.write(_CAPTURE_SETTINGS, "location", str(target))
+    _apply_capture_settings()
+
+
+def screenshot_format() -> str:
+    """The format the screenshot shortcuts save in: ``'png'`` unless changed."""
+    from . import defaults
+
+    found = str(defaults.read(_CAPTURE_SETTINGS, "type", default="png")).lower()
+    return "jpg" if found == "jpeg" else found
+
+
+def set_screenshot_format(format: str) -> None:
+    """
+    Save the screenshots taken with the shortcuts in ``format``.
+
+    One of ``'png'``, ``'jpg'``, ``'heic'``, ``'tiff'``, ``'gif'``, ``'pdf'`` or ``'bmp'``.
+    """
+    from . import defaults
+
+    wanted = format.lower().lstrip(".")
+    wanted = "jpg" if wanted == "jpeg" else wanted
+    if wanted not in _SETTING_FORMATS:
+        raise ValueError("format must be one of {}, not {!r}".format(", ".join(_SETTING_FORMATS), format))
+    defaults.write(_CAPTURE_SETTINGS, "type", wanted)
+    _apply_capture_settings()
+
+
+def screenshot_shadow() -> bool:
+    """Whether screenshots of a window (⌘⇧4, then Space) keep its shadow."""
+    from . import defaults
+
+    return not defaults.read(_CAPTURE_SETTINGS, "disable-shadow", default=False)
+
+
+def set_screenshot_shadow(on: bool = True) -> None:
+    """Keep windows' shadows in screenshots of a window, or leave them out for tight images."""
+    from . import defaults
+
+    defaults.write(_CAPTURE_SETTINGS, "disable-shadow", not on)
+    _apply_capture_settings()
 
 
 @lru_cache(maxsize=None)

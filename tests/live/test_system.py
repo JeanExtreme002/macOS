@@ -71,3 +71,27 @@ def test_camera_microphone_and_power_state():
 def test_wait_for_idle():
     assert macos.system.wait_for_idle(0) is True
     assert macos.system.wait_for_idle(3600, timeout=0.3) is False
+
+
+def test_cpu_and_memory_usage():
+    assert 0.0 <= macos.system.cpu_usage(0.3) <= 1.0
+    usage = macos.system.memory_usage()
+    assert usage.total == macos.system.memory() and 0 < usage.used <= usage.total
+    assert 0.0 < usage.percent <= 1.0 and usage.wired > 0
+
+
+def test_mount_image(tmp_path):
+    import subprocess
+
+    folder = tmp_path / "content"
+    folder.mkdir()
+    (folder / "hello.txt").write_text("hi")
+    image = tmp_path / "test.dmg"
+    subprocess.run(["hdiutil", "create", "-quiet", "-volname", "PymacosTest", "-srcfolder", str(folder), str(image)], check=True)
+
+    mounted = macos.system.mount_image(image)
+    try:
+        assert (mounted / "hello.txt").read_text() == "hi"
+    finally:
+        macos.system.unmount_image(mounted, force=True)
+    assert not mounted.exists()

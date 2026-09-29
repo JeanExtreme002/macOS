@@ -174,3 +174,25 @@ def test_find_text_argument_checks():
         screen.find_text("  ")
     with pytest.raises(ValueError, match="interval"):
         screen.wait_for_text("ok", interval=0)
+
+
+def test_screenshot_settings(monkeypatch, tmp_path):
+    from macos import defaults
+
+    store, applied = {}, []
+    monkeypatch.setattr(defaults, "read", lambda domain, key=None, default=None: store.get(key, default))
+    monkeypatch.setattr(defaults, "write", lambda domain, key, value: store.__setitem__(key, value))
+    monkeypatch.setattr(screen, "_apply_capture_settings", lambda: applied.append(1))
+
+    assert screen.screenshot_format() == "png" and screen.screenshot_shadow() is True
+    screen.set_screenshot_folder(tmp_path)
+    screen.set_screenshot_format(".JPEG")
+    screen.set_screenshot_shadow(False)
+    assert store == {"location": str(tmp_path.resolve()), "type": "jpg", "disable-shadow": True}
+    assert screen.screenshot_folder() == tmp_path.resolve()
+    assert (screen.screenshot_format(), screen.screenshot_shadow()) == ("jpg", False)
+    assert len(applied) == 3
+    with pytest.raises(ValueError, match="format must be one of"):
+        screen.set_screenshot_format("webp")
+    with pytest.raises(NotADirectoryError):
+        screen.set_screenshot_folder(tmp_path / "missing")

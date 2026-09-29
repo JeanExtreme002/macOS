@@ -79,3 +79,50 @@ def test_finder_selection_and_current_folder(fake_run):
     assert macos.finder.selection() == [] and macos.finder.current_folder() is None
     fake_run.stdout = "/Users/alice/Documents/\n"
     assert macos.finder.current_folder() == Path("/Users/alice/Documents")
+
+
+def test_finder_settings(monkeypatch):
+    from macos import defaults, finder
+
+    store, restarts = {}, []
+    monkeypatch.setattr(defaults, "read", lambda domain, key=None, default=None: store.get((domain, key), default))
+    monkeypatch.setattr(defaults, "write", lambda domain, key, value: store.__setitem__((domain, key), value))
+    monkeypatch.setattr(finder, "restart", lambda: restarts.append(1))
+
+    assert finder.show_hidden_files() is False
+    finder.set_show_hidden_files()
+    finder.set_show_extensions(True)
+    finder.set_show_path_bar(False)
+    finder.set_show_status_bar(True)
+    assert store == {
+        ("com.apple.finder", "AppleShowAllFiles"): True,
+        ("NSGlobalDomain", "AppleShowAllExtensions"): True,
+        ("com.apple.finder", "ShowPathbar"): False,
+        ("com.apple.finder", "ShowStatusBar"): True,
+    }
+    assert finder.show_hidden_files() and finder.show_extensions() and not finder.show_path_bar() and len(restarts) == 4
+
+
+def test_finder_compress_and_extract_commands(fake_run, tmp_path):
+    folder = tmp_path / "Project"
+    folder.mkdir()
+
+    assert macos.finder.compress(folder) == tmp_path / "Project.zip"
+    assert fake_run.args == ["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(folder), str(tmp_path / "Project.zip")]
+    archive = tmp_path / "Project.zip"
+    archive.write_bytes(b"zip")
+    assert macos.finder.extract(archive, tmp_path / "out") == tmp_path / "out"
+    assert fake_run.args == ["ditto", "-x", "-k", str(archive), str(tmp_path / "out")]
+    with pytest.raises(ValueError, match="must end in .zip"):
+        macos.finder.compress(folder, tmp_path / "Project.tar")
+
+
+def test_quick_look_returns_at_once(fake_run, monkeypatch, tmp_path):
+    import subprocess
+
+    started = []
+    monkeypatch.setattr(subprocess, "Popen", lambda args, **kwargs: started.append((args, kwargs["start_new_session"])))
+    (tmp_path / "a.txt").write_text("x")
+
+    macos.finder.quick_look(tmp_path / "a.txt")
+    assert started == [(["qlmanage", "-p", str(tmp_path / "a.txt")], True)]

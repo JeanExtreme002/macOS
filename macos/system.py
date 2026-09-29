@@ -18,12 +18,13 @@ import ctypes
 import json
 import os
 import platform
+import re
 import time
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework, require_macos, run as _run
@@ -38,11 +39,18 @@ __all__ = [
     "memory",
     "computer_name",
     "uptime",
+    "cpu_usage",
+    "MemoryUsage",
+    "memory_usage",
     "idle_time",
     "wait_for_idle",
     "wait_for_activity",
     "volumes",
     "eject",
+    "mount_image",
+    "unmount_image",
+    "Update",
+    "available_updates",
     "fonts",
     "thermal_state",
     "lid_closed",
@@ -170,6 +178,123 @@ def idle_time() -> timedelta:
     if value is None:
         raise MacOSError("the idle time is not available")
     return timedelta(microseconds=value / 1000)  # nanoseconds
+
+
+_CPU_LOAD_INFO, _VM_INFO64 = 3, 4  # HOST_CPU_LOAD_INFO, HOST_VM_INFO64
+
+
+class _VMStatistics(ctypes.Structure):
+    """``vm_statistics64``: page counts."""
+
+    natural, counter = ctypes.c_uint32, ctypes.c_uint64
+    _fields_ = [
+        ("free_count", natural),
+        ("active_count", natural),
+        ("inactive_count", natural),
+        ("wire_count", natural),
+        ("zero_fill_count", counter),
+        ("reactivations", counter),
+        ("pageins", counter),
+        ("pageouts", counter),
+        ("faults", counter),
+        ("cow_faults", counter),
+        ("lookups", counter),
+        ("hits", counter),
+        ("purges", counter),
+        ("purgeable_count", natural),
+        ("speculative_count", natural),
+        ("decompressions", counter),
+        ("compressions", counter),
+        ("swapins", counter),
+        ("swapouts", counter),
+        ("compressor_page_count", natural),
+        ("throttled_count", natural),
+        ("external_page_count", natural),
+        ("internal_page_count", natural),
+        ("total_uncompressed_pages_in_compressor", counter),
+    ]
+
+
+@lru_cache(maxsize=None)
+def _mach() -> ctypes.CDLL:
+    libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    libc.mach_host_self.restype = ctypes.c_uint32
+    libc.host_statistics.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))
+    libc.host_statistics.restype = ctypes.c_int
+    libc.host_statistics64.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))
+    libc.host_statistics64.restype = ctypes.c_int
+    return libc
+
+
+def _cpu_ticks() -> Tuple[int, int, int, int]:
+    """The processor's user, system, idle and nice ticks since startup, all cores together (32-bit counters)."""
+    require_macos()
+    ticks = (ctypes.c_uint32 * 4)()  # user, system, idle, nice
+    count = ctypes.c_uint32(4)
+    mach = _mach()
+    if mach.host_statistics(mach.mach_host_self(), _CPU_LOAD_INFO, ticks, ctypes.byref(count)) != 0:
+        raise MacOSError("could not read the processor load")
+    return ticks[0], ticks[1], ticks[2], ticks[3]
+
+
+def cpu_usage(interval: float = 0.5) -> float:
+    """
+    How busy the processor is, from 0.0 (idle) to 1.0 (every core busy), over the next ``interval`` seconds.
+
+    Like the CPU graph in Activity Monitor, all cores together.
+    """
+    if interval <= 0:
+        raise ValueError("interval must be positive, not {}".format(interval))
+    before = _cpu_ticks()
+    time.sleep(interval)
+    after = _cpu_ticks()
+    # Each counter is 32-bit and wraps around: take each one's own difference, modulo 2**32.
+    user, system_, idle, nice = ((later - earlier) % 2**32 for earlier, later in zip(before, after))
+    total = user + system_ + idle + nice
+    return min(1.0, (user + system_ + nice) / total) if total else 0.0
+
+
+@dataclass(frozen=True)
+class MemoryUsage:
+    """The memory in use, in bytes, counted as Activity Monitor's Memory tab does."""
+
+    total: int
+    used: int
+    """App memory, wired and compressed memory: what isn't free to give to an app."""
+    wired: int
+    """Memory the system keeps, which can't be compressed or paged out."""
+    compressed: int
+    cached: int
+    """Recently used files, kept in memory while nothing needs it."""
+
+    @property
+    def free(self) -> int:
+        return max(0, self.total - self.used)
+
+    @property
+    def percent(self) -> float:
+        """``used`` as a fraction of ``total``, from 0.0 to 1.0."""
+        return self.used / self.total if self.total else 0.0
+
+
+def memory_usage() -> MemoryUsage:
+    """How the memory is used right now: see :class:`MemoryUsage`."""
+    require_macos()
+    stats = _VMStatistics()
+    count = ctypes.c_uint32(ctypes.sizeof(_VMStatistics) // 4)  # in 32-bit words
+    mach = _mach()
+    if mach.host_statistics64(mach.mach_host_self(), _VM_INFO64, ctypes.byref(stats), ctypes.byref(count)) != 0:
+        raise MacOSError("could not read the memory statistics")
+    page = int.from_bytes(_sysctl("hw.pagesize"), "little") or 4096
+    app = max(0, stats.internal_page_count - stats.purgeable_count)
+    wired, compressed = stats.wire_count, stats.compressor_page_count
+    return MemoryUsage(
+        total=memory(),
+        used=(app + wired + compressed) * page,
+        wired=wired * page,
+        compressed=compressed * page,
+        cached=(stats.external_page_count + stats.purgeable_count) * page,
+    )
 
 
 def wait_for_idle(seconds: Union[float, timedelta], *, timeout: Optional[float] = None) -> bool:
@@ -343,6 +468,95 @@ def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
     if not chosen.is_ejectable:
         raise ValueError("{} can't be ejected".format(chosen.name))
     _run(["diskutil", "eject", str(chosen.path)])
+
+
+def mount_image(path: Union[str, "os.PathLike[str]"]) -> Path:
+    """
+    Mount a disk image (``.dmg``, ``.iso``...) like double-clicking it, without opening a Finder window; return where.
+
+    ::
+
+        mounted = macos.system.mount_image("~/Downloads/Tool.dmg")   # PosixPath('/Volumes/Tool')
+        ...
+        macos.system.unmount_image(mounted)
+
+    A license the image shows first is accepted. See also :func:`macos.apps.install_from_dmg`.
+    """
+    import plistlib
+
+    image = Path(path).expanduser().resolve()
+    if not image.is_file():
+        raise FileNotFoundError(str(image))
+    # "Y" answers the license agreement some images show before mounting.
+    output = _run(["hdiutil", "attach", "-nobrowse", "-noautoopen", "-plist", str(image)], input="Y\n")
+    start = output.find("<?xml")
+    try:
+        details = plistlib.loads(output[start:].encode()) if start >= 0 else {}
+    except (plistlib.InvalidFileException, ValueError):
+        details = {}
+    entities = details.get("system-entities", [])
+    points = [entity["mount-point"] for entity in entities if entity.get("mount-point")]
+    if not points:
+        # Attached without a volume: detach its disk, so the image isn't left attached.
+        devices = sorted((entity["dev-entry"] for entity in entities if entity.get("dev-entry")), key=len)
+        for device in devices[:1]:
+            try:
+                _run(["hdiutil", "detach", device, "-force"])
+            except MacOSError:
+                pass
+        raise MacOSError("{} has no volume to mount".format(image))
+    return Path(points[0])
+
+
+def unmount_image(mount_point: Union[str, "os.PathLike[str]"], *, force: bool = False) -> None:
+    """Unmount a disk image mounted with :func:`mount_image` (or from Finder), given where it's mounted."""
+    _run(["hdiutil", "detach", str(Path(mount_point)), *(["-force"] if force else [])])
+
+
+@dataclass(frozen=True)
+class Update:
+    """A software update macOS offers, as System Settings › General › Software Update lists it."""
+
+    label: str
+    """The name ``softwareupdate --install`` takes, such as ``'macOS Sequoia 15.8.1-24H32'``."""
+    title: str
+    version: str
+    size: Optional[int]
+    """In bytes."""
+    recommended: bool
+    restart: bool
+    """Whether installing it restarts the Mac."""
+
+
+def _updates(output: str) -> List[Update]:
+    found = []
+    for label, details in re.findall(r"^\*\s*Label:\s*(.+?)\s*\n\s*(.+)$", output, re.M):
+        fields = dict(
+            (key.strip(), value.strip()) for key, _, value in (part.partition(":") for part in details.split(",")) if key.strip()
+        )
+        size = re.match(r"(\d+)\s*KiB", fields.get("Size", ""))
+        found.append(
+            Update(
+                label=label,
+                title=fields.get("Title", label).replace("\xa0", " "),
+                version=fields.get("Version", ""),
+                size=int(size.group(1)) * 1024 if size else None,
+                recommended=fields.get("Recommended", "").upper() == "YES",
+                restart=fields.get("Action", "").lower() == "restart",
+            )
+        )
+    return found
+
+
+def available_updates() -> List[Update]:
+    """
+    The macOS and app updates Software Update offers; ``[]`` when everything is up to date.
+
+    Asks Apple's servers, so it takes a while (often 10 to 30 seconds). To
+    install one, run ``softwareupdate --install "<label>"`` (with ``sudo``
+    for most).
+    """
+    return _updates(_run(["softwareupdate", "--list"]))
 
 
 def fonts() -> List[str]:

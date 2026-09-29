@@ -82,6 +82,20 @@ macos.screen.color_at(100, 200)   # '#34c759'
 
 These need the [Screen Recording permission](permissions.md#screen-recording).
 
+## Screenshot settings
+
+Where and how the keyboard shortcuts (⌘⇧3, ⌘⇧4, ⌘⇧5) save screenshots:
+
+```python
+macos.screen.set_screenshot_folder("~/Pictures/Screenshots")   # the folder must exist
+macos.screen.set_screenshot_format("jpg")                      # png, jpg, heic, tiff, gif, pdf, bmp
+macos.screen.set_screenshot_shadow(False)                      # tight window captures
+
+macos.screen.screenshot_folder()    # PosixPath('/Users/alice/Pictures/Screenshots')
+```
+
+{func}`macos.screenshot` itself isn't affected: it saves where and as you ask.
+
 ## Displays
 
 {func}`~macos.screen.displays` lists the connected displays, the main one (with
@@ -227,3 +241,9 @@ this also locks it.
 - {func}`macos.screen.wait_for_text`
 - {func}`macos.screen.color_at`
 - {class}`macos.screen.TextMatch`
+- {func}`macos.screen.screenshot_folder`
+- {func}`macos.screen.set_screenshot_folder`
+- {func}`macos.screen.screenshot_format`
+- {func}`macos.screen.set_screenshot_format`
+- {func}`macos.screen.screenshot_shadow`
+- {func}`macos.screen.set_screenshot_shadow`

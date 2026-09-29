@@ -18,17 +18,35 @@ Force Quit window use), queried natively through the Objective-C runtime.
 
 import ctypes
 import os
+import shutil
 import time
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from functools import lru_cache
 from typing import Iterator, List, Optional, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSInteger, NSUInteger
 from ._system import framework, require_macos, run as _run
-from .errors import AppNotFoundError, CommandError
+from .errors import AppNotFoundError, CommandError, MacOSError
 
-__all__ = ["App", "running", "frontmost", "get", "open", "open_with", "default_for", "default_browser"]
+__all__ = [
+    "App",
+    "running",
+    "frontmost",
+    "get",
+    "open",
+    "open_with",
+    "install_from_dmg",
+    "LoginItem",
+    "login_items",
+    "add_login_item",
+    "remove_login_item",
+    "default_for",
+    "set_default_for",
+    "default_browser",
+]
 
 # NSApplicationActivationPolicy
 _POLICY_REGULAR = 0
@@ -371,6 +389,10 @@ def _launch_services() -> ctypes.CDLL:
     services.LSCopyDefaultApplicationURLForContentType.restype = _cf.CFTypeRef
     services.LSCopyDefaultApplicationURLForURL.argtypes = (_cf.CFTypeRef, ctypes.c_uint32, ctypes.c_void_p)
     services.LSCopyDefaultApplicationURLForURL.restype = _cf.CFTypeRef
+    services.LSSetDefaultRoleHandlerForContentType.argtypes = (_cf.CFTypeRef, ctypes.c_uint32, _cf.CFTypeRef)
+    services.LSSetDefaultRoleHandlerForContentType.restype = ctypes.c_int32
+    services.UTTypeIsDeclared.argtypes = (_cf.CFTypeRef,)
+    services.UTTypeIsDeclared.restype = ctypes.c_bool
 
     cf = _cf.lib()
     cf.CFURLCopyFileSystemPath.argtypes = (_cf.CFTypeRef, ctypes.c_long)
@@ -412,6 +434,229 @@ def default_for(kind: str) -> Optional[str]:
     with _cf.owned(_cf.string("public.filename-extension")) as tag_class, _cf.owned(_cf.string(extension)) as tag:
         with _cf.owned(services.UTTypeCreatePreferredIdentifierForTag(tag_class, tag, None)) as identifier:
             return _app_path(services.LSCopyDefaultApplicationURLForContentType(identifier, _ALL_ROLES, None))
+
+
+def set_default_for(kind: str, app: str, *, timeout: float = 60.0) -> None:
+    """
+    Make ``app`` open a kind of file by default, like Get Info › Open with › Change All.
+
+    ``kind`` works as in :func:`default_for`: an extension (``"pdf"``) or a
+    type identifier (``"public.plain-text"``). ``app`` is a name, bundle ID or
+    path, as for :func:`open`::
+
+        macos.apps.set_default_for("md", "Visual Studio Code")
+
+    Since macOS 26, macOS asks the user to confirm the change: this waits up
+    to ``timeout`` seconds for the answer, and raises
+    :class:`~macos.errors.MacOSError` if it's declined or doesn't come. The
+    default browser can't be set this way: macOS asks for that one in System
+    Settings.
+    """
+    path = _locate(app)
+    with _cf.owned(_content_type(kind)) as identifier:
+        type_name = _cf.to_str(identifier) or ""
+    with _objc.autorelease_pool():
+        workspace = _workspace()
+        selector = "setDefaultApplicationAtURL:toOpenContentType:completionHandler:"
+        if _objc.send(workspace, "respondsToSelector:", _objc.sel(selector), argtypes=(_objc.SEL,), restype=BOOL):
+            _set_default_with_workspace(workspace, path, type_name, app, kind, timeout)
+            return
+    # Before macOS 12: LaunchServices' older call, which recent systems ignore.
+    bundle_id = _bundle_id(path)
+    if not bundle_id:
+        raise AppNotFoundError("{!r} has no bundle identifier to register".format(app))
+    with _cf.owned(_cf.string(type_name)) as identifier, _cf.owned(_cf.string(bundle_id)) as handler:
+        status = _launch_services().LSSetDefaultRoleHandlerForContentType(identifier, _ALL_ROLES, handler)
+    if status != 0:
+        raise MacOSError("could not make {} the default for {!r} (error {})".format(app, kind, status))
+
+
+def _set_default_with_workspace(workspace: int, path: str, type_name: str, app: str, kind: str, timeout: float) -> None:
+    """``NSWorkspace``'s way (macOS 12+), which reports back through a completion handler."""
+    framework("UniformTypeIdentifiers")
+    content_type = _objc.send(_objc.cls("UTType"), "typeWithIdentifier:", _objc.nsstring(type_name), argtypes=(_objc.id,))
+    if not content_type:
+        raise ValueError("{!r} isn't a kind of file macOS knows".format(kind))
+    results: List[Optional[str]] = []
+
+    def done(error: int) -> None:
+        results.append(_objc.pystring(_objc.send(error, "localizedDescription")) if error else None)
+
+    handler = _objc.block(done, b"v@?@", ctypes.c_void_p)
+    _objc.send(
+        workspace,
+        "setDefaultApplicationAtURL:toOpenContentType:completionHandler:",
+        _objc.file_url(path),
+        content_type,
+        handler,
+        argtypes=(_objc.id, _objc.id, ctypes.c_void_p),
+        restype=None,
+    )
+    # Since macOS 26 the user is asked to confirm: the handler comes with their answer.
+    if not _objc.run_until(lambda: bool(results), timeout):
+        raise MacOSError("{} wasn't confirmed as the default for {!r} within {} seconds".format(app, kind, timeout))
+    if results[0]:
+        raise MacOSError("could not make {} the default for {!r}: {}".format(app, kind, results[0]))
+
+
+def _content_type(kind: str) -> int:
+    """The type identifier for an extension or an identifier, as an owned string."""
+    services = _launch_services()
+    if "." in kind and not kind.startswith("."):
+        identifier = _cf.string(kind)
+        if services.UTTypeIsDeclared(identifier):
+            return identifier
+        _cf.release(identifier)
+    extension = kind.rsplit(".", 1)[-1]
+    with _cf.owned(_cf.string("public.filename-extension")) as tag_class, _cf.owned(_cf.string(extension)) as tag:
+        return int(services.UTTypeCreatePreferredIdentifierForTag(tag_class, tag, None))
+
+
+def install_from_dmg(
+    image: Union[str, "os.PathLike[str]"],
+    *,
+    destination: Union[str, "os.PathLike[str]"] = "/Applications",
+    replace: bool = False,
+) -> str:
+    """
+    Install the app a disk image holds, as dragging it to Applications does, and return its new path.
+
+    ::
+
+        macos.apps.install_from_dmg("~/Downloads/Rectangle.dmg")   # '/Applications/Rectangle.app'
+
+    The image is mounted, the ``.app`` at its top is copied into
+    ``destination``, and the image is unmounted. An app already there raises
+    :class:`FileExistsError`, unless ``replace=True``. Installers (``.pkg``)
+    aren't run.
+    """
+    from . import system
+
+    target_folder = Path(destination).expanduser()
+    if not target_folder.is_dir():
+        raise NotADirectoryError(str(target_folder))
+    mounted = system.mount_image(image)
+    try:
+        found = sorted(entry for entry in mounted.iterdir() if entry.suffix == ".app" and entry.is_dir())
+        if not found:
+            raise AppNotFoundError("{} has no app at its top".format(Path(image).name))
+        source = found[0]
+        target = target_folder / source.name
+        if target.exists() and not replace:
+            raise FileExistsError(str(target))
+        # Copied beside it first, then swapped in: a failed copy leaves the installed app as it was.
+        token = uuid.uuid4().hex  # unique per call: two installs of the same app don't share these
+        staged = target_folder / ".{}.installing-{}".format(source.name, token)
+        try:
+            _run(["ditto", str(source), str(staged)])  # keeps the signature, attributes and links
+            if target.exists():
+                old = target_folder / ".{}.replaced-{}".format(source.name, token)
+                os.rename(str(target), str(old))
+                try:
+                    os.rename(str(staged), str(target))
+                except OSError:
+                    os.rename(str(old), str(target))  # put the old app back
+                    raise
+                shutil.rmtree(str(old), ignore_errors=True)
+            else:
+                os.rename(str(staged), str(target))
+        finally:
+            if staged.exists():
+                shutil.rmtree(str(staged), ignore_errors=True)
+    finally:
+        system.unmount_image(mounted, force=True)
+    return str(target)
+
+
+@dataclass(frozen=True)
+class LoginItem:
+    """An app (or file) opened when you log in, as listed in System Settings › General › Login Items."""
+
+    name: str
+    """As System Settings shows it, in the system's language (``'Xadrez'`` for Chess in Portuguese)."""
+    path: Optional[str]
+
+
+_LOGIN_ITEMS = """
+on run argv
+    set out to ""
+    tell application "System Events"
+        repeat with entry in login items
+            set out to out & (name of entry) & (ASCII character 31) & (path of entry) & (ASCII character 30)
+        end repeat
+    end tell
+    return out
+end run
+"""
+
+_ADD_LOGIN_ITEM = """
+on run argv
+    tell application "System Events" to make login item at end with properties {path:(item 1 of argv)}
+end run
+"""
+
+_REMOVE_LOGIN_ITEM = """
+on run argv
+    tell application "System Events" to delete (every login item whose path is (item 1 of argv))
+end run
+"""
+
+
+def login_items() -> List[LoginItem]:
+    """
+    The apps that open when you log in.
+
+    Goes through System Events: the first time, macOS asks to allow the app
+    running Python to control it. Apps that register themselves as
+    background items (with their own switch in System Settings) aren't listed.
+    """
+    from ._system import applescript
+
+    found = []
+    for record in applescript("System Events", _LOGIN_ITEMS).rstrip("\n").split("\x1e"):
+        fields = record.split("\x1f")
+        if len(fields) == 2:
+            name, path = fields
+            found.append(LoginItem(name=name, path=path if path and path != "missing value" else None))
+    return found
+
+
+def add_login_item(app: str) -> LoginItem:
+    """
+    Open ``app`` (a name, bundle ID or path, as for :func:`open`) each time you log in, and return the :class:`LoginItem`.
+
+    An app already there isn't added twice.
+    """
+    from ._system import applescript
+
+    path = _locate(app)
+    for item in login_items():
+        if item.path and os.path.realpath(item.path) == path:
+            return item
+    applescript("System Events", _ADD_LOGIN_ITEM, path)
+    return next(item for item in login_items() if item.path and os.path.realpath(item.path) == path)
+
+
+def remove_login_item(app: str) -> bool:
+    """
+    Stop opening ``app`` at login; return whether it was a login item.
+
+    ``app`` is its name as :func:`login_items` shows it, or an app's name,
+    bundle ID or path, as for :func:`open`.
+    """
+    from ._system import applescript
+
+    items = login_items()
+    matches = [item for item in items if item.name == app and item.path]
+    if not matches:
+        try:
+            path = _locate(app)
+        except AppNotFoundError:
+            return False
+        matches = [item for item in items if item.path and os.path.realpath(item.path) == path]
+    for item in matches:
+        applescript("System Events", _REMOVE_LOGIN_ITEM, item.path or "")
+    return bool(matches)
 
 
 def default_browser() -> Optional[str]:

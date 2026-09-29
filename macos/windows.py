@@ -32,7 +32,7 @@ from ._objc import CGPoint, CGSize
 from ._system import framework
 from .errors import MacOSError, PermissionDeniedError
 
-__all__ = ["Window", "list", "wait_for", "focused", "has_permission", "request_permission"]
+__all__ = ["Window", "LAYOUTS", "list", "wait_for", "focused", "has_permission", "request_permission"]
 
 _SUCCESS = 0
 _API_DISABLED = -25211  # kAXErrorAPIDisabled: no Accessibility permission
@@ -268,10 +268,13 @@ class Window:
 
     def set_frame(self, x: float, y: float, width: float, height: float) -> None:
         """Move and resize it at once: ``window.set_frame(0, 25, 1280, 800)``."""
-        self.move(x, y)
+        # Resized first: moved while still large, it could stick out of the
+        # screen, and macOS would cut it to fit, over the size asked for.
         self.resize(width, height)
-        # A window moved near the edge of the screen may have refused a size
-        # that didn't fit there yet: try again now that it's in place.
+        self.move(x, y)
+        # A window growing near the edge of the screen may have refused a size
+        # that didn't fit where it was: try again now that it's in place.
+        self.resize(width, height)
         self.move(x, y)
 
     def center(self) -> None:
@@ -299,6 +302,46 @@ class Window:
         left = display.x + (display.width - width) / 2
         top = max(display.y + (display.height - height) / 2, display.y)
         self.move(round(left), round(top))
+
+    def snap(self, layout: str, *, display: Optional[int] = None) -> None:
+        """
+        Fit it to part of the display, like Rectangle or macOS's own tiling: ``"left"``, ``"top_right"``, ``"maximize"``...
+
+        ::
+
+            macos.windows.focused().snap("left")
+            macos.windows.list("Terminal")[0].snap("right_third")
+
+        The layouts are :data:`LAYOUTS`: halves (``"left"``, ``"right"``,
+        ``"top"``, ``"bottom"``), quarters (``"top_left"``...), thirds
+        (``"left_third"``, ``"center_third"``, ``"right_third"``,
+        ``"left_two_thirds"``, ``"right_two_thirds"``) and ``"maximize"``.
+        They leave out the menu bar and the Dock. The window goes to the
+        display it's on, or to ``display`` (``1`` is the main one). Apps with
+        a minimum size may stay larger.
+        """
+        if layout not in LAYOUTS:
+            raise ValueError("layout must be one of {}, not {!r}".format(", ".join(LAYOUTS), layout))
+        areas = _usable_areas()
+        if display is not None:
+            if not 1 <= display <= len(areas):
+                raise ValueError("there's no display {}: there are {}".format(display, len(areas)))
+            area = areas[display - 1]
+        else:
+            x, y, width, height = self.frame
+            middle_x, middle_y = x + width / 2, y + height / 2
+            area = next(
+                (a for a in areas if a[0] <= middle_x < a[0] + a[2] and a[1] <= middle_y < a[1] + a[3]),
+                areas[0],
+            )
+        left, top, wide, tall = LAYOUTS[layout]
+        area_x, area_y, area_width, area_height = area
+        self.set_frame(
+            round(area_x + left * area_width),
+            round(area_y + top * area_height),
+            round(wide * area_width),
+            round(tall * area_height),
+        )
 
     def _set_flag(self, attribute: str, on: bool, what: str) -> None:
         flag = _cf.constant(_cf.lib(), "kCFBooleanTrue" if on else "kCFBooleanFalse")
@@ -364,6 +407,42 @@ class Window:
 
 
 _REGULAR, _ACCESSORY = 0, 1  # NSApplicationActivationPolicy: apps that can have windows
+
+
+LAYOUTS = {
+    "left": (0.0, 0.0, 0.5, 1.0),
+    "right": (0.5, 0.0, 0.5, 1.0),
+    "top": (0.0, 0.0, 1.0, 0.5),
+    "bottom": (0.0, 0.5, 1.0, 0.5),
+    "top_left": (0.0, 0.0, 0.5, 0.5),
+    "top_right": (0.5, 0.0, 0.5, 0.5),
+    "bottom_left": (0.0, 0.5, 0.5, 0.5),
+    "bottom_right": (0.5, 0.5, 0.5, 0.5),
+    "left_third": (0.0, 0.0, 1 / 3, 1.0),
+    "center_third": (1 / 3, 0.0, 1 / 3, 1.0),
+    "right_third": (2 / 3, 0.0, 1 / 3, 1.0),
+    "left_two_thirds": (0.0, 0.0, 2 / 3, 1.0),
+    "right_two_thirds": (1 / 3, 0.0, 2 / 3, 1.0),
+    "maximize": (0.0, 0.0, 1.0, 1.0),
+}
+"""The layouts :meth:`Window.snap` takes: ``(x, y, width, height)`` as fractions of the display's usable area."""
+
+
+def _usable_areas() -> "builtins.list[Tuple[float, float, float, float]]":
+    """Each display's area without the menu bar and the Dock, main first, in points from the main display's top-left."""
+    framework("AppKit")
+    areas = []
+    with _objc.autorelease_pool():
+        screens = builtins.list(_objc.nsarray(_objc.send(_objc.cls("NSScreen"), "screens")))
+        if not screens:
+            raise MacOSError("no display is connected")
+        main_height = _objc.send(screens[0], "frame", restype=_objc.CGRect).size.height
+        for screen_ in screens:
+            usable = _objc.send(screen_, "visibleFrame", restype=_objc.CGRect)
+            # AppKit measures from the main display's bottom-left corner, going up.
+            top = main_height - (usable.origin.y + usable.size.height)
+            areas.append((usable.origin.x, top, usable.size.width, usable.size.height))
+    return areas
 
 
 @lru_cache(maxsize=None)
