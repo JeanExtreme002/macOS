@@ -1,5 +1,8 @@
 """Tests of :mod:`macos.dock` against the real system. Skipped outside macOS."""
 
+import subprocess
+import time
+
 import macos
 from tests.helpers import SETTINGS
 
@@ -22,3 +25,6 @@ def test_dock_add_and_remove_an_app():
     finally:
         macos.defaults.write("com.apple.dock", "persistent-apps", before)
         macos.dock.restart()
+        # Leave a Dock restarted the ordinary way, as a quitting one saves its (restored) state.
+        subprocess.run(["killall", "Dock"])
+        time.sleep(3)

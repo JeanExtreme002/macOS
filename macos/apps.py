@@ -448,14 +448,50 @@ def set_default_for(kind: str, app: str) -> None:
     The default browser can't be set this way: macOS asks the user to confirm
     that one, in System Settings.
     """
-    services = _launch_services()
-    bundle_id = _bundle_id(_locate(app))
+    path = _locate(app)
+    with _cf.owned(_content_type(kind)) as identifier:
+        type_name = _cf.to_str(identifier) or ""
+    with _objc.autorelease_pool():
+        workspace = _workspace()
+        selector = "setDefaultApplicationAtURL:toOpenContentType:completionHandler:"
+        if _objc.send(workspace, "respondsToSelector:", _objc.sel(selector), argtypes=(_objc.SEL,), restype=BOOL):
+            _set_default_with_workspace(workspace, path, type_name, app, kind)
+            return
+    # Before macOS 12: LaunchServices' older call, which recent systems ignore.
+    bundle_id = _bundle_id(path)
     if not bundle_id:
         raise AppNotFoundError("{!r} has no bundle identifier to register".format(app))
-    with _cf.owned(_content_type(kind)) as identifier, _cf.owned(_cf.string(bundle_id)) as handler:
-        status = services.LSSetDefaultRoleHandlerForContentType(identifier, _ALL_ROLES, handler)
+    with _cf.owned(_cf.string(type_name)) as identifier, _cf.owned(_cf.string(bundle_id)) as handler:
+        status = _launch_services().LSSetDefaultRoleHandlerForContentType(identifier, _ALL_ROLES, handler)
     if status != 0:
         raise MacOSError("could not make {} the default for {!r} (error {})".format(app, kind, status))
+
+
+def _set_default_with_workspace(workspace: int, path: str, type_name: str, app: str, kind: str) -> None:
+    """``NSWorkspace``'s way (macOS 12+), which reports back through a completion handler."""
+    framework("UniformTypeIdentifiers")
+    content_type = _objc.send(_objc.cls("UTType"), "typeWithIdentifier:", _objc.nsstring(type_name), argtypes=(_objc.id,))
+    if not content_type:
+        raise ValueError("{!r} isn't a kind of file macOS knows".format(kind))
+    results: List[Optional[str]] = []
+
+    def done(error: int) -> None:
+        results.append(_objc.pystring(_objc.send(error, "localizedDescription")) if error else None)
+
+    handler = _objc.block(done, b"v@?@", ctypes.c_void_p)
+    _objc.send(
+        workspace,
+        "setDefaultApplicationAtURL:toOpenContentType:completionHandler:",
+        _objc.file_url(path),
+        content_type,
+        handler,
+        argtypes=(_objc.id, _objc.id, ctypes.c_void_p),
+        restype=None,
+    )
+    if not _objc.run_until(lambda: bool(results), 10):
+        raise MacOSError("macOS didn't confirm {} as the default for {!r}".format(app, kind))
+    if results[0]:
+        raise MacOSError("could not make {} the default for {!r}: {}".format(app, kind, results[0]))
 
 
 def _content_type(kind: str) -> int:
