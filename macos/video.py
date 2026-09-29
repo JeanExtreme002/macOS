@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Generator, Iterable, List, Optional, Sequence, Tuple, Union
 
 from . import _cf, _media, _objc
 from ._system import framework, run
@@ -585,14 +585,15 @@ def crop(source: PathLike, output: PathLike, box: Tuple[int, int, int, int]) -> 
     """
     Keep the part of a video inside ``box``, ``(x, y, width, height)`` in pixels from the top-left corner.
 
-    The box is measured on the upright picture, as it plays. Re-encodes at
-    the highest quality, sound included::
+    The box is measured on the upright picture, as it plays. Video encoders
+    need even sizes, so an odd width or height loses its last pixel.
+    Re-encodes at the highest quality, sound included::
 
         macos.video.crop("screen.mov", "window.mov", (100, 80, 1280, 720))
     """
     x, y, width, height = box
-    if width <= 0 or height <= 0 or x < 0 or y < 0:
-        raise ValueError("the box needs a positive size and no negative corner, not {}".format(box))
+    if width < 2 or height < 2 or x < 0 or y < 0:
+        raise ValueError("the box needs a size of at least 2 x 2 and no negative corner, not {}".format(box))
     target = _target(output)
     with _objc.autorelease_pool():
         media = _media.asset(_existing(source))
@@ -694,14 +695,10 @@ def add_audio(
         if at >= length:
             raise ValueError("at={} is past the end of the {:.3f}-second video".format(at, length))
         mixed = _media.composition()
-        for track in _media.tracks(picture, "vide"):
-            copy = _media.add_track(mixed, "vide")
-            _media.insert(copy, track, 0, length, 0)
-            transform = _objc.send(track, "preferredTransform", restype=_objc.CGAffineTransform)
-            _objc.send(copy, "setPreferredTransform:", transform, argtypes=(_objc.CGAffineTransform,), restype=None)
+        _copy_picture(picture, mixed, length)
         if not replace:
             for track in _media.tracks(picture, "soun"):
-                _media.insert(_media.add_track(mixed, "soun"), track, 0, length, 0)
+                _media.copy_track(mixed, track, "soun", length)
         added_tracks = _media.tracks(sound, "soun")
         if not added_tracks:
             raise ValueError("{} has no sound".format(audio))
@@ -721,6 +718,14 @@ def add_audio(
         mix = _objc.new("AVMutableAudioMix")
         _objc.send(mix, "setInputParameters:", _objc.nsarray_of([parameters]), argtypes=(_objc.id,), restype=None)
         return _media.export(mixed, target, audio_mix=mix)
+
+
+def _copy_picture(source: int, target: int, length: float) -> None:
+    """Copy the video tracks of the asset ``source`` into the composition ``target``, upright."""
+    for track in _media.tracks(source, "vide"):
+        copy = _media.copy_track(target, track, "vide", length)
+        transform = _objc.send(track, "preferredTransform", restype=_objc.CGAffineTransform)
+        _objc.send(copy, "setPreferredTransform:", transform, argtypes=(_objc.CGAffineTransform,), restype=None)
 
 
 def _pixel_buffer(picture: int, width: int, height: int) -> int:
@@ -786,8 +791,21 @@ def _pixel_buffer(picture: int, width: int, height: int) -> int:
 _BGRA = int.from_bytes(b"BGRA", "big")  # kCVPixelFormatType_32BGRA
 
 
-def _write_frames(pictures: Sequence[int], target: Path, fps: float, width: int, height: int) -> Path:
-    """Encode ``pictures`` (``CGImage`` objects), one every 1/``fps`` seconds, into an H.264 video."""
+_WRITING, _WRITTEN, _WRITE_FAILED = 1, 2, 3  # AVAssetWriterStatus
+_WRITER_PATIENCE = 60.0  # seconds to wait for the encoder to take the next frame
+
+
+def _writer_failure(writer: int) -> str:
+    failure = _objc.send(writer, "error")
+    return (_objc.pystring(_objc.send(failure, "localizedDescription")) if failure else None) or "unknown error"
+
+
+def _write_frames(pictures: Iterable[int], target: Path, fps: float, width: int, height: int) -> Path:
+    """
+    Encode ``pictures`` (``CGImage`` objects), one every 1/``fps`` seconds, into an H.264 video.
+
+    ``pictures`` is read one at a time, so a generator keeps only one image in memory.
+    """
     _load()
     framework("CoreVideo")
     width, height = width - width % 2, height - height % 2  # encoders need even sizes
@@ -837,7 +855,13 @@ def _write_frames(pictures: Sequence[int], target: Path, fps: float, width: int,
                 raise MacOSError("could not start writing {}".format(target))
             _objc.send(writer, "startSessionAtSourceTime:", _media.time(0), argtypes=(_media.CMTime,), restype=None)
             for index, picture in enumerate(pictures):
+                deadline = time.monotonic() + _WRITER_PATIENCE
                 while not _objc.send(writer_input, "isReadyForMoreMediaData", restype=_objc.BOOL):
+                    if _objc.send(writer, "status", restype=_objc.NSInteger) != _WRITING:
+                        raise MacOSError("could not write the video: {}".format(_writer_failure(writer)))
+                    if time.monotonic() > deadline:
+                        _objc.send(writer, "cancelWriting", restype=None)
+                        raise MacOSError("the video encoder stopped taking frames")
                     time.sleep(0.005)
                 buffer = _pixel_buffer(picture, width, height)
                 try:
@@ -856,23 +880,18 @@ def _write_frames(pictures: Sequence[int], target: Path, fps: float, width: int,
                 if not appended:
                     raise MacOSError("could not add frame {} to the video".format(index + 1))
             _objc.send(writer_input, "markAsFinished", restype=None)
-            finished: List[bool] = []
             _objc.send(
                 writer,
                 "finishWritingWithCompletionHandler:",
-                _objc.block(lambda: finished.append(True), b"v@?"),
+                _media.ignore_completion(),
                 argtypes=(ctypes.c_void_p,),
                 restype=None,
             )
-            if not _objc.run_until(lambda: bool(finished), 600):
+            status = lambda: _objc.send(writer, "status", restype=_objc.NSInteger)  # noqa: E731
+            if not _objc.run_until(lambda: status() != _WRITING, 600):
                 raise MacOSError("the video didn't finish writing")
-            if _objc.send(writer, "status", restype=_objc.NSInteger) != 2:  # AVAssetWriterStatusCompleted
-                failure = _objc.send(writer, "error")
-                raise MacOSError(
-                    "could not write the video: {}".format(
-                        _objc.pystring(_objc.send(failure, "localizedDescription")) if failure else "unknown error"
-                    )
-                )
+            if status() != _WRITTEN:
+                raise MacOSError("could not write the video: {}".format(_writer_failure(writer)))
         os.replace(name, str(target))
     finally:
         if os.path.exists(name):
@@ -930,14 +949,21 @@ def from_images(
         first_width, first_height = first_height, first_width
     frame_width = width or first_width
     frame_height = max(2, round(frame_width * first_height / first_width))
-    pictures: List[int] = []
-    try:
+    longest = max(frame_width, frame_height)
+
+    def one_at_a_time() -> Generator[int, None, None]:
         for source in sources:
-            pictures.append(_load_image(source, max(frame_width, frame_height)))
+            picture = _load_image(source, longest)
+            try:
+                yield picture
+            finally:
+                _cf.release(picture)
+
+    pictures = one_at_a_time()
+    try:
         return _write_frames(pictures, target, fps, frame_width, frame_height)
     finally:
-        for picture in pictures:
-            _cf.release(picture)
+        pictures.close()  # releases the image being encoded if writing failed
 
 
 def reverse(source: PathLike, output: PathLike) -> Path:
@@ -956,21 +982,20 @@ def reverse(source: PathLike, output: PathLike) -> Path:
     count = max(1, int(details.duration * rate))
     times = [max(0.0, details.duration - (index + 0.5) / rate) for index in range(count)]
     pictures = _frames_at(original, times, tolerance=0.5 / rate)
-    try:
-        silent = target.with_name(target.stem + ".frames" + target.suffix)
-        _write_frames(pictures, silent, rate, details.width, details.height)
-    finally:
-        for picture in pictures:
-            _cf.release(picture)
-    if not details.has_audio:
-        os.replace(str(silent), str(target))
-        return target
-    with tempfile.TemporaryDirectory() as folder:
-        backwards = audio.reverse(original, Path(folder) / "backwards.m4a")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Beside the output, so the silent video can be moved into place, and cleaned up whatever fails.
+    with tempfile.TemporaryDirectory(dir=str(target.parent)) as folder:
+        silent = Path(folder) / ("frames" + target.suffix)
         try:
-            return add_audio(silent, backwards, target, replace=True)
+            _write_frames(pictures, silent, rate, details.width, details.height)
         finally:
-            silent.unlink(missing_ok=True)
+            for picture in pictures:
+                _cf.release(picture)
+        if not details.has_audio:
+            os.replace(str(silent), str(target))
+            return target
+        backwards = audio.reverse(original, Path(folder) / "backwards.m4a")
+        return add_audio(silent, backwards, target, replace=True)
 
 
 _LANGUAGE_TAG = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")  # "en", "pt-BR", "es-419"...
@@ -1020,18 +1045,12 @@ def add_language_track(
             sound = _media.asset(sound_path)
             length = _media.duration(picture)
             dubbed = _media.composition()
-            for track in _media.tracks(picture, "vide"):
-                copy = _media.add_track(dubbed, "vide")
-                _media.insert(copy, track, 0, length, 0)
-                transform = _objc.send(track, "preferredTransform", restype=_objc.CGAffineTransform)
-                _objc.send(copy, "setPreferredTransform:", transform, argtypes=(_objc.CGAffineTransform,), restype=None)
+            _copy_picture(picture, dubbed, length)
             # One alternate group for every sound track: players offer one at a time.
             group = 1
             originals = _media.tracks(picture, "soun")
             for track in originals:
-                copy = _media.add_track(dubbed, "soun")
-                own = _media.seconds(_objc.send(track, "timeRange", restype=_media.CMTimeRange).duration)
-                _media.insert(copy, track, 0, min(length, own), 0)
+                copy = _media.copy_track(dubbed, track, "soun", length)
                 _objc.send(copy, "setAlternateGroupID:", group, argtypes=(ctypes.c_int32,), restype=None)
                 if original_language:
                     _set_language(copy, original_language)

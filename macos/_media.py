@@ -9,6 +9,7 @@ import ctypes
 import os
 import tempfile
 from pathlib import Path
+from functools import lru_cache
 from typing import Optional
 
 from . import _objc
@@ -107,6 +108,46 @@ def insert(track: int, source_track: int, start: float, length: float, at: float
         raise MacOSError("could not edit the track: {}".format(_objc.error_message(error) or "unknown error"))
 
 
+def copy_track(target: int, track: int, kind: str, until: float) -> int:
+    """
+    Add a copy of ``track`` to the composition ``target``, cut at ``until`` seconds, and return the copy.
+
+    The track keeps its place on the timeline: a sound that starts late
+    still does, and one that ends early isn't stretched to ``until``.
+    """
+    media = framework("CoreMedia")
+    media.CMTimeRangeGetIntersection.argtypes = (CMTimeRange, CMTimeRange)
+    media.CMTimeRangeGetIntersection.restype = CMTimeRange
+    span = media.CMTimeRangeGetIntersection(_objc.send(track, "timeRange", restype=CMTimeRange), time_range(0, until))
+    copy = add_track(target, kind)
+    if seconds(span.duration) > 0:
+        error = ctypes.c_void_p()
+        ok = _objc.send(
+            copy,
+            "insertTimeRange:ofTrack:atTime:error:",
+            span,
+            track,
+            span.start,
+            ctypes.byref(error),
+            argtypes=(CMTimeRange, _objc.id, CMTime, ctypes.c_void_p),
+            restype=_objc.BOOL,
+        )
+        if not ok:
+            raise MacOSError("could not edit the track: {}".format(_objc.error_message(error) or "unknown error"))
+    return copy
+
+
+@lru_cache(maxsize=None)
+def ignore_completion() -> int:
+    """
+    A completion handler block that does nothing, for APIs that require one.
+
+    Callers poll the status instead: blocks live as long as the process, so
+    this single one serves every export.
+    """
+    return _objc.block(lambda: None, b"v@?")
+
+
 def editable(media: int) -> int:
     """An autoreleased ``AVMutableComposition`` with every track of an asset, to edit."""
     edited = composition()
@@ -176,10 +217,15 @@ def export(
                 _objc.send(
                     session, "setAudioTimePitchAlgorithm:", _objc.nsstring(time_pitch), argtypes=(_objc.id,), restype=None
                 )
-            finished = []
-            done = _objc.block(lambda: finished.append(True), b"v@?")
-            _objc.send(session, "exportAsynchronouslyWithCompletionHandler:", done, argtypes=(ctypes.c_void_p,), restype=None)
-            if not _objc.run_until(lambda: bool(finished), timeout):
+            _objc.send(
+                session,
+                "exportAsynchronouslyWithCompletionHandler:",
+                ignore_completion(),
+                argtypes=(ctypes.c_void_p,),
+                restype=None,
+            )
+            done = lambda: _objc.send(session, "status", restype=_objc.NSInteger) >= _COMPLETED  # noqa: E731
+            if not _objc.run_until(done, timeout):
                 _objc.send(session, "cancelExport", restype=None)
                 raise MacOSError("the export didn't finish within {} seconds".format(timeout))
             status = _objc.send(session, "status", restype=_objc.NSInteger)

@@ -568,7 +568,7 @@ def info(path: PathLike) -> AudioInfo:
         rate = float(_objc.send(tracks[0], "estimatedDataRate", restype=ctypes.c_float))
         code = struct.pack(">I", stream.format_id).decode("latin-1")
         return AudioInfo(
-            duration=round(video._seconds(_objc.send(asset, "duration", restype=video._CMTime)), 3),
+            duration=round(_media.seconds(_objc.send(tracks[0], "timeRange", restype=_media.CMTimeRange).duration), 3),
             sample_rate=int(round(stream.sample_rate)),
             channels=int(stream.channels),
             codec=_CODECS.get(code, code.strip()),

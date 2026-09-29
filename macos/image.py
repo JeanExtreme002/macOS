@@ -29,7 +29,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework
-from .errors import MacOSError
+from .errors import MacOSError, NotSupportedError
 
 __all__ = [
     "info",
@@ -906,7 +906,10 @@ def _people_mask(picture: int) -> int:
     humans = vision._perform_on(picture, _objc.new("VNDetectHumanRectanglesRequest"))
     if not humans:
         raise ValueError("no person found in the image")
-    request = _objc.new("VNGeneratePersonSegmentationRequest")
+    try:
+        request = _objc.new("VNGeneratePersonSegmentationRequest")
+    except LookupError:
+        raise NotSupportedError("separating people from the background needs macOS 12 or later") from None
     _objc.send(request, "setQualityLevel:", 0, argtypes=(_objc.NSUInteger,), restype=None)  # accurate
     observations = vision._perform_on(picture, request)
     if not observations:
@@ -934,7 +937,7 @@ def blur_background(
 
     ``strength`` scales the blur (1.0 by default; 2.0 is twice as blurry).
     Raises :class:`ValueError` when the photo shows no person. The metadata
-    is kept and ``output``'s extension sets the format::
+    is kept and ``output``'s extension sets the format. Needs macOS 12 or later::
 
         macos.image.blur_background(macos.camera.photo(), "me-portrait.jpg")
     """
@@ -962,7 +965,8 @@ def replace_background(
 
     ``background`` is scaled to fill the photo, keeping its proportions.
     Raises :class:`ValueError` when the photo shows no person. The photo's
-    metadata is kept and ``output``'s extension sets the format::
+    metadata is kept and ``output``'s extension sets the format. Needs macOS
+    12 or later::
 
         macos.image.replace_background("me.jpg", "beach.jpg", "me-at-the-beach.jpg")
     """

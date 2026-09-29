@@ -777,9 +777,13 @@ def body_pose(image: Image) -> List[Pose]:
             if wrist and shoulder and wrist[1] < shoulder[1]:
                 print("a raised right hand")
 
-    It finds bodies; it doesn't tell who they are.
+    It finds bodies; it doesn't tell who they are. Needs macOS 11 or later.
     """
     _load()
+    try:
+        _objc.cls("VNDetectHumanBodyPoseRequest")
+    except LookupError:
+        raise NotSupportedError("body_pose() needs macOS 11 or later") from None
     names = _joint_names("VNHumanBodyPoseObservationJointName", tuple(_BODY_JOINTS))
     with _objc.autorelease_pool():
         return [
@@ -802,10 +806,16 @@ def hand_pose(image: Image, *, max_hands: int = 4) -> List[Hand]:
 
         for hand in macos.vision.hand_pose("photo.jpg"):
             print(hand.side, hand.joints.get("index_tip"))
+
+    Needs macOS 11 or later.
     """
     if max_hands < 1:
         raise ValueError("max_hands must be at least 1, not {}".format(max_hands))
     _load()
+    try:
+        _objc.cls("VNDetectHumanHandPoseRequest")
+    except LookupError:
+        raise NotSupportedError("hand_pose() needs macOS 11 or later") from None
     names = _joint_names("VNHumanHandPoseObservationJointName", tuple(_HAND_JOINTS))
     sides = {-1: "left", 1: "right"}  # VNChirality
     found = []
