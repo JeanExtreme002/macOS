@@ -157,6 +157,7 @@ Finder is relaunched.
 | {func}`~macos.finder.folders_first` | {func}`~macos.finder.set_folders_first` | folders before files when sorting by name |
 | {func}`~macos.finder.extension_change_warning` | {func}`~macos.finder.set_extension_change_warning` | a warning before a file's extension changes |
 | {func}`~macos.finder.remove_old_trash_items` | {func}`~macos.finder.set_remove_old_trash_items` | items deleted from the Trash after 30 days |
+| {func}`~macos.finder.quit_menu` | {func}`~macos.finder.set_quit_menu` | Quit Finder (⌘Q) in its menu |
 | {func}`~macos.finder.show_library_folder` | {func}`~macos.finder.set_show_library_folder` | the `~/Library` folder in your home |
 
 ```python
@@ -186,6 +187,19 @@ the desktop: the Mac's own (`internal`), USB and Thunderbolt ones
 macos.finder.set_show_drives_on_desktop(external=False, servers=True)
 macos.finder.drives_on_desktop()   # {'internal': False, 'external': False, 'removable': True, 'servers': True}
 ```
+
+{func}`~macos.finder.set_desktop_view` changes how the desktop shows its icons,
+as its View › Show View Options does; the options left out stay as they
+are:
+
+```python
+macos.finder.set_desktop_view(icon_size=48, grid_spacing=30, sort="kind")
+macos.finder.desktop_view()   # {'icon_size': 48, 'grid_spacing': 30, 'sort': 'kind', ...}
+```
+
+`sort` keeps the icons in order (`"snap_to_grid"`, `"name"`, `"kind"`,
+`"date_added"`, `"date_modified"`, `"size"`, `"tags"`...), or `None` lets
+them be placed freely.
 
 ## Reference
 
@@ -236,3 +250,7 @@ macos.finder.drives_on_desktop()   # {'internal': False, 'external': False, 'rem
 - {func}`macos.finder.drives_on_desktop`
 - {func}`macos.finder.set_show_drives_on_desktop`
 - {func}`macos.finder.restart`
+- {func}`macos.finder.quit_menu`
+- {func}`macos.finder.set_quit_menu`
+- {func}`macos.finder.desktop_view`
+- {func}`macos.finder.set_desktop_view`

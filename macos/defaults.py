@@ -11,6 +11,9 @@ Read and change the preferences of apps and of the system, like the ``defaults``
     macos.defaults.delete("com.example.app", "cache-size")
     macos.defaults.read("com.apple.screencapture")                # {'location': '~/Desktop', ...}
 
+    with macos.defaults.restored("com.apple.dock"):              # put back as it was, afterwards
+        macos.defaults.write("com.apple.dock", "autohide", True)
+
 Values are ``bool``, ``int``, ``float``, ``str``, ``bytes``,
 :class:`~datetime.datetime`, and lists and dicts of them, like property lists.
 Goes through CFPreferences, as apps do, so changes reach ``cfprefsd`` at once;
@@ -18,13 +21,14 @@ most apps only read them when they start, so restart them to see a change.
 """
 
 import ctypes
+from contextlib import contextmanager
 from functools import lru_cache
-from typing import Any, List, Optional
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 from . import _cf
 from ._system import framework
 
-__all__ = ["read", "write", "delete", "keys", "GLOBAL"]
+__all__ = ["read", "write", "delete", "keys", "restored", "GLOBAL"]
 
 GLOBAL = "NSGlobalDomain"
 """The preferences every app shares, such as the appearance: ``defaults -g``."""
@@ -143,3 +147,47 @@ def delete(domain: str, key: str, *, current_host: bool = False) -> bool:
     existed = read(domain, key, default=_MISSING, current_host=current_host) is not _MISSING
     _store(domain, key, None, current_host)
     return existed
+
+
+@contextmanager
+def restored(*what: Union[str, Tuple[str, str]], current_host: bool = False) -> Iterator[None]:
+    """
+    Put preferences back exactly as they were when the ``with`` block ends, even if it fails.
+
+    ::
+
+        with macos.defaults.restored(("com.apple.finder", "CreateDesktop")):
+            macos.finder.set_show_desktop_icons(False)   # a clean desktop for a recording
+            record_demo()
+
+    Each argument is a ``(domain, key)`` pair, or a whole domain (``"com.apple.dock"``).
+    Keys that weren't set are deleted again, not written with a value, so
+    macOS goes back to its own default. It restores the preferences only:
+    restart the Dock, Finder or app that read the changed ones, as the
+    ``set_*`` functions do.
+    """
+    missing = object()
+    saved: List[Tuple[str, Optional[str], Any]] = []  # (domain, key or None for all, value)
+    for item in what:
+        if isinstance(item, str):
+            _check(item)
+            saved.append((item, None, read(item, current_host=current_host)))
+        else:
+            domain, key = item
+            _check(domain)
+            saved.append((domain, key, read(domain, key, default=missing, current_host=current_host)))
+    try:
+        yield
+    finally:
+        for domain, name_or_all, value in saved:
+            if name_or_all is None:
+                for name in keys(domain, current_host=current_host):
+                    if name not in value:
+                        delete(domain, name, current_host=current_host)
+                for name, old in value.items():
+                    if read(domain, name, current_host=current_host) != old:
+                        write(domain, name, old, current_host=current_host)
+            elif value is missing:
+                delete(domain, name_or_all, current_host=current_host)
+            else:
+                write(domain, name_or_all, value, current_host=current_host)

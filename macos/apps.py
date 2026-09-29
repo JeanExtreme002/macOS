@@ -17,6 +17,7 @@ Force Quit window use), queried natively through the Objective-C runtime.
 """
 
 import ctypes
+import errno
 import os
 import shutil
 import time
@@ -46,6 +47,8 @@ __all__ = [
     "default_for",
     "set_default_for",
     "default_browser",
+    "is_quarantined",
+    "unquarantine",
 ]
 
 # NSApplicationActivationPolicy
@@ -665,3 +668,66 @@ def default_browser() -> Optional[str]:
     with _cf.owned(_cf.string("https://example.com")) as text:
         with _cf.owned(_cf.lib().CFURLCreateWithString(None, text, None)) as url:
             return _app_path(services.LSCopyDefaultApplicationURLForURL(url, _ALL_ROLES, None))
+
+
+# --- Quarantine ---------------------------------------------------------------
+
+_QUARANTINE = b"com.apple.quarantine"
+_XATTR_NOFOLLOW = 1  # act on symbolic links themselves, never on what they point to
+_ENOATTR = 93  # errno.ENOATTR, which only macOS's errno module has: the file doesn't have it
+
+
+@lru_cache(maxsize=None)
+def _libc() -> ctypes.CDLL:
+    require_macos()
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.getxattr.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int)
+    libc.getxattr.restype = ctypes.c_ssize_t
+    libc.removexattr.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int)
+    libc.removexattr.restype = ctypes.c_int
+    return libc
+
+
+def is_quarantined(path: Union[str, "os.PathLike[str]"]) -> bool:
+    """
+    Whether macOS marked ``path`` as downloaded from the internet, so it checks it before it first opens.
+
+    That mark is what makes macOS say an app "is damaged and can't be
+    opened" or asks "Are you sure you want to open it?".
+    """
+    target = Path(os.path.expanduser(os.fspath(path)))
+    if not os.path.lexists(target):
+        raise FileNotFoundError(str(target))
+    size = _libc().getxattr(os.fsencode(target), _QUARANTINE, None, 0, 0, _XATTR_NOFOLLOW)
+    return size >= 0
+
+
+def unquarantine(path: Union[str, "os.PathLike[str]"]) -> int:
+    """
+    Remove the downloaded-from-the-internet mark from ``path`` and, for an app or a folder, everything in it.
+
+    ::
+
+        macos.apps.unquarantine("/Applications/Tool.app")   # opens without "is damaged"
+
+    Returns how many files had it. Like ``xattr -dr com.apple.quarantine``:
+    do it only for apps you trust, since it skips the check macOS makes
+    the first time they open. Gatekeeper still applies its other rules.
+    """
+    target = Path(os.path.expanduser(os.fspath(path)))
+    if not os.path.lexists(target):
+        raise FileNotFoundError(str(target))
+    libc = _libc()
+    paths = [target]
+    if target.is_dir() and not target.is_symlink():
+        for folder, folders, files in os.walk(target):
+            paths.extend(Path(folder, name) for name in folders + files)
+    removed = 0
+    for item in paths:
+        if libc.removexattr(os.fsencode(item), _QUARANTINE, _XATTR_NOFOLLOW) == 0:
+            removed += 1
+        else:
+            error = ctypes.get_errno()
+            if error not in (_ENOATTR, errno.ENOENT):
+                raise PermissionError(error, "can't remove the quarantine from {}: {}".format(item, os.strerror(error)))
+    return removed

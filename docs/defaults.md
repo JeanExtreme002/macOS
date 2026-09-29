@@ -56,6 +56,21 @@ functions for the same:
 macos.defaults.read("com.apple.screensaver", "idleTime", current_host=True)   # 1200
 ```
 
+## Changing settings for a while
+
+{func}`~macos.defaults.restored` puts preferences back exactly as they were
+when its block ends, even if it fails; keys that weren't set are deleted
+again:
+
+```python
+with macos.defaults.restored(("com.apple.finder", "CreateDesktop")):
+    macos.finder.set_show_desktop_icons(False)   # a clean desktop for a recording
+    record_demo()
+# the icons are back
+```
+
+Name `(domain, key)` pairs, or a whole domain such as `"com.apple.dock"`.
+
 ## Reference
 
 - {func}`macos.defaults.read`
@@ -63,3 +78,4 @@ macos.defaults.read("com.apple.screensaver", "idleTime", current_host=True)   # 
 - {func}`macos.defaults.delete`
 - {func}`macos.defaults.keys`
 - {data}`macos.defaults.GLOBAL`
+- {func}`macos.defaults.restored`

@@ -91,6 +91,8 @@ macos.screen.set_screenshot_folder("~/Pictures/Screenshots")   # the folder must
 macos.screen.set_screenshot_format("jpg")                      # png, jpg, heic, tiff, gif, pdf, bmp
 macos.screen.set_screenshot_shadow(False)                      # tight window captures
 macos.screen.set_screenshot_thumbnail(False)                   # saved at once, no floating preview
+macos.screen.set_screenshot_name("Capture")                    # "Capture 2026-09-29 at 10.02.31.png"
+macos.screen.set_screenshot_target("clipboard")                # or "file", "preview", "mail", "messages"
 
 macos.screen.screenshot_folder()    # PosixPath('/Users/alice/Pictures/Screenshots')
 ```
@@ -115,6 +117,33 @@ Each {class}`~macos.screen.Display` has its size and position in points (the
 unit `region` uses), its physical resolution (`pixel_width`, `pixel_height`),
 the `scale` (2.0 on Retina displays), the `refresh_rate`, and whether it
 `is_main` or `is_builtin`.
+
+### Resolution and arrangement
+
+{func}`~macos.screen.display_modes` lists the resolutions a display can use,
+the scaled Retina ones included, and {func}`~macos.screen.set_display_mode`
+changes it, as System Settings › Displays does:
+
+```python
+macos.screen.display_mode()      # DisplayMode(width=1512, height=982, ..., refresh_rate=120.0)
+macos.screen.set_display_mode(1728, 1117)                  # more space on a MacBook Pro
+macos.screen.set_display_mode(2560, 1440, refresh_rate=144, display=external)
+```
+
+Without `refresh_rate`, it picks the highest; without `hidpi`, the sharp
+Retina mode when there's one. The change stays after a restart: to go back,
+call it with the {func}`~macos.screen.display_mode` read before.
+
+With several displays, {func}`~macos.screen.set_main_display` moves the menu
+bar and the Dock to another one, and {func}`~macos.screen.mirror` shows the
+same picture on two, for a projector:
+
+```python
+projector = next(d for d in macos.screen.displays() if not d.is_builtin)
+macos.screen.mirror(projector)
+macos.screen.stop_mirroring()
+macos.screen.set_main_display(projector)
+```
 
 ## Recording the screen
 
@@ -175,6 +204,15 @@ by hand or by its schedule. {func}`~macos.screen.set_night_shift` works like
 the switch in Control Center: a schedule set in System Settings › Displays ›
 Night Shift still applies afterwards. It uses a private macOS framework,
 since there's no public one.
+
+Its schedule and strength, as in System Settings › Displays › Night Shift:
+
+```python
+macos.screen.set_night_shift_schedule(("22:00", "07:00"))
+macos.screen.set_night_shift_schedule("sunset")    # sunset to sunrise; needs Location Services
+macos.screen.set_night_shift_schedule(None)        # never by itself
+macos.screen.set_night_shift_strength(0.8)         # warmer
+```
 
 ## True Tone
 
@@ -261,3 +299,19 @@ macos.screen.set_screensaver_delay(None)
 - {func}`macos.screen.set_screenshot_thumbnail`
 - {func}`macos.screen.screensaver_delay`
 - {func}`macos.screen.set_screensaver_delay`
+- {func}`macos.screen.screenshot_name`
+- {func}`macos.screen.set_screenshot_name`
+- {func}`macos.screen.screenshot_target`
+- {func}`macos.screen.set_screenshot_target`
+- {func}`macos.screen.night_shift_schedule`
+- {func}`macos.screen.set_night_shift_schedule`
+- {func}`macos.screen.night_shift_strength`
+- {func}`macos.screen.set_night_shift_strength`
+- {class}`macos.screen.DisplayMode`
+- {func}`macos.screen.display_modes`
+- {func}`macos.screen.display_mode`
+- {func}`macos.screen.set_display_mode`
+- {func}`macos.screen.set_main_display`
+- {func}`macos.screen.mirrored`
+- {func}`macos.screen.mirror`
+- {func}`macos.screen.stop_mirroring`

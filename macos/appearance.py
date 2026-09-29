@@ -37,6 +37,8 @@ __all__ = [
     "wait_for_change",
     "scroll_bars",
     "set_scroll_bars",
+    "font_smoothing",
+    "set_font_smoothing",
 ]
 
 
@@ -226,3 +228,24 @@ def set_scroll_bars(when: str) -> None:
         raise ValueError("when must be 'automatic', 'when_scrolling' or 'always', not {!r}".format(when))
     defaults.write(defaults.GLOBAL, "AppleShowScrollBars", _SCROLL_BARS[when])
     _announce("AppleShowScrollBarsSettingChanged")
+
+
+def font_smoothing() -> bool:
+    """Whether text is drawn a little bolder (font smoothing), as System Settings › Appearance offers."""
+    from . import defaults
+
+    return defaults.read(defaults.GLOBAL, "AppleFontSmoothing", default=1) != 0
+
+
+def set_font_smoothing(on: bool = True) -> None:
+    """
+    Smooth fonts, or draw them thinner (``False``), which some find sharper on displays that aren't Retina.
+
+    Apps pick it up when they're reopened.
+    """
+    from . import defaults
+
+    if on:
+        defaults.delete(defaults.GLOBAL, "AppleFontSmoothing")  # macOS's own
+    else:
+        defaults.write(defaults.GLOBAL, "AppleFontSmoothing", 0)

@@ -78,6 +78,10 @@ macos.appearance.menu_bar_hidden()   # True
 macos.appearance.set_scroll_bars("always")
 ```
 
+{func}`~macos.appearance.set_font_smoothing` draws text thinner (`False`), which
+some find sharper on external displays that aren't Retina; apps pick it up
+when they're reopened.
+
 None of them needs a permission.
 
 ## Waiting for a switch
@@ -108,3 +112,5 @@ With `timeout`, it raises `TimeoutError` if nothing changes in time.
 - {func}`macos.appearance.set_hide_menu_bar`
 - {func}`macos.appearance.scroll_bars`
 - {func}`macos.appearance.set_scroll_bars`
+- {func}`macos.appearance.font_smoothing`
+- {func}`macos.appearance.set_font_smoothing`

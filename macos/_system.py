@@ -8,8 +8,9 @@ commands and loading system frameworks.
 import ctypes
 import subprocess
 import sys
+from contextlib import contextmanager
 from functools import lru_cache
-from typing import Optional, Sequence
+from typing import Callable, Dict, Iterator, Optional, Sequence
 
 from .errors import CommandError, NotSupportedError, PermissionDeniedError
 
@@ -70,6 +71,8 @@ def apply_input_settings() -> None:
     """
     import os
 
+    if restart_later("input settings", apply_input_settings):
+        return
     if os.path.exists(_ACTIVATE_SETTINGS):
         try:
             run([_ACTIVATE_SETTINGS, "-u"])
@@ -98,3 +101,31 @@ def private_framework(name: str) -> ctypes.CDLL:
         return ctypes.CDLL("/System/Library/PrivateFrameworks/{0}.framework/{0}".format(name))
     except OSError:
         raise NotSupportedError("this version of macOS doesn't have {}".format(name)) from None
+
+
+# Restarts (the Dock, Finder...) put off until a batch of changes ends, by name.
+_deferred: Optional[Dict[str, Callable[[], None]]] = None
+
+
+def restart_later(name: str, restart: Callable[[], None]) -> bool:
+    """Inside :func:`batched_restarts`, note ``restart`` to run once at its end and return ``True``; else ``False``."""
+    if _deferred is None:
+        return False
+    _deferred[name] = restart
+    return True
+
+
+@contextmanager
+def batched_restarts() -> Iterator[None]:
+    """Run each restart asked for in the block once, when it ends (even if it fails), instead of after every change."""
+    global _deferred
+    if _deferred is not None:
+        yield  # already batching
+        return
+    _deferred = {}
+    try:
+        yield
+    finally:
+        pending, _deferred = _deferred, None
+        for restart in pending.values():
+            restart()

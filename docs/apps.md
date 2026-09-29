@@ -174,6 +174,18 @@ It mounts the image, copies the `.app`, and unmounts it. An app already
 installed raises `FileExistsError`, unless `replace=True`. To mount an image
 yourself, see {func}`macos.system.mount_image`.
 
+## Downloaded apps
+
+macOS marks what's downloaded from the internet, and checks it the first
+time it opens; that mark is behind "is damaged and can't be opened".
+{func}`~macos.apps.unquarantine` removes it from an app you trust, and
+everything in it, like `xattr -dr com.apple.quarantine`:
+
+```python
+macos.apps.is_quarantined("/Applications/Tool.app")   # True
+macos.apps.unquarantine("/Applications/Tool.app")     # 1204 files
+```
+
 ## Threads
 
 All functions work from any thread, not only the main one.
@@ -195,3 +207,5 @@ All functions work from any thread, not only the main one.
 - {func}`macos.apps.remove_login_item`
 - {func}`macos.apps.install_from_dmg`
 - {class}`macos.apps.LoginItem`
+- {func}`macos.apps.is_quarantined`
+- {func}`macos.apps.unquarantine`

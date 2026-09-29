@@ -138,6 +138,7 @@ permission:
 | Read | Change | Values |
 |---|---|---|
 | {func}`~macos.windows.double_click_title_bar` | {func}`~macos.windows.set_double_click_title_bar` | `"zoom"`, `"fill"` (macOS 15+), `"minimize"` or `None`: what a double click on a title bar does |
+| {func}`~macos.windows.animations` | {func}`~macos.windows.set_animations` | `False` shows windows, sheets and panels at once, for a snappier Mac |
 | {func}`~macos.windows.tiling` | {func}`~macos.windows.set_tiling` | windows dragged to an edge tile there (macOS 15+) |
 | {func}`~macos.windows.click_wallpaper_to_show_desktop` | {func}`~macos.windows.set_click_wallpaper_to_show_desktop` | a click on the wallpaper shows the desktop (macOS 14+) |
 
@@ -161,3 +162,5 @@ macos.windows.set_double_click_title_bar("minimize")
 - {func}`macos.windows.set_tiling`
 - {func}`macos.windows.click_wallpaper_to_show_desktop`
 - {func}`macos.windows.set_click_wallpaper_to_show_desktop`
+- {func}`macos.windows.animations`
+- {func}`macos.windows.set_animations`

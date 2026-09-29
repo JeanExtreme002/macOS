@@ -84,6 +84,7 @@ def test_trackpad_and_mouse_settings(prefs):
         ("com.apple.AppleMultitouchTrackpad", "Clicking", False): True,
         ("com.apple.driver.AppleBluetoothMultitouch.trackpad", "Clicking", False): True,
         (G, "com.apple.mouse.tapBehavior", False): 1,
+        (G, "com.apple.mouse.tapBehavior", True): 1,  # this Mac's copy, as System Settings keeps
         (G, "com.apple.swipescrolldirection", False): False,
         (G, "com.apple.trackpad.scaling", False): 1.5,
         (G, "com.apple.mouse.scaling", False): 3.0,
@@ -419,3 +420,356 @@ def test_window_appearance_screen_and_system_settings(prefs):
         system.set_clock_format(date="sometimes")
 
     assert done == ["WindowManager", "WindowManager", ("AppleShowScrollBarsSettingChanged",), "capture", "ControlCenter"]
+
+
+# --- v1.14 ------------------------------------------------------------------
+
+
+def test_fn_key_and_inline_predictions(prefs):
+    store, done = prefs
+
+    assert macos.keyboard.fn_key_action() == "emoji" and macos.keyboard.inline_predictions()
+    macos.keyboard.set_fn_key_action(None)
+    macos.keyboard.set_inline_predictions(False)
+    assert store[("com.apple.HIToolbox", "AppleFnUsageType", False)] == 0
+    assert macos.keyboard.fn_key_action() is None and not macos.keyboard.inline_predictions()
+    macos.keyboard.set_fn_key_action("dictation")
+    assert macos.keyboard.fn_key_action() == "dictation" and done == ["input", "input"]
+    with pytest.raises(ValueError, match="action must be"):
+        macos.keyboard.set_fn_key_action("siri")
+
+
+@pytest.mark.parametrize(
+    "keys, code",
+    [
+        ("cmd+shift+e", "@$e"),
+        ("Shift+Cmd+E", "@$e"),
+        ("ctrl+option+cmd+t", "@~^t"),
+        ("cmd+left", "@"),
+        ("cmd+f5", "@"),
+        ("cmd++", "@+"),
+        ("cmd+,", "@,"),
+        ("alt+control+delete", "~^\x7f"),
+    ],
+)
+def test_app_shortcut_keys(keys, code):
+    assert macos.keyboard._encode_shortcut(keys) == code
+    assert macos.keyboard._encode_shortcut(macos.keyboard._decode_shortcut(code)) == code
+
+
+def test_app_shortcuts(prefs, monkeypatch):
+    store, _ = prefs
+    monkeypatch.setattr(macos.apps, "_locate", lambda app: "/Applications/Safari.app")
+    monkeypatch.setattr(macos.apps, "_bundle_id", lambda path: "com.apple.Safari")
+
+    macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", "cmd+shift+e")
+    macos.keyboard.set_app_shortcut("com.apple.Preview", "File > Export…", "cmd+e")
+    macos.keyboard.set_app_shortcut(None, "Show Tab Bar", "cmd+option+t")
+    assert store[("com.apple.Safari", "NSUserKeyEquivalents", False)] == {"Export as PDF…": "@$e"}
+    assert store[("com.apple.Preview", "NSUserKeyEquivalents", False)] == {"\x1bFile\x1bExport…": "@e"}
+    assert macos.keyboard.app_shortcuts("com.apple.Preview") == {"File > Export…": "cmd+e"}
+    assert macos.keyboard.app_shortcuts() == {"Show Tab Bar": "cmd+option+t"}
+    macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", None)
+    assert ("com.apple.Safari", "NSUserKeyEquivalents", False) not in store  # the last one: the key goes
+    macos.keyboard.set_app_shortcut("Safari", "Missing", None)  # nothing to remove
+    with pytest.raises(ValueError, match="can't read the shortcut"):
+        macos.keyboard.set_app_shortcut("Safari", "Print…", "hyper+p")
+    with pytest.raises(ValueError, match="unknown key"):
+        macos.keyboard.set_app_shortcut("Safari", "Print…", "cmd+pgup")
+    with pytest.raises(ValueError, match="menu_item"):
+        macos.keyboard.set_app_shortcut("Safari", " ", "cmd+p")
+
+
+def test_system_shortcuts(prefs):
+    store, done = prefs
+    H = ("com.apple.symbolichotkeys", "AppleSymbolicHotKeys", False)
+    spotlight = {"enabled": True, "value": {"parameters": [65535, 49, 1048576], "type": "standard"}}
+    store[H] = {"64": spotlight, "7": {"enabled": True}}
+
+    assert macos.keyboard.system_shortcuts()["spotlight"]
+    macos.keyboard.set_system_shortcut("spotlight", False)
+    macos.keyboard.set_system_shortcut("screenshot_toolbar", False)  # not in the preferences yet
+    assert store[H]["64"] == {"enabled": False, "value": {"parameters": [65535, 49, 1048576], "type": "standard"}}
+    assert store[H]["184"] == {"enabled": False, "value": {"parameters": [53, 23, 1179648], "type": "standard"}}
+    assert store[H]["7"] == {"enabled": True}  # the others stay
+    found = macos.keyboard.system_shortcuts()
+    assert not found["spotlight"] and not found["screenshot_toolbar"] and found["mission_control"]
+    assert done == ["input", "input"]
+    with pytest.raises(ValueError, match="name must be one of"):
+        macos.keyboard.set_system_shortcut("siri", False)
+
+
+def test_trackpad_click_pressure_and_gestures(prefs):
+    store, done = prefs
+    T, B = "com.apple.AppleMultitouchTrackpad", "com.apple.driver.AppleBluetoothMultitouch.trackpad"
+
+    assert trackpad.click_pressure() == "medium"
+    trackpad.set_click_pressure("firm")
+    assert store[(T, "FirstClickThreshold", False)] == 2 and store[(B, "SecondClickThreshold", False)] == 2
+    assert trackpad.click_pressure() == "firm"
+
+    found = trackpad.gestures()
+    assert set(found) == set(trackpad.GESTURES) and found["pinch_to_zoom"] is True and found["mission_control"] == 3
+    trackpad.set_gesture("pinch_to_zoom", False)
+    assert store[(B, "TrackpadPinch", False)] is False
+    assert store[(G, "com.apple.trackpad.pinchGesture", True)] == 0  # this Mac's copy
+    trackpad.set_gesture("mission_control", 4)
+    assert store[(T, "TrackpadThreeFingerVertSwipeGesture", False)] == 0
+    assert store[(T, "TrackpadFourFingerVertSwipeGesture", False)] == 2
+    assert store[("com.apple.dock", "showMissionControlGestureEnabled", False)] is True
+    trackpad.set_gesture("notification_center", False)
+    trackpad.set_gesture("swipe_between_pages", False)
+    trackpad.set_gesture("launchpad", True)
+    assert store[(T, "TrackpadFourFingerPinchGesture", False)] == 2
+    trackpad.set_gesture("launchpad", False)
+    assert store[(T, "TrackpadFourFingerPinchGesture", False)] == 2  # Show Desktop still uses the pinch
+    trackpad.set_gesture("show_desktop", False)
+    assert store[(T, "TrackpadFiveFingerPinchGesture", False)] == 0
+    found = trackpad.gestures()
+    assert found["mission_control"] == 4 and not found["pinch_to_zoom"] and not found["notification_center"]
+    assert not found["swipe_between_pages"] and not found["launchpad"] and not found["show_desktop"]
+    trackpad.set_gesture("mission_control", False)
+    assert trackpad.gestures()["mission_control"] is False
+    assert done.count("dock") == 5  # Mission Control twice, Launchpad twice, Show Desktop
+    with pytest.raises(ValueError, match="3 or 4 fingers"):
+        trackpad.set_gesture("mission_control", 5)
+    with pytest.raises(ValueError, match="True or False"):
+        trackpad.set_gesture("rotate", 3)
+    with pytest.raises(ValueError, match="name must be one of"):
+        trackpad.set_gesture("pinch_to_explode", True)
+    with pytest.raises(ValueError, match="pressure must be"):
+        trackpad.set_click_pressure("hard")
+
+
+def test_mouse_acceleration(prefs, monkeypatch):
+    store, _ = prefs
+    commands = []
+    monkeypatch.setattr(_system, "run", lambda args: commands.append(args) or "")
+
+    assert macos.mouse.acceleration()
+    macos.mouse.set_acceleration(False)
+    assert store[(G, "com.apple.mouse.linear", False)] is True and not macos.mouse.acceleration()
+    assert commands == [["hidutil", "property", "--set", '{"HIDUseLinearScalingMouseAcceleration": 1}']]
+
+
+def test_dock_switches_and_hot_corner_modifiers(prefs):
+    store, done = prefs
+    D = "com.apple.dock"
+
+    assert (dock.dim_hidden_apps(), dock.only_open_apps(), dock.launch_animation()) == (False, False, True)
+    assert (dock.group_windows_by_app(), dock.switch_to_space_with_app()) == (False, True)
+    dock.set_dim_hidden_apps()
+    dock.set_only_open_apps()
+    dock.set_launch_animation(False)
+    dock.set_group_windows_by_app()
+    dock.set_switch_to_space_with_app(False)
+    assert store[(D, "showhidden", False)] and store[(D, "static-only", False)] and not store[(D, "launchanim", False)]
+    assert store[(D, "expose-group-apps", False)] and store[(G, "AppleSpacesSwitchOnActivate", False)] is False
+    assert done == ["dock"] * 5
+
+    dock.set_hot_corner("top_left", "mission_control", modifier="cmd+option")
+    assert store[(D, "wvous-tl-modifier", False)] == 1048576 | 524288
+    assert dock.hot_corner_modifiers()["top_left"] == "cmd+option"
+    dock.set_hot_corner("top_left", "mission_control")
+    assert dock.hot_corner_modifiers()["top_left"] is None
+    with pytest.raises(ValueError, match="modifier must be"):
+        dock.set_hot_corner("top_left", None, modifier="hyper")
+
+
+def test_dock_folders(prefs, tmp_path, monkeypatch):
+    store, done = prefs
+    monkeypatch.setattr(dock.os.path, "realpath", lambda path: path)
+    folder = tmp_path / "Projects"
+    folder.mkdir()
+
+    added = dock.add_folder(folder, view="grid", sort="name", display="folder")
+    assert added == dock.DockFolder(name="Projects", path=folder, view="grid", sort="name", display="folder")
+    tile = store[("com.apple.dock", "persistent-others", False)][0]
+    assert tile["tile-type"] == "directory-tile" and tile["tile-data"]["showas"] == 2 and tile["tile-data"]["arrangement"] == 1
+    dock.add_folder(folder, view="list")  # updated, not added twice
+    assert [found.view for found in dock.folders()] == ["list"]
+    assert dock.remove_folder(folder) and not dock.remove_folder(folder) and dock.folders() == []
+    assert done == ["dock"] * 3
+    with pytest.raises(NotADirectoryError):
+        dock.add_folder(tmp_path / "missing")
+    with pytest.raises(ValueError, match="view must be"):
+        dock.add_folder(folder, view="cover_flow")
+
+
+def test_finder_quit_menu_and_desktop_view(prefs):
+    store, done = prefs
+    F = "com.apple.finder"
+    store[(F, "DesktopViewSettings", False)] = {"IconViewSettings": {"iconSize": 64.0, "arrangeBy": "none", "backgroundType": 0}}
+
+    finder.set_quit_menu()
+    assert finder.quit_menu()
+    assert finder.desktop_view()["icon_size"] == 64 and finder.desktop_view()["sort"] is None
+    finder.set_desktop_view(icon_size=48, sort="kind", show_item_info=True)
+    icons = store[(F, "DesktopViewSettings", False)]["IconViewSettings"]
+    assert icons == {"iconSize": 48.0, "arrangeBy": "kind", "backgroundType": 0, "showItemInfo": True}  # the rest kept
+    finder.set_desktop_view(sort=None)
+    assert finder.desktop_view()["sort"] is None
+    assert store[(F, "DesktopViewSettings", False)]["IconViewSettings"]["arrangeBy"] == "none"
+    assert done == ["finder"] * 3
+    with pytest.raises(ValueError, match="icon_size must be from 16 to 128"):
+        finder.set_desktop_view(icon_size=200)
+    with pytest.raises(ValueError, match="sort must be one of"):
+        finder.set_desktop_view(sort="color")
+    with pytest.raises(ValueError, match="say what to change"):
+        finder.set_desktop_view()
+
+
+def test_windows_appearance_sound_and_screenshots(prefs, tmp_path, monkeypatch):
+    store, done = prefs
+
+    assert windows.animations() and appearance.font_smoothing()
+    windows.set_animations(False)
+    appearance.set_font_smoothing(False)
+    assert store[(G, "AppleFontSmoothing", False)] == 0 and not appearance.font_smoothing() and not windows.animations()
+    appearance.set_font_smoothing(True)
+    assert (G, "AppleFontSmoothing", False) not in store
+
+    sounds = tmp_path / "Sounds"
+    sounds.mkdir()
+    (sounds / "Funk.aiff").write_bytes(b"")
+    monkeypatch.setattr(macos.sound, "_SOUND_FOLDERS", (sounds,))
+    monkeypatch.setattr(macos.sound, "require_macos", lambda: None)
+    assert macos.sound.alert_sound() is None and macos.sound.alert_volume() == 1.0 and macos.sound.ui_sounds()
+    macos.sound.set_alert_sound("Funk")
+    macos.sound.set_alert_volume(0.5)
+    macos.sound.set_ui_sounds(False)
+    assert store[(G, "com.apple.sound.beep.sound", False)] == str(sounds / "Funk.aiff")
+    assert (macos.sound.alert_sound(), macos.sound.alert_volume(), macos.sound.ui_sounds()) == ("Funk", 0.5, False)
+    with pytest.raises(ValueError, match="no alert sound is named"):
+        macos.sound.set_alert_sound("Boop")
+    with pytest.raises(ValueError, match="volume must be"):
+        macos.sound.set_alert_volume(2)
+
+    assert screen.screenshot_name() is None and screen.screenshot_target() == "file"
+    screen.set_screenshot_name("Capture")
+    screen.set_screenshot_target("clipboard")
+    assert (screen.screenshot_name(), screen.screenshot_target()) == ("Capture", "clipboard")
+    screen.set_screenshot_name(None)
+    assert screen.screenshot_name() is None and done.count("capture") == 3
+    with pytest.raises(ValueError, match="target must be"):
+        screen.set_screenshot_target("printer")
+    with pytest.raises(ValueError, match="file name"):
+        screen.set_screenshot_name("a/b")
+
+
+def test_system_region_photos_and_menu_bar(prefs, monkeypatch):
+    store, done = prefs
+    monkeypatch.setattr(system, "_locale_measurement", lambda: "us")
+
+    assert system.measurement_units() == "us" and system.temperature_unit() == "fahrenheit"
+    system.set_measurement_units("metric")
+    system.set_temperature_unit("celsius")
+    assert store[(G, "AppleMeasurementUnits", False)] == "Centimeters" and store[(G, "AppleMetricUnits", False)] is True
+    assert (system.measurement_units(), system.temperature_unit()) == ("metric", "celsius")
+    with pytest.raises(ValueError, match="units must be"):
+        system.set_measurement_units("imperial")
+
+    assert system.open_photos_on_device_connect()
+    system.set_open_photos_on_device_connect(False)
+    assert store[("com.apple.ImageCapture", "disableHotPlug", True)] is True and not system.open_photos_on_device_connect()
+
+    assert system.menu_bar_spacing() is None
+    system.set_menu_bar_spacing(6)
+    assert store[(G, "NSStatusItemSpacing", True)] == 6 and store[(G, "NSStatusItemSelectionPadding", True)] == 6
+    system.set_menu_bar_spacing(None)
+    assert (G, "NSStatusItemSpacing", True) not in store
+    with pytest.raises(ValueError, match="0 to 30"):
+        system.set_menu_bar_spacing(40)
+
+    system.set_menu_bar_items(bluetooth=True, now_playing=False)
+    C = "com.apple.controlcenter"
+    assert store[(C, "Bluetooth", True)] == 18 and store[(C, "NSStatusItem Visible Bluetooth", False)] is True
+    assert store[(C, "NowPlaying", True)] == 8 and store[(C, "NSStatusItem Visible NowPlaying", False)] is False
+    assert system.menu_bar_items()["bluetooth"] and not system.menu_bar_items()["now_playing"]
+    assert done == ["ControlCenter"]
+    with pytest.raises(ValueError, match="unknown menu bar items: siri"):
+        system.set_menu_bar_items(siri=True)
+
+
+def test_security_status(monkeypatch):
+    answers = {
+        "fdesetup": "FileVault is On.\n",
+        "/usr/libexec/ApplicationFirewall/socketfilterfw": "Firewall is enabled. (State = 1)\n",
+        "spctl": "assessments disabled\n",
+        "csrutil": "System Integrity Protection status: unknown (Custom Configuration).\n",
+    }
+    monkeypatch.setattr(system, "require_macos", lambda: None)
+    monkeypatch.setattr(system, "_run", lambda args: answers[args[0]])
+
+    assert system.security_status() == system.SecurityStatus(filevault=True, firewall=True, gatekeeper=False, sip=None)
+
+    def failing(args):
+        raise macos.MacOSError("no")
+
+    monkeypatch.setattr(system, "_run", failing)
+    assert system.security_status() == system.SecurityStatus(None, None, None, None)
+
+
+def test_defaults_restored(monkeypatch):
+    store = {("com.example", "keep"): 1, ("com.example", "other"): "x"}
+
+    def read(domain, key=None, *, default=None, current_host=False):
+        if key is None:
+            return {name: value for (where, name), value in store.items() if where == domain}
+        return store.get((domain, key), default)
+
+    def write(domain, key, value, *, current_host=False):
+        store[(domain, key)] = value
+
+    def delete(domain, key, *, current_host=False):
+        return store.pop((domain, key), None) is not None
+
+    monkeypatch.setattr(defaults, "read", read)
+    monkeypatch.setattr(defaults, "write", write)
+    monkeypatch.setattr(defaults, "delete", delete)
+    monkeypatch.setattr(defaults, "keys", lambda domain, *, current_host=False: sorted(k for d, k in store if d == domain))
+
+    with defaults.restored(("com.example", "keep"), ("com.example", "absent")):
+        store[("com.example", "keep")] = 2
+        store[("com.example", "absent")] = True
+    assert store == {("com.example", "keep"): 1, ("com.example", "other"): "x"}
+    with pytest.raises(RuntimeError):
+        with defaults.restored("com.example"):
+            store[("com.example", "other")] = "y"
+            store[("com.example", "added")] = 3
+            raise RuntimeError("the block failed")
+    assert store == {("com.example", "keep"): 1, ("com.example", "other"): "x"}
+
+
+def test_batched_restarts():
+    ran = []
+
+    def fake_restart():
+        if _system.restart_later("Dock", fake_restart):
+            return
+        ran.append("dock")
+
+    with _system.batched_restarts():
+        fake_restart()
+        fake_restart()
+        with _system.batched_restarts():  # nested: still one batch
+            fake_restart()
+        assert ran == []
+    assert ran == ["dock"]
+    with pytest.raises(RuntimeError):
+        with _system.batched_restarts():
+            fake_restart()
+            raise RuntimeError("failed")
+    assert ran == ["dock", "dock"]  # restarted anyway, to apply what changed
+
+
+def test_hardware_setting_checks():
+    with pytest.raises(ValueError, match="seconds must be positive"):
+        macos.keyboard.set_backlight_timeout(0)
+    with pytest.raises(ValueError, match="strength must be"):
+        screen.set_night_shift_strength(1.5)
+    assert screen._clock_time("07:30") == screen.dt_time(7, 30)
+    with pytest.raises(ValueError, match="HH:MM"):
+        screen._clock_time("7h30")
+    mode = screen.DisplayMode(width=1512, height=982, pixel_width=3024, pixel_height=1964, refresh_rate=120.0)
+    assert mode.hidpi and not screen.DisplayMode(1920, 1080, 1920, 1080, 60.0).hidpi

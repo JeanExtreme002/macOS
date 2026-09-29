@@ -57,6 +57,8 @@ explain how to use each part.
 .. autofunction:: macos.appearance.set_hide_menu_bar
 .. autofunction:: macos.appearance.scroll_bars
 .. autofunction:: macos.appearance.set_scroll_bars
+.. autofunction:: macos.appearance.font_smoothing
+.. autofunction:: macos.appearance.set_font_smoothing
 ```
 
 ## macos.apps
@@ -79,6 +81,8 @@ explain how to use each part.
 .. autofunction:: macos.apps.remove_login_item
 .. autoclass:: macos.apps.LoginItem
 .. autofunction:: macos.apps.install_from_dmg
+.. autofunction:: macos.apps.is_quarantined
+.. autofunction:: macos.apps.unquarantine
 ```
 
 ## macos.keyboard
@@ -122,6 +126,17 @@ explain how to use each part.
 .. autofunction:: macos.keyboard.remap
 .. autofunction:: macos.keyboard.remappings
 .. autofunction:: macos.keyboard.clear_remappings
+.. autofunction:: macos.keyboard.fn_key_action
+.. autofunction:: macos.keyboard.set_fn_key_action
+.. autofunction:: macos.keyboard.inline_predictions
+.. autofunction:: macos.keyboard.set_inline_predictions
+.. autofunction:: macos.keyboard.app_shortcuts
+.. autofunction:: macos.keyboard.set_app_shortcut
+.. autodata:: macos.keyboard.SYSTEM_SHORTCUTS
+.. autofunction:: macos.keyboard.system_shortcuts
+.. autofunction:: macos.keyboard.set_system_shortcut
+.. autofunction:: macos.keyboard.backlight_timeout
+.. autofunction:: macos.keyboard.set_backlight_timeout
 ```
 
 ## macos.mouse
@@ -145,6 +160,8 @@ explain how to use each part.
 .. autofunction:: macos.mouse.set_scroll_speed
 .. autofunction:: macos.mouse.double_click_speed
 .. autofunction:: macos.mouse.set_double_click_speed
+.. autofunction:: macos.mouse.acceleration
+.. autofunction:: macos.mouse.set_acceleration
 ```
 
 ## macos.windows
@@ -167,6 +184,8 @@ explain how to use each part.
 .. autofunction:: macos.windows.set_tiling
 .. autofunction:: macos.windows.click_wallpaper_to_show_desktop
 .. autofunction:: macos.windows.set_click_wallpaper_to_show_desktop
+.. autofunction:: macos.windows.animations
+.. autofunction:: macos.windows.set_animations
 ```
 
 ## macos.hotkeys
@@ -269,6 +288,7 @@ explain how to use each part.
 .. autofunction:: macos.defaults.delete
 .. autofunction:: macos.defaults.keys
 .. autodata:: macos.defaults.GLOBAL
+.. autofunction:: macos.defaults.restored
 ```
 
 ## macos.dock
@@ -310,6 +330,21 @@ explain how to use each part.
 .. autofunction:: macos.dock.set_auto_rearrange_spaces
 .. autofunction:: macos.dock.separate_spaces_per_display
 .. autofunction:: macos.dock.set_separate_spaces_per_display
+.. autofunction:: macos.dock.hot_corner_modifiers
+.. autofunction:: macos.dock.dim_hidden_apps
+.. autofunction:: macos.dock.set_dim_hidden_apps
+.. autofunction:: macos.dock.only_open_apps
+.. autofunction:: macos.dock.set_only_open_apps
+.. autofunction:: macos.dock.launch_animation
+.. autofunction:: macos.dock.set_launch_animation
+.. autofunction:: macos.dock.group_windows_by_app
+.. autofunction:: macos.dock.set_group_windows_by_app
+.. autofunction:: macos.dock.switch_to_space_with_app
+.. autofunction:: macos.dock.set_switch_to_space_with_app
+.. autoclass:: macos.dock.DockFolder
+.. autofunction:: macos.dock.folders
+.. autofunction:: macos.dock.add_folder
+.. autofunction:: macos.dock.remove_folder
 ```
 
 ## macos.trackpad
@@ -327,6 +362,36 @@ explain how to use each part.
 .. autofunction:: macos.trackpad.set_three_finger_drag
 .. autofunction:: macos.trackpad.secondary_click
 .. autofunction:: macos.trackpad.set_secondary_click
+.. autofunction:: macos.trackpad.click_pressure
+.. autofunction:: macos.trackpad.set_click_pressure
+.. autodata:: macos.trackpad.GESTURES
+.. autofunction:: macos.trackpad.gestures
+.. autofunction:: macos.trackpad.set_gesture
+```
+
+## macos.printer
+
+```{eval-rst}
+.. module:: macos.printer
+
+.. autofunction:: macos.printer.printers
+.. autofunction:: macos.printer.default
+.. autofunction:: macos.printer.set_default
+.. autofunction:: macos.printer.print_file
+.. autofunction:: macos.printer.jobs
+.. autofunction:: macos.printer.cancel
+.. autoclass:: macos.printer.Printer
+.. autoclass:: macos.printer.PrintJob
+```
+
+## macos.settings
+
+```{eval-rst}
+.. module:: macos.settings
+
+.. autofunction:: macos.settings.export
+.. autofunction:: macos.settings.apply
+.. autofunction:: macos.settings.names
 ```
 
 ## macos.time_machine
@@ -436,6 +501,10 @@ explain how to use each part.
 .. autofunction:: macos.finder.set_remove_old_trash_items
 .. autofunction:: macos.finder.drives_on_desktop
 .. autofunction:: macos.finder.set_show_drives_on_desktop
+.. autofunction:: macos.finder.quit_menu
+.. autofunction:: macos.finder.set_quit_menu
+.. autofunction:: macos.finder.desktop_view
+.. autofunction:: macos.finder.set_desktop_view
 ```
 
 ## macos.volume
@@ -647,6 +716,12 @@ explain how to use each part.
 .. autofunction:: macos.sound.play
 .. autofunction:: macos.sound.beep
 .. autofunction:: macos.sound.names
+.. autofunction:: macos.sound.alert_sound
+.. autofunction:: macos.sound.set_alert_sound
+.. autofunction:: macos.sound.alert_volume
+.. autofunction:: macos.sound.set_alert_volume
+.. autofunction:: macos.sound.ui_sounds
+.. autofunction:: macos.sound.set_ui_sounds
 ```
 
 ## macos.network
@@ -698,6 +773,22 @@ explain how to use each part.
 .. autofunction:: macos.screen.set_screensaver_delay
 .. autofunction:: macos.screen.screenshot_thumbnail
 .. autofunction:: macos.screen.set_screenshot_thumbnail
+.. autofunction:: macos.screen.screenshot_name
+.. autofunction:: macos.screen.set_screenshot_name
+.. autofunction:: macos.screen.screenshot_target
+.. autofunction:: macos.screen.set_screenshot_target
+.. autofunction:: macos.screen.night_shift_schedule
+.. autofunction:: macos.screen.set_night_shift_schedule
+.. autofunction:: macos.screen.night_shift_strength
+.. autofunction:: macos.screen.set_night_shift_strength
+.. autoclass:: macos.screen.DisplayMode
+.. autofunction:: macos.screen.display_modes
+.. autofunction:: macos.screen.display_mode
+.. autofunction:: macos.screen.set_display_mode
+.. autofunction:: macos.screen.set_main_display
+.. autofunction:: macos.screen.mirrored
+.. autofunction:: macos.screen.mirror
+.. autofunction:: macos.screen.stop_mirroring
 ```
 
 ## macos.dialog
@@ -760,6 +851,19 @@ explain how to use each part.
 .. autofunction:: macos.system.set_expanded_save_dialog
 .. autofunction:: macos.system.clock_format
 .. autofunction:: macos.system.set_clock_format
+.. autofunction:: macos.system.measurement_units
+.. autofunction:: macos.system.set_measurement_units
+.. autofunction:: macos.system.temperature_unit
+.. autofunction:: macos.system.set_temperature_unit
+.. autofunction:: macos.system.open_photos_on_device_connect
+.. autofunction:: macos.system.set_open_photos_on_device_connect
+.. autofunction:: macos.system.menu_bar_spacing
+.. autofunction:: macos.system.set_menu_bar_spacing
+.. autodata:: macos.system.MENU_BAR_ITEMS
+.. autofunction:: macos.system.menu_bar_items
+.. autofunction:: macos.system.set_menu_bar_items
+.. autoclass:: macos.system.SecurityStatus
+.. autofunction:: macos.system.security_status
 ```
 
 ## Exceptions

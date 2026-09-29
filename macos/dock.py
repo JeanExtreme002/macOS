@@ -20,11 +20,11 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from urllib.parse import quote, unquote, urlparse
 
 from . import apps as _apps, defaults
-from ._system import require_macos, run as _run
+from ._system import require_macos, restart_later, run as _run
 from .errors import AppNotFoundError, MacOSError
 
 __all__ = [
@@ -62,6 +62,21 @@ __all__ = [
     "set_auto_rearrange_spaces",
     "separate_spaces_per_display",
     "set_separate_spaces_per_display",
+    "hot_corner_modifiers",
+    "dim_hidden_apps",
+    "set_dim_hidden_apps",
+    "only_open_apps",
+    "set_only_open_apps",
+    "launch_animation",
+    "set_launch_animation",
+    "group_windows_by_app",
+    "set_group_windows_by_app",
+    "switch_to_space_with_app",
+    "set_switch_to_space_with_app",
+    "DockFolder",
+    "folders",
+    "add_folder",
+    "remove_folder",
 ]
 
 _DOMAIN = "com.apple.dock"
@@ -94,6 +109,8 @@ def restart() -> None:
 
     Returns once the new Dock has started, so the next change reaches it.
     """
+    if restart_later("Dock", restart):
+        return
     require_macos()
     old = _pid()
     # Killed, not asked to quit: a quitting Dock saves the settings it had over the change.
@@ -265,6 +282,9 @@ _ACTIONS = {
 }
 HOT_CORNER_ACTIONS = tuple(action for action in _ACTIONS if action)
 """What a hot corner can do, for :func:`set_hot_corner`."""
+# The keys a hot corner can wait for, as the modifier flags the Dock keeps.
+_CORNER_MODIFIERS = {"shift": 131072, "ctrl": 262144, "option": 524288, "cmd": 1048576}
+_CORNER_MODIFIER_ALIASES = {"command": "cmd", "control": "ctrl", "opt": "option", "alt": "option"}
 _EFFECTS = ("genie", "scale")
 
 
@@ -281,25 +301,51 @@ def hot_corners() -> Dict[str, Optional[str]]:
     }
 
 
-def set_hot_corner(corner: str, action: Optional[str]) -> None:
+def hot_corner_modifiers() -> Dict[str, Optional[str]]:
+    """The keys each hot corner waits for, such as ``{"top_left": "cmd", "top_right": None, ...}``."""
+    found: Dict[str, Optional[str]] = {}
+    for corner, code in _CORNERS.items():
+        flags = int(defaults.read(_DOMAIN, "wvous-{}-modifier".format(code), default=0))
+        names = [name for name in ("cmd", "shift", "option", "ctrl") if flags & _CORNER_MODIFIERS[name]]
+        found[corner] = "+".join(names) or None
+    return found
+
+
+def _corner_flags(modifier: Optional[str]) -> int:
+    if not modifier:
+        return 0
+    flags = 0
+    for part in modifier.lower().split("+"):
+        name = _CORNER_MODIFIER_ALIASES.get(part.strip(), part.strip())
+        if name not in _CORNER_MODIFIERS:
+            raise ValueError("modifier must be made of cmd, shift, option and ctrl, not {!r}".format(modifier))
+        flags |= _CORNER_MODIFIERS[name]
+    return flags
+
+
+def set_hot_corner(corner: str, action: Optional[str], *, modifier: Optional[str] = None) -> None:
     """
     Make moving the pointer into ``corner`` do ``action``, like System Settings › Desktop & Dock › Hot Corners.
 
     ::
 
         macos.dock.set_hot_corner("bottom_right", "lock_screen")
-        macos.dock.set_hot_corner("top_left", None)          # nothing
+        macos.dock.set_hot_corner("top_left", "mission_control", modifier="cmd")   # only while holding ⌘
+        macos.dock.set_hot_corner("top_left", None)                                # nothing
 
     ``corner`` is ``"top_left"``, ``"top_right"``, ``"bottom_left"`` or
     ``"bottom_right"``; ``action`` one of :data:`HOT_CORNER_ACTIONS`.
+    ``modifier`` makes the corner wait for keys held down, so it doesn't
+    fire by accident: ``"cmd"``, ``"option"``, ``"cmd+shift"``...
     """
     if corner not in _CORNERS:
         raise ValueError("corner must be one of {}, not {!r}".format(", ".join(_CORNERS), corner))
     if action not in _ACTIONS:
         raise ValueError("action must be one of {} or None, not {!r}".format(", ".join(HOT_CORNER_ACTIONS), action))
+    flags = _corner_flags(modifier)
     code = _CORNERS[corner]
     defaults.write(_DOMAIN, "wvous-{}-corner".format(code), _ACTIONS[action])
-    defaults.write(_DOMAIN, "wvous-{}-modifier".format(code), 0)  # without holding a key
+    defaults.write(_DOMAIN, "wvous-{}-modifier".format(code), flags)
     restart()
 
 
@@ -453,3 +499,170 @@ def set_separate_spaces_per_display(on: bool = True) -> None:
     Takes effect at the next login.
     """
     defaults.write("com.apple.spaces", "spans-displays", not on)
+
+
+def dim_hidden_apps() -> bool:
+    """Whether the icons of hidden apps (⌘H) are translucent, to tell them apart."""
+    return bool(defaults.read(_DOMAIN, "showhidden", default=False))
+
+
+def set_dim_hidden_apps(on: bool = True) -> None:
+    """Make the icons of hidden apps translucent, or not."""
+    defaults.write(_DOMAIN, "showhidden", bool(on))
+    restart()
+
+
+def only_open_apps() -> bool:
+    """Whether the Dock shows only the apps that are open, like a taskbar."""
+    return bool(defaults.read(_DOMAIN, "static-only", default=False))
+
+
+def set_only_open_apps(on: bool = True) -> None:
+    """Show only the open apps in the Dock, or the apps kept in it too (``False``). The kept apps aren't lost."""
+    defaults.write(_DOMAIN, "static-only", bool(on))
+    restart()
+
+
+def launch_animation() -> bool:
+    """Whether an app's icon bounces while it opens."""
+    return bool(defaults.read(_DOMAIN, "launchanim", default=True))
+
+
+def set_launch_animation(on: bool = True) -> None:
+    """Bounce an app's icon while it opens, or not."""
+    defaults.write(_DOMAIN, "launchanim", bool(on))
+    restart()
+
+
+def group_windows_by_app() -> bool:
+    """Whether Mission Control groups the windows by app."""
+    return bool(defaults.read(_DOMAIN, "expose-group-apps", default=False))
+
+
+def set_group_windows_by_app(on: bool = True) -> None:
+    """Group the windows by app in Mission Control, or spread them out."""
+    defaults.write(_DOMAIN, "expose-group-apps", bool(on))
+    restart()
+
+
+def switch_to_space_with_app() -> bool:
+    """Whether switching to an app moves to a space (desktop) where it has windows open."""
+    return bool(defaults.read(defaults.GLOBAL, "AppleSpacesSwitchOnActivate", default=True))
+
+
+def set_switch_to_space_with_app(on: bool = True) -> None:
+    """
+    Move to a space where the app has windows when switching to it, or stay on this space (``False``).
+
+    ``False`` stops the jumps between spaces when ⌘Tab reaches an app that
+    has windows elsewhere.
+    """
+    defaults.write(defaults.GLOBAL, "AppleSpacesSwitchOnActivate", bool(on))
+    restart()
+
+
+# --- Folders ------------------------------------------------------------------
+
+_VIEWS = ("automatic", "fan", "grid", "list")  # showas
+_SORTS = {"name": 1, "date_added": 2, "date_modified": 3, "date_created": 4, "kind": 5}  # arrangement
+_DISPLAYS = ("stack", "folder")  # displayas
+
+
+@dataclass(frozen=True)
+class DockFolder:
+    """A folder kept in the Dock, next to the Trash."""
+
+    name: str
+    path: Optional[Path]
+    view: str
+    """How it opens: ``'automatic'``, ``'fan'``, ``'grid'`` or ``'list'``."""
+    sort: str
+    """``'name'``, ``'date_added'``, ``'date_modified'``, ``'date_created'`` or ``'kind'``."""
+    display: str
+    """Its icon: ``'stack'`` (its items piled up) or ``'folder'``."""
+
+
+def _others() -> List[Dict[str, Any]]:
+    return list(defaults.read(_DOMAIN, "persistent-others", default=[]))
+
+
+def _folder(tile: Dict[str, Any]) -> DockFolder:
+    data = tile.get("tile-data", {})
+    path = _tile_path(tile)
+    sorts = {number: name for name, number in _SORTS.items()}
+    view, display = int(data.get("showas", 0)), int(data.get("displayas", 0))
+    return DockFolder(
+        name=data.get("file-label") or (path.name if path else ""),
+        path=path,
+        view=_VIEWS[view] if 0 <= view < len(_VIEWS) else "automatic",
+        sort=sorts.get(int(data.get("arrangement", 1)), "name"),
+        display=_DISPLAYS[display] if 0 <= display < len(_DISPLAYS) else "stack",
+    )
+
+
+def folders() -> List[DockFolder]:
+    """The folders kept in the Dock, such as Downloads, left to right (or top to bottom)."""
+    return [_folder(tile) for tile in _others() if tile.get("tile-type") == "directory-tile"]
+
+
+def add_folder(
+    folder: Union[str, "os.PathLike[str]"],
+    *,
+    view: str = "automatic",
+    sort: str = "date_added",
+    display: str = "stack",
+) -> DockFolder:
+    """
+    Keep ``folder`` in the Dock, next to the Trash, and return it; one kept already is updated.
+
+    ::
+
+        macos.dock.add_folder("~/Downloads", view="grid", sort="date_added")
+        macos.dock.add_folder("~/Projects", display="folder", sort="name")
+
+    ``view`` is how it opens (``"automatic"``, ``"fan"``, ``"grid"`` or
+    ``"list"``), ``sort`` the order of its items, and ``display`` its icon:
+    a ``"stack"`` of its items or the ``"folder"``.
+    """
+    if view not in _VIEWS:
+        raise ValueError("view must be one of {}, not {!r}".format(", ".join(_VIEWS), view))
+    if sort not in _SORTS:
+        raise ValueError("sort must be one of {}, not {!r}".format(", ".join(_SORTS), sort))
+    if display not in _DISPLAYS:
+        raise ValueError("display must be 'stack' or 'folder', not {!r}".format(display))
+    path = Path(os.path.realpath(os.path.expanduser(str(folder))))
+    if not path.is_dir():
+        raise NotADirectoryError(str(path))
+    tile = {
+        "tile-data": {
+            "file-data": {"_CFURLString": "file://{}/".format(quote(str(path))), "_CFURLStringType": _FILE_URL},
+            "file-label": path.name,
+            "file-type": 2,  # a folder
+            "showas": _VIEWS.index(view),
+            "arrangement": _SORTS[sort],
+            "displayas": _DISPLAYS.index(display),
+        },
+        "tile-type": "directory-tile",
+    }
+    tiles = _others()
+    for index, existing in enumerate(tiles):
+        if _tile_path(existing) == path:
+            tiles[index] = tile
+            break
+    else:
+        tiles.append(tile)
+    defaults.write(_DOMAIN, "persistent-others", tiles)
+    restart()
+    return _folder(tile)
+
+
+def remove_folder(folder: Union[str, "os.PathLike[str]"]) -> bool:
+    """Take ``folder`` out of the Dock; return whether it was there. The folder itself stays."""
+    path = Path(os.path.realpath(os.path.expanduser(str(folder))))
+    tiles = _others()
+    kept = [tile for tile in tiles if _tile_path(tile) != path]
+    if len(kept) == len(tiles):
+        return False
+    defaults.write(_DOMAIN, "persistent-others", kept)
+    restart()
+    return True

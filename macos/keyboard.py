@@ -28,7 +28,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from . import _cf, _events, _objc
 from ._system import framework, private_framework
@@ -71,6 +71,17 @@ __all__ = [
     "remap",
     "remappings",
     "clear_remappings",
+    "fn_key_action",
+    "set_fn_key_action",
+    "inline_predictions",
+    "set_inline_predictions",
+    "app_shortcuts",
+    "set_app_shortcut",
+    "SYSTEM_SHORTCUTS",
+    "system_shortcuts",
+    "set_system_shortcut",
+    "backlight_timeout",
+    "set_backlight_timeout",
 ]
 
 has_permission = _events.has_permission
@@ -910,3 +921,280 @@ def remap(key: str, to: Optional[str]) -> None:
 def clear_remappings() -> None:
     """Undo every key remapping: each key acts as itself again."""
     _set_mappings({})
+
+
+# --- More settings ----------------------------------------------------------
+
+# AppleFnUsageType's values.
+_FN_ACTIONS = {None: 0, "input_source": 1, "emoji": 2, "dictation": 3}
+
+
+def fn_key_action() -> Optional[str]:
+    """
+    What pressing Fn (🌐) alone does: ``'emoji'``, ``'input_source'``, ``'dictation'``, or ``None`` (nothing).
+    """
+    from . import defaults
+
+    code = int(defaults.read("com.apple.HIToolbox", "AppleFnUsageType", default=2))
+    return {value: name for name, value in _FN_ACTIONS.items()}.get(code, "emoji")
+
+
+def set_fn_key_action(action: Optional[str]) -> None:
+    """
+    Make pressing Fn (🌐) alone show the ``"emoji"`` picker, switch the ``"input_source"``, start ``"dictation"``,
+    or do nothing (``None``), like System Settings › Keyboard.
+
+    ``None`` stops the emoji picker popping up when Fn is pressed by itself.
+    """
+    from . import defaults
+    from ._system import apply_input_settings
+
+    if action not in _FN_ACTIONS:
+        raise ValueError("action must be 'emoji', 'input_source', 'dictation' or None, not {!r}".format(action))
+    defaults.write("com.apple.HIToolbox", "AppleFnUsageType", _FN_ACTIONS[action])
+    apply_input_settings()
+
+
+def inline_predictions() -> bool:
+    """Whether macOS suggests the end of words and sentences in gray as you type (macOS 14 and later)."""
+    return bool(_global("NSAutomaticInlinePredictionEnabled", True))
+
+
+def set_inline_predictions(on: bool = True) -> None:
+    """Show predictive text inline as you type, or not. Apps pick it up when they're reopened. Needs macOS 14 or later."""
+    _set_global("NSAutomaticInlinePredictionEnabled", bool(on), apply=False)
+
+
+# --- Shortcuts for apps' menu items -----------------------------------------
+
+# NSUserKeyEquivalents writes the modifiers as these characters, before the key.
+_SHORTCUT_MODIFIERS = (("cmd", "@"), ("shift", "$"), ("option", "~"), ("ctrl", "^"))
+_SHORTCUT_MODIFIER_ALIASES = {"command": "cmd", "control": "ctrl", "opt": "option", "alt": "option"}
+# Keys that aren't a character, as AppKit's code points for them (NSUpArrowFunctionKey...).
+_SHORTCUT_KEYS = {
+    "up": "",
+    "down": "",
+    "left": "",
+    "right": "",
+    "forward_delete": "",
+    "home": "",
+    "end": "",
+    "page_up": "",
+    "page_down": "",
+    "delete": "\x7f",
+    "backspace": "\x7f",
+    "tab": "\t",
+    "enter": "\r",
+    "return": "\r",
+    "escape": "\x1b",
+    "esc": "\x1b",
+    "space": " ",
+    "plus": "+",
+}
+_SHORTCUT_KEYS.update({"f{}".format(number): chr(0xF704 + number - 1) for number in range(1, 21)})
+# The first name of each key, for reading shortcuts back.
+_SHORTCUT_KEY_NAMES: Dict[str, str] = {}
+for _name, _character in _SHORTCUT_KEYS.items():
+    _SHORTCUT_KEY_NAMES.setdefault(_character, _name)
+_SHORTCUT_KEY_NAMES["+"] = "+"
+_MENU_PATH = "\x1b"  # NSUserKeyEquivalents' separator between a menu and its item
+_MENU_SEPARATOR = " > "
+
+
+def _encode_shortcut(keys: str) -> str:
+    """``"cmd+shift+e"`` as NSUserKeyEquivalents writes it: ``"@$e"``."""
+    text = keys.strip().lower()
+    if text.endswith("+"):  # the "+" key itself: "cmd++"
+        key, rest = "+", text[:-1].rstrip("+")
+    else:
+        rest, _, key = text.rpartition("+")
+    names = [part.strip() for part in rest.split("+") if part.strip()]
+    wanted = {_SHORTCUT_MODIFIER_ALIASES.get(name, name) for name in names}
+    if wanted - {name for name, _ in _SHORTCUT_MODIFIERS} or not key.strip():
+        raise ValueError("can't read the shortcut {!r}: write it like 'cmd+shift+e'".format(keys))
+    key = key.strip()
+    if key in _SHORTCUT_KEYS:
+        key = _SHORTCUT_KEYS[key]
+    elif len(key) != 1:
+        raise ValueError("unknown key {!r} in {!r}: use a character, f1 to f20, or a name like 'left'".format(key, keys))
+    return "".join(symbol for name, symbol in _SHORTCUT_MODIFIERS if name in wanted) + key
+
+
+def _decode_shortcut(code: str) -> str:
+    """``"@$e"`` back as ``"cmd+shift+e"``."""
+    symbols = {symbol: name for name, symbol in _SHORTCUT_MODIFIERS}
+    index = 0
+    found = set()
+    while index < len(code) - 1 and code[index] in symbols:
+        found.add(symbols[code[index]])
+        index += 1
+    key = code[index:]
+    names = [name for name, _ in _SHORTCUT_MODIFIERS if name in found]
+    return "+".join(names + [_SHORTCUT_KEY_NAMES.get(key, key)])
+
+
+def _shortcut_domain(app: Optional[str]) -> str:
+    from . import apps, defaults
+
+    if app is None:
+        return defaults.GLOBAL
+    if "." in app and "/" not in app and not app.endswith(".app"):
+        return app  # already a bundle ID
+    bundle_id = apps._bundle_id(apps._locate(app))
+    if not bundle_id:
+        raise MacOSError("{!r} has no bundle ID to keep its shortcuts under".format(app))
+    return bundle_id
+
+
+def _menu_title(menu_item: str) -> str:
+    if _MENU_SEPARATOR not in menu_item:
+        return menu_item
+    return "".join(_MENU_PATH + part.strip() for part in menu_item.split(_MENU_SEPARATOR))
+
+
+def app_shortcuts(app: Optional[str] = None) -> Dict[str, str]:
+    """
+    The shortcuts given to ``app``'s menu items, as ``{"Export as PDF…": "cmd+shift+e"}``; ``None`` for every app's.
+
+    An item under a given menu is written ``"File > Export…"``.
+    """
+    from . import defaults
+
+    found = defaults.read(_shortcut_domain(app), "NSUserKeyEquivalents", default={}) or {}
+    return {
+        title.lstrip(_MENU_PATH).replace(_MENU_PATH, _MENU_SEPARATOR): _decode_shortcut(code) for title, code in found.items()
+    }
+
+
+def set_app_shortcut(app: Optional[str], menu_item: str, keys: Optional[str]) -> None:
+    """
+    Give a menu item a keyboard shortcut, like System Settings › Keyboard › Keyboard Shortcuts › App Shortcuts.
+
+    ::
+
+        macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", "cmd+shift+e")
+        macos.keyboard.set_app_shortcut("Preview", "File > Export…", "cmd+e")      # the one in the File menu
+        macos.keyboard.set_app_shortcut(None, "Show Tab Bar", "cmd+option+t")     # in every app
+        macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", None)         # remove it
+
+    ``app`` is a name, bundle ID or path, as for :func:`macos.apps.open`, or
+    ``None`` for every app. ``menu_item`` is the title exactly as the menu
+    shows it, in the system's language, the ellipsis (…) included; write
+    ``"Menu > Item"`` when several menus have an item with that title.
+    ``keys`` is written as for :func:`press`. Apps pick it up when they're
+    reopened.
+    """
+    from . import defaults
+
+    if not menu_item.strip():
+        raise ValueError("menu_item must not be empty")
+    domain = _shortcut_domain(app)
+    title = _menu_title(menu_item)
+    found = dict(defaults.read(domain, "NSUserKeyEquivalents", default={}) or {})
+    if keys is None:
+        if found.pop(title, None) is None:
+            return
+    else:
+        found[title] = _encode_shortcut(keys)
+    if found:
+        defaults.write(domain, "NSUserKeyEquivalents", found)
+    else:
+        defaults.delete(domain, "NSUserKeyEquivalents")
+
+
+# --- macOS's own shortcuts ---------------------------------------------------
+
+# Name: (its number in AppleSymbolicHotKeys, its default keys: character, key code, modifier flags).
+_SYSTEM_SHORTCUTS = {
+    "spotlight": (64, [65535, 49, 1048576]),
+    "finder_search": (65, [65535, 49, 1572864]),
+    "previous_input_source": (60, [32, 49, 262144]),
+    "next_input_source": (61, [32, 49, 786432]),
+    "screenshot": (28, [51, 20, 1179648]),
+    "screenshot_to_clipboard": (29, [51, 20, 1441792]),
+    "screenshot_area": (30, [52, 21, 1179648]),
+    "screenshot_area_to_clipboard": (31, [52, 21, 1441792]),
+    "screenshot_toolbar": (184, [53, 23, 1179648]),
+    "mission_control": (32, [65535, 126, 262144]),
+    "application_windows": (33, [65535, 125, 262144]),
+    "show_desktop": (36, [65535, 103, 0]),
+    "move_left_a_space": (79, [65535, 123, 262144]),
+    "move_right_a_space": (81, [65535, 124, 262144]),
+    "dock_hiding": (52, [100, 2, 1572864]),
+}
+SYSTEM_SHORTCUTS = tuple(_SYSTEM_SHORTCUTS)
+"""The macOS shortcuts :func:`set_system_shortcut` turns on and off, such as ``"spotlight"`` (⌘Space)."""
+
+
+def _hotkeys() -> Dict[str, Any]:
+    from . import defaults
+
+    return dict(defaults.read("com.apple.symbolichotkeys", "AppleSymbolicHotKeys", default={}) or {})
+
+
+def system_shortcuts() -> Dict[str, bool]:
+    """Which of macOS's shortcuts are on: ``{"spotlight": True, "screenshot": True, ...}``."""
+    found = _hotkeys()
+    return {name: bool(found.get(str(number), {}).get("enabled", True)) for name, (number, _) in _SYSTEM_SHORTCUTS.items()}
+
+
+def set_system_shortcut(name: str, on: bool) -> None:
+    """
+    Turn one of macOS's shortcuts on or off, like System Settings › Keyboard › Keyboard Shortcuts.
+
+    ::
+
+        macos.keyboard.set_system_shortcut("spotlight", False)   # free ⌘Space for Raycast or Alfred
+
+    ``name`` is one of :data:`SYSTEM_SHORTCUTS`. The keys stay as they
+    were: only the shortcut is turned on or off. Applies at once.
+    """
+    from . import defaults
+    from ._system import apply_input_settings
+
+    if name not in _SYSTEM_SHORTCUTS:
+        raise ValueError("name must be one of {}, not {!r}".format(", ".join(SYSTEM_SHORTCUTS), name))
+    number, keys = _SYSTEM_SHORTCUTS[name]
+    found = _hotkeys()
+    entry = dict(found.get(str(number), {}))
+    # Without its keys, a shortcut turned back on may not work: keep them, or write the defaults.
+    entry.setdefault("value", {"parameters": list(keys), "type": "standard"})
+    entry["enabled"] = bool(on)
+    found[str(number)] = entry
+    defaults.write("com.apple.symbolichotkeys", "AppleSymbolicHotKeys", found)
+    apply_input_settings()
+
+
+# --- The backlight's timeout -------------------------------------------------
+
+
+def backlight_timeout() -> Optional[float]:
+    """Seconds without use before the keyboard backlight turns off; ``None`` when it stays on."""
+    with _objc.autorelease_pool():
+        client, keyboard = _backlight()
+        seconds = _objc.send(client, "idleDimTimeForKeyboard:", keyboard, argtypes=(ctypes.c_uint64,), restype=ctypes.c_double)
+    return float(seconds) if seconds > 0 else None
+
+
+def set_backlight_timeout(seconds: Optional[float]) -> None:
+    """
+    Turn the keyboard backlight off after ``seconds`` without use, or never (``None``).
+
+    System Settings › Keyboard offers 5, 10 and 30 seconds, 1 and 5
+    minutes; other durations work too. Raises
+    :class:`~macos.errors.NotSupportedError` on a Mac without a backlit keyboard.
+    """
+    if seconds is not None and seconds <= 0:
+        raise ValueError("seconds must be positive, or None for never, not {}".format(seconds))
+    with _objc.autorelease_pool():
+        client, keyboard = _backlight()
+        ok = _objc.send(
+            client,
+            "setIdleDimTime:forKeyboard:",
+            float(seconds or 0),
+            keyboard,
+            argtypes=(ctypes.c_double, ctypes.c_uint64),
+            restype=_objc.BOOL,
+        )
+    if not ok:
+        raise MacOSError("macOS refused to change the keyboard backlight's timeout")

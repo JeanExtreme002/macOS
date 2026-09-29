@@ -40,8 +40,28 @@ macos.sound.play("Submarine", wait=False)
 start_long_task()
 ```
 
+## Sound settings
+
+The alert sound, its volume and the interface's sound effects, as in System
+Settings › Sound:
+
+```python
+macos.sound.set_alert_sound("Funk")      # one of names()
+macos.sound.set_alert_volume(0.5)        # apart from music and videos
+macos.sound.set_ui_sounds(False)         # no sound when emptying the Trash
+```
+
+`set_alert_sound(None)` goes back to macOS's own. Apps pick the alert sound
+up when they're reopened.
+
 ## Reference
 
 - {func}`macos.sound.play`
 - {func}`macos.sound.beep`
 - {func}`macos.sound.names`
+- {func}`macos.sound.alert_sound`
+- {func}`macos.sound.set_alert_sound`
+- {func}`macos.sound.alert_volume`
+- {func}`macos.sound.set_alert_volume`
+- {func}`macos.sound.ui_sounds`
+- {func}`macos.sound.set_ui_sounds`

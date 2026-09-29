@@ -55,6 +55,8 @@ __all__ = [
     "set_scroll_speed",
     "double_click_speed",
     "set_double_click_speed",
+    "acceleration",
+    "set_acceleration",
 ]
 
 has_permission = _events.has_permission
@@ -340,3 +342,27 @@ def set_double_click_speed(seconds: float) -> None:
     if seconds <= 0:
         raise ValueError("seconds must be positive, not {}".format(seconds))
     defaults.write(defaults.GLOBAL, "com.apple.mouse.doubleClickThreshold", float(seconds))
+
+
+def acceleration() -> bool:
+    """Whether the pointer goes farther the faster the mouse moves (pointer acceleration, on by default)."""
+    from . import defaults
+
+    return not defaults.read(defaults.GLOBAL, "com.apple.mouse.linear", default=False)
+
+
+def set_acceleration(on: bool = True) -> None:
+    """
+    Turn pointer acceleration on, or off (``False``): then the pointer moves in proportion to the mouse, as gamers like.
+
+    Like *Pointer acceleration* in System Settings › Mouse › Advanced
+    (macOS 14 and later). Applies at once, and stays after a restart.
+    """
+    import json
+
+    from . import defaults
+    from ._system import run as _run
+
+    defaults.write(defaults.GLOBAL, "com.apple.mouse.linear", not on)
+    # The saved setting is read at login: tell the mouse driver now too.
+    _run(["hidutil", "property", "--set", json.dumps({"HIDUseLinearScalingMouseAcceleration": 0 if on else 1})])
