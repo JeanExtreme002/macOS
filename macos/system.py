@@ -1078,7 +1078,7 @@ def security_status() -> SecurityStatus:
     ::
 
         status = macos.system.security_status()
-        if not status.filevault:
+        if status.filevault is False:   # None: macOS didn't say
             print("The disk isn't encrypted")
 
     Handy to check a fleet of Macs against a security policy.

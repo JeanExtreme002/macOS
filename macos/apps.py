@@ -726,7 +726,10 @@ def unquarantine(path: Union[str, "os.PathLike[str]"]) -> int:
     libc = _libc()
     paths = [target]
     if target.is_dir() and not target.is_symlink():
-        for folder, folders, files in os.walk(target):
+        def unreadable(error: OSError) -> None:
+            raise error  # a folder it can't list would keep its files quarantined
+
+        for folder, folders, files in os.walk(target, onerror=unreadable):
             paths.extend(Path(folder, name) for name in folders + files)
     removed = 0
     for item in paths:
@@ -735,5 +738,5 @@ def unquarantine(path: Union[str, "os.PathLike[str]"]) -> int:
         else:
             error = ctypes.get_errno()
             if error not in (_ENOATTR, errno.ENOENT):
-                raise PermissionError(error, "can't remove the quarantine from {}: {}".format(item, os.strerror(error)))
+                raise OSError(error, "can't remove the quarantine from {}: {}".format(item, os.strerror(error)))
     return removed

@@ -459,8 +459,16 @@ def test_app_shortcut_keys(keys, code):
 
 def test_app_shortcuts(prefs, monkeypatch):
     store, _ = prefs
-    monkeypatch.setattr(macos.apps, "_locate", lambda app: "/Applications/Safari.app")
-    monkeypatch.setattr(macos.apps, "_bundle_id", lambda path: "com.apple.Safari")
+    installed = {"Safari": "/Applications/Safari.app", "zoom.us": "/Applications/zoom.us.app"}
+    bundle_ids = {"/Applications/Safari.app": "com.apple.Safari", "/Applications/zoom.us.app": "us.zoom.xos"}
+
+    def locate(app):
+        if app not in installed:
+            raise macos.AppNotFoundError(app)
+        return installed[app]
+
+    monkeypatch.setattr(macos.apps, "_locate", locate)
+    monkeypatch.setattr(macos.apps, "_bundle_id", bundle_ids.get)
 
     macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", "cmd+shift+e")
     macos.keyboard.set_app_shortcut("com.apple.Preview", "File > Export…", "cmd+e")
@@ -469,6 +477,10 @@ def test_app_shortcuts(prefs, monkeypatch):
     assert store[("com.apple.Preview", "NSUserKeyEquivalents", False)] == {"\x1bFile\x1bExport…": "@e"}
     assert macos.keyboard.app_shortcuts("com.apple.Preview") == {"File > Export…": "cmd+e"}
     assert macos.keyboard.app_shortcuts() == {"Show Tab Bar": "cmd+option+t"}
+    macos.keyboard.set_app_shortcut("zoom.us", "Mute Audio", "cmd+shift+a")  # a name with a dot, not a bundle ID
+    assert store[("us.zoom.xos", "NSUserKeyEquivalents", False)] == {"Mute Audio": "@$a"}
+    with pytest.raises(macos.AppNotFoundError):
+        macos.keyboard.set_app_shortcut("NotAnApp", "Print…", "cmd+p")
     macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", None)
     assert ("com.apple.Safari", "NSUserKeyEquivalents", False) not in store  # the last one: the key goes
     macos.keyboard.set_app_shortcut("Safari", "Missing", None)  # nothing to remove

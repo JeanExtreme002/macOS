@@ -16,11 +16,13 @@ screenshots, sounds and system settings this package reads and changes;
 the file is plain JSON, to keep in a repository and edit by hand.
 """
 
+import os
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, NamedTuple, Optional
 
 from . import appearance, dock, finder, keyboard, mouse, screen, sound, system, trackpad, windows
 from ._system import batched_restarts, require_macos
-from .errors import MacOSError, NotSupportedError
+from .errors import NotSupportedError
 
 __all__ = ["export", "apply", "names"]
 
@@ -61,6 +63,15 @@ def _night_shift_schedule() -> Any:
     if isinstance(found, tuple):
         return [moment.strftime("%H:%M") for moment in found]
     return found
+
+
+def _portable(folder: Path) -> str:
+    """A folder under the home folder as ``~/...``, so it works on a Mac with another user name."""
+    home = Path.home()
+    try:
+        return os.path.join("~", str(folder.relative_to(home))) if folder != home else "~"
+    except ValueError:
+        return str(folder)
 
 
 def _set_night_shift_schedule(schedule: Any) -> None:
@@ -131,7 +142,7 @@ _SETTINGS: Dict[str, Dict[str, _Setting]] = {
         "show_library_folder": _Setting(finder.show_library_folder, finder.set_show_library_folder),
         "show_desktop_icons": _Setting(finder.show_desktop_icons, finder.set_show_desktop_icons),
         "default_view": _Setting(finder.default_view, finder.set_default_view),
-        "new_window_folder": _Setting(lambda: str(finder.new_window_folder()), finder.set_new_window_folder),
+        "new_window_folder": _Setting(lambda: _portable(finder.new_window_folder()), finder.set_new_window_folder),
         "search_scope": _Setting(finder.search_scope, finder.set_search_scope),
         "folders_first": _Setting(finder.folders_first, finder.set_folders_first),
         "extension_change_warning": _Setting(finder.extension_change_warning, finder.set_extension_change_warning),
@@ -155,7 +166,7 @@ _SETTINGS: Dict[str, Dict[str, _Setting]] = {
         "font_smoothing": _Setting(appearance.font_smoothing, appearance.set_font_smoothing),
     },
     "screen": {
-        "screenshot_folder": _Setting(lambda: str(screen.screenshot_folder()), screen.set_screenshot_folder),
+        "screenshot_folder": _Setting(lambda: _portable(screen.screenshot_folder()), screen.set_screenshot_folder),
         "screenshot_format": _Setting(screen.screenshot_format, screen.set_screenshot_format),
         "screenshot_name": _Setting(screen.screenshot_name, screen.set_screenshot_name),
         "screenshot_target": _Setting(screen.screenshot_target, screen.set_screenshot_target),
@@ -206,8 +217,8 @@ def export() -> Dict[str, Dict[str, Any]]:
         for name, setting in settings.items():
             try:
                 found.setdefault(section, {})[name] = setting.read()
-            except MacOSError:
-                continue  # NotSupportedError included: this Mac lacks it
+            except NotSupportedError:
+                continue  # this Mac lacks it
     return found
 
 
@@ -250,8 +261,8 @@ def apply(settings: Mapping[str, Mapping[str, Any]]) -> List[str]:
                 setting = _SETTINGS[section][name]
                 try:
                     current = _normalized(setting.read())
-                except MacOSError:
-                    current = None
+                except NotSupportedError:
+                    continue  # this Mac lacks it (a keyboard backlight, Night Shift...): the others still apply
                 if current == _normalized(value):
                     continue
                 try:

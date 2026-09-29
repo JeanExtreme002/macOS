@@ -86,3 +86,21 @@ def test_apply_skips_what_this_mac_lacks(fake_settings, monkeypatch):
     monkeypatch.setitem(table, "backlight_timeout", settings._Setting(table["backlight_timeout"].read, lacking))
     changed = settings.apply({"keyboard": {"backlight_timeout": 10}, "dock": {"size": 64}})
     assert changed == ["dock.size"] and changes == [("size", 64)]
+
+
+def test_other_failures_are_not_hidden(fake_settings, monkeypatch):
+    def broken():
+        raise macos.MacOSError("could not read the Night Shift status")
+
+    monkeypatch.setitem(settings._SETTINGS["dock"], "size", settings._Setting(broken, lambda value: None))
+    with pytest.raises(macos.MacOSError, match="Night Shift"):
+        settings.export()
+    with pytest.raises(macos.MacOSError, match="Night Shift"):
+        settings.apply({"dock": {"size": 64}})
+
+
+def test_folders_are_exported_relative_to_home(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings.Path, "home", staticmethod(lambda: tmp_path))
+    assert settings._portable(tmp_path / "Pictures" / "Screenshots") == "~/Pictures/Screenshots"
+    assert settings._portable(tmp_path) == "~"
+    assert settings._portable(settings.Path("/Volumes/Shared")) == "/Volumes/Shared"

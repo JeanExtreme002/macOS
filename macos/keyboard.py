@@ -32,7 +32,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from . import _cf, _events, _objc
 from ._system import framework, private_framework
-from .errors import MacOSError, NotSupportedError
+from .errors import AppNotFoundError, MacOSError, NotSupportedError
 
 __all__ = [
     "type",
@@ -1038,9 +1038,13 @@ def _shortcut_domain(app: Optional[str]) -> str:
 
     if app is None:
         return defaults.GLOBAL
-    if "." in app and "/" not in app and not app.endswith(".app"):
-        return app  # already a bundle ID
-    bundle_id = apps._bundle_id(apps._locate(app))
+    try:
+        path = apps._locate(app)  # names (even "zoom.us"), bundle IDs and paths
+    except AppNotFoundError:
+        if app.count(".") >= 2 and "/" not in app:
+            return app  # the bundle ID of an app not installed yet
+        raise
+    bundle_id = apps._bundle_id(path)
     if not bundle_id:
         raise MacOSError("{!r} has no bundle ID to keep its shortcuts under".format(app))
     return bundle_id

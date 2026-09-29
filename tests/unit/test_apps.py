@@ -115,3 +115,32 @@ def test_is_quarantined_reports_errors_other_than_a_missing_mark(tmp_path, monke
     monkeypatch.setattr(macos.apps, "_libc", lambda: Failing())
     with pytest.raises(PermissionError):
         macos.apps.is_quarantined(file)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="extended attributes as macOS keeps them")
+def test_unquarantine_keeps_the_error_and_stops_at_unreadable_folders(tmp_path, monkeypatch):
+    import ctypes
+    import errno
+
+    app = tmp_path / "Tool.app"
+    (app / "Contents").mkdir(parents=True)
+
+    class Failing:
+        def removexattr(self, *args):
+            ctypes.set_errno(errno.EIO)
+            return -1
+
+    monkeypatch.setattr(macos.apps, "_libc", lambda: Failing())
+    with pytest.raises(OSError) as raised:
+        macos.apps.unquarantine(app)
+    assert raised.value.errno == errno.EIO and not isinstance(raised.value, PermissionError)
+
+    monkeypatch.undo()
+    locked = app / "Contents" / "Locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        with pytest.raises(PermissionError):
+            macos.apps.unquarantine(app)
+    finally:
+        locked.chmod(0o755)

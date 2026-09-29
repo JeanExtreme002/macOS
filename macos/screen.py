@@ -1141,8 +1141,9 @@ def set_display_mode(
         macos.screen.set_display_mode(1728, 1117)                    # more space on a MacBook Pro
         macos.screen.set_display_mode(2560, 1440, refresh_rate=144, display=external)
 
-    It must be one of :func:`display_modes`. Without ``refresh_rate``, the
-    highest; without ``hidpi``, the sharp Retina mode when there's one.
+    It must be one of :func:`display_modes`. With ``refresh_rate``, the
+    closest to it; without, the highest. Without ``hidpi``, the sharp Retina
+    mode when there's one.
     Kept after a restart, like System Settings › Displays. To go back, call
     it again with the :func:`display_mode` read before.
     """
@@ -1158,7 +1159,8 @@ def set_display_mode(
                 continue
             if hidpi is not None and mode.hidpi != hidpi:
                 continue
-            candidates.append((mode.hidpi, mode.refresh_rate, mode.pixel_width, ref, mode))
+            closeness = -abs(mode.refresh_rate - refresh_rate) if refresh_rate is not None else mode.refresh_rate
+            candidates.append((mode.hidpi, closeness, mode.pixel_width, ref, mode))
         if not candidates:
             raise ValueError(
                 "display {} has no {}×{} mode{}; see macos.screen.display_modes()".format(

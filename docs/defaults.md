@@ -66,8 +66,11 @@ again:
 with macos.defaults.restored(("com.apple.finder", "CreateDesktop")):
     macos.finder.set_show_desktop_icons(False)   # a clean desktop for a recording
     record_demo()
-# the icons are back
+macos.finder.restart()                           # Finder reads it again: the icons are back
 ```
+
+It restores the preferences only: restart what reads them, as the `set_*`
+functions do.
 
 Name `(domain, key)` pairs, or a whole domain such as `"com.apple.dock"`.
 

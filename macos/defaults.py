@@ -159,6 +159,7 @@ def restored(*what: Union[str, Tuple[str, str]], current_host: bool = False) -> 
         with macos.defaults.restored(("com.apple.finder", "CreateDesktop")):
             macos.finder.set_show_desktop_icons(False)   # a clean desktop for a recording
             record_demo()
+        macos.finder.restart()                           # Finder reads it again: the icons are back
 
     Each argument is a ``(domain, key)`` pair, or a whole domain (``"com.apple.dock"``).
     Keys that weren't set are deleted again, not written with a value, so
