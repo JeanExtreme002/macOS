@@ -1539,7 +1539,8 @@ def test_audio_editing(speech, tmp_path):
     assert _samples(twice) == _samples(wav)
     fast = audio.speed(speech, tmp_path / "fast.wav", 2)
     assert abs(audio.info(fast).duration - details.duration / 2) < 0.02
-    assert abs(audio.info(audio.speed(speech, tmp_path / "fast.m4a", 2)).duration - details.duration / 2) < 0.1
+    # Some macOS versions count AAC's padding in the duration they read back (up to about 0.15 s).
+    assert abs(audio.info(audio.speed(speech, tmp_path / "fast.m4a", 2)).duration - details.duration / 2) < 0.2
 
     labels = dict(audio.classify(speech))
     assert labels.get("speech", 0) > 0.5
