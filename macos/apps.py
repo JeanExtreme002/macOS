@@ -20,6 +20,7 @@ import ctypes
 import os
 import shutil
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from functools import lru_cache
@@ -544,11 +545,12 @@ def install_from_dmg(
         if target.exists() and not replace:
             raise FileExistsError(str(target))
         # Copied beside it first, then swapped in: a failed copy leaves the installed app as it was.
-        staged = target_folder / ".{}.installing-{}".format(source.name, os.getpid())
+        token = uuid.uuid4().hex  # unique per call: two installs of the same app don't share these
+        staged = target_folder / ".{}.installing-{}".format(source.name, token)
         try:
             _run(["ditto", str(source), str(staged)])  # keeps the signature, attributes and links
             if target.exists():
-                old = target_folder / ".{}.replaced-{}".format(source.name, os.getpid())
+                old = target_folder / ".{}.replaced-{}".format(source.name, token)
                 os.rename(str(target), str(old))
                 try:
                     os.rename(str(staged), str(target))

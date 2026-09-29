@@ -27,3 +27,15 @@ def test_defaults_round_trip():
             macos.defaults.delete(domain, key)
         subprocess.run(["defaults", "delete", domain], capture_output=True)
     assert macos.defaults.read(macos.defaults.GLOBAL, "AppleLocale") == macos.defaults.read("-g", "AppleLocale")
+
+
+def test_defaults_global_domain():
+    key = "com.github.pymacos.test-{}".format(os.getpid())
+    try:
+        macos.defaults.write(macos.defaults.GLOBAL, key, 7)
+        # Written for real: the defaults command, another process, reads it.
+        assert subprocess.run(["defaults", "read", "-g", key], capture_output=True, text=True).stdout.strip() == "7"
+        assert macos.defaults.delete("-g", key) is True
+        assert subprocess.run(["defaults", "read", "-g", key], capture_output=True).returncode != 0
+    finally:
+        subprocess.run(["defaults", "delete", "-g", key], capture_output=True)

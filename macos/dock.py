@@ -137,6 +137,12 @@ def _tile_path(tile: Dict[str, Any]) -> Optional[Path]:
     return Path(os.path.realpath(unquote(urlparse(url).path).rstrip("/")))
 
 
+def _is_app(tile: Dict[str, Any]) -> bool:
+    if tile.get("tile-type") not in ("file-tile", None):
+        return False
+    return _tile_path(tile) is not None or bool(tile.get("tile-data", {}).get("file-label"))
+
+
 def apps() -> List[DockApp]:
     """
     The apps kept in the Dock, left to right (or top to bottom).
@@ -146,12 +152,10 @@ def apps() -> List[DockApp]:
     """
     found = []
     for tile in _tiles():
-        if tile.get("tile-type") not in ("file-tile", None):
+        if not _is_app(tile):
             continue  # spacers and the like
         data = tile.get("tile-data", {})
         path = _tile_path(tile)
-        if path is None and not data.get("file-label"):
-            continue
         name = data.get("file-label") or (path.stem if path else "")
         found.append(DockApp(name=name, path=path, bundle_id=data.get("bundle-identifier")))
     return found
@@ -193,7 +197,12 @@ def add_app(app: str, *, index: Optional[int] = None) -> DockApp:
         },
         "tile-type": "file-tile",
     }
-    tiles.insert(len(tiles) if index is None else index, tile)
+    # index counts the apps apps() lists: find its place among all the tiles, spacers included.
+    app_positions = [position for position, entry in enumerate(tiles) if _is_app(entry)]
+    if index is None or index >= len(app_positions):
+        tiles.append(tile)
+    else:
+        tiles.insert(app_positions[max(index, 0)], tile)
     defaults.write(_DOMAIN, "persistent-apps", tiles)
     restart()
     return DockApp(name=name, path=path, bundle_id=bundle_id)

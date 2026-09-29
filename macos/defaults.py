@@ -45,7 +45,26 @@ def _preferences() -> ctypes.CDLL:
     cf.CFPreferencesAppSynchronize.restype = ctypes.c_bool
     cf.CFPreferencesCopyKeyList.argtypes = (pointer, pointer, pointer)
     cf.CFPreferencesCopyKeyList.restype = pointer
+    cf.CFPreferencesSetValue.argtypes = (pointer, pointer, pointer, pointer, pointer)
+    cf.CFPreferencesSetValue.restype = None
+    cf.CFPreferencesSynchronize.argtypes = (pointer, pointer, pointer)
+    cf.CFPreferencesSynchronize.restype = ctypes.c_bool
     return cf
+
+
+def _store(domain: str, key: str, value: Optional[int]) -> None:
+    """Set (or, with ``None``, remove) a key, and write it out."""
+    cf = _preferences()
+    with _cf.owned(_domain(domain)) as name, _cf.owned(_cf.string(key)) as wanted:
+        if domain in _GLOBAL_NAMES:
+            # The global domain takes the call with an explicit user and host; SetAppValue is for app domains.
+            user = ctypes.c_void_p.in_dll(cf, "kCFPreferencesCurrentUser").value
+            host = ctypes.c_void_p.in_dll(cf, "kCFPreferencesAnyHost").value
+            cf.CFPreferencesSetValue(wanted, value, name, user, host)
+            cf.CFPreferencesSynchronize(name, user, host)
+        else:
+            cf.CFPreferencesSetAppValue(wanted, value, name)
+            cf.CFPreferencesAppSynchronize(name)
 
 
 def _check(domain: str) -> None:
@@ -96,18 +115,12 @@ def write(domain: str, key: str, value: Any) -> None:
     _check(domain)
     if value is None:
         raise ValueError("value must not be None; use delete() to remove a key")
-    cf = _preferences()
-    with _cf.owned(_domain(domain)) as name, _cf.owned(_cf.string(key)) as wanted:
-        with _cf.owned(_cf.from_python(value)) as converted:
-            cf.CFPreferencesSetAppValue(wanted, converted, name)
-        cf.CFPreferencesAppSynchronize(name)
+    with _cf.owned(_cf.from_python(value)) as converted:
+        _store(domain, key, converted)
 
 
 def delete(domain: str, key: str) -> bool:
     """Remove ``key`` from ``domain``; return whether it was set."""
     existed = read(domain, key, default=_MISSING) is not _MISSING
-    cf = _preferences()
-    with _cf.owned(_domain(domain)) as name, _cf.owned(_cf.string(key)) as wanted:
-        cf.CFPreferencesSetAppValue(wanted, None, name)
-        cf.CFPreferencesAppSynchronize(name)
+    _store(domain, key, None)
     return existed

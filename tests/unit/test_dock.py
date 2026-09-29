@@ -73,3 +73,12 @@ def test_dock_restart_fails_when_no_dock_comes_back(monkeypatch, fake_run):
 
     with pytest.raises(macos.MacOSError, match="didn't start again"):
         dock.restart()
+
+
+def test_dock_add_app_index_skips_spacers(dock_settings):
+    store, _, _ = dock_settings
+    store["persistent-apps"].insert(0, {"tile-data": {}, "tile-type": "spacer-tile"})
+
+    macos.dock.add_app("Code", index=1)  # after Safari, the first app
+    assert [tile.get("tile-type") for tile in store["persistent-apps"]] == ["spacer-tile", "file-tile", "file-tile"]
+    assert [entry.name for entry in macos.dock.apps()] == ["Safari", "Code"]
