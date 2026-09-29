@@ -14,14 +14,15 @@ sensitive action, not encryption: a Keychain item isn't locked behind it.
 """
 
 import ctypes
+import functools
 import threading
-from typing import List
+from typing import Any, Callable, List, TypeVar
 
 from . import _objc
 from ._system import framework
-from .errors import NotSupportedError
+from .errors import NotSupportedError, PermissionDeniedError
 
-__all__ = ["confirm", "is_available"]
+__all__ = ["confirm", "is_available", "required"]
 
 _BIOMETRICS, _OWNER = 1, 2  # LAPolicyDeviceOwnerAuthenticationWithBiometrics, LAPolicyDeviceOwnerAuthentication
 
@@ -103,3 +104,34 @@ def confirm(reason: str, *, only_touch_id: bool = False, timeout: float = 120.0)
         return bool(answers and answers[0])
     finally:
         _objc.send(context, "release", restype=None)
+
+
+_Function = TypeVar("_Function", bound=Callable[..., Any])
+
+
+def required(reason: str, *, only_touch_id: bool = False) -> Callable[[_Function], _Function]:
+    """
+    Ask to confirm with :func:`confirm` each time the decorated function is called, before it runs.
+
+    ::
+
+        @macos.auth.required("deploy to production")
+        def deploy():
+            ...
+
+    When the user doesn't confirm, the call raises
+    :class:`~macos.errors.PermissionDeniedError` and the function doesn't run.
+    """
+    if not reason.strip():
+        raise ValueError("reason must not be empty: macOS shows it in the prompt")
+
+    def decorate(function: _Function) -> _Function:
+        @functools.wraps(function)
+        def guarded(*args: Any, **kwargs: Any) -> Any:
+            if not confirm(reason, only_touch_id=only_touch_id):
+                raise PermissionDeniedError("{} wasn't confirmed".format(reason))
+            return function(*args, **kwargs)
+
+        return guarded  # type: ignore[return-value]
+
+    return decorate

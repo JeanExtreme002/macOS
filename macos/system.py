@@ -57,6 +57,14 @@ __all__ = [
     "camera_in_use",
     "microphone_in_use",
     "Volume",
+    "ds_store_on_network",
+    "set_ds_store_on_network",
+    "ds_store_on_usb",
+    "set_ds_store_on_usb",
+    "keep_windows_on_quit",
+    "set_keep_windows_on_quit",
+    "battery_percentage_shown",
+    "set_show_battery_percentage",
 ]
 
 
@@ -691,3 +699,70 @@ def microphone_in_use() -> bool:
     # Before: whether an input device is running for any app. A headset
     # that only plays sound can count too.
     return any(audio._uint(device.id, "gone") for device in audio.inputs())
+
+
+_DESKTOP_SERVICES = "com.apple.desktopservices"
+
+
+def ds_store_on_network() -> bool:
+    """Whether Finder writes ``.DS_Store`` files into network shares it opens."""
+    from . import defaults
+
+    return not defaults.read(_DESKTOP_SERVICES, "DSDontWriteNetworkStores", default=False)
+
+
+def set_ds_store_on_network(on: bool = True) -> None:
+    """
+    Let Finder write ``.DS_Store`` files into network shares, or not (``False``), sparing everyone else on them.
+
+    Takes effect at the next login.
+    """
+    from . import defaults
+
+    defaults.write(_DESKTOP_SERVICES, "DSDontWriteNetworkStores", not on)
+
+
+def ds_store_on_usb() -> bool:
+    """Whether Finder writes ``.DS_Store`` files onto USB drives and other external disks."""
+    from . import defaults
+
+    return not defaults.read(_DESKTOP_SERVICES, "DSDontWriteUSBStores", default=False)
+
+
+def set_ds_store_on_usb(on: bool = True) -> None:
+    """Let Finder write ``.DS_Store`` files onto USB drives and external disks, or not. Takes effect at the next login."""
+    from . import defaults
+
+    defaults.write(_DESKTOP_SERVICES, "DSDontWriteUSBStores", not on)
+
+
+def keep_windows_on_quit() -> bool:
+    """Whether apps reopen the windows they had when they quit (unchecks "Close windows when quitting an app")."""
+    from . import defaults
+
+    return bool(defaults.read(defaults.GLOBAL, "NSQuitAlwaysKeepsWindows", default=False))
+
+
+def set_keep_windows_on_quit(on: bool = True) -> None:
+    """Make apps reopen their windows when opened again, or start fresh (``False``)."""
+    from . import defaults
+
+    defaults.write(defaults.GLOBAL, "NSQuitAlwaysKeepsWindows", bool(on))
+
+
+def battery_percentage_shown() -> bool:
+    """Whether the battery icon in the menu bar shows the percentage."""
+    from . import defaults
+
+    return bool(defaults.read("com.apple.controlcenter", "BatteryShowPercentage", default=False, current_host=True))
+
+
+def set_show_battery_percentage(on: bool = True) -> None:
+    """Show the battery percentage next to its icon in the menu bar, or not."""
+    from . import defaults
+
+    defaults.write("com.apple.controlcenter", "BatteryShowPercentage", bool(on), current_host=True)
+    try:
+        _run(["killall", "ControlCenter"])  # macOS starts it again, reading the setting
+    except MacOSError:
+        pass

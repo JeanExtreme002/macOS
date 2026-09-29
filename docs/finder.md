@@ -152,10 +152,27 @@ Finder is relaunched.
 | {func}`~macos.finder.show_extensions` | {func}`~macos.finder.set_show_extensions` | every file name's extension |
 | {func}`~macos.finder.show_path_bar` | {func}`~macos.finder.set_show_path_bar` | the folders leading to the one shown |
 | {func}`~macos.finder.show_status_bar` | {func}`~macos.finder.set_show_status_bar` | the item count and the free space |
+| {func}`~macos.finder.show_full_path_in_title` | {func}`~macos.finder.set_show_full_path_in_title` | the whole path in the window's title |
+| {func}`~macos.finder.show_desktop_icons` | {func}`~macos.finder.set_show_desktop_icons` | the files on the desktop; `False` hides them for a clean screen |
+| {func}`~macos.finder.show_library_folder` | {func}`~macos.finder.set_show_library_folder` | the `~/Library` folder in your home |
 
 ```python
 macos.finder.set_show_hidden_files(True)
 macos.finder.set_show_extensions(True)
+```
+
+And how new windows and searches behave:
+
+| Read | Change | Values |
+|---|---|---|
+| {func}`~macos.finder.default_view` | {func}`~macos.finder.set_default_view` | `"icons"`, `"list"`, `"columns"` or `"gallery"`, for folders not yet opened |
+| {func}`~macos.finder.new_window_folder` | {func}`~macos.finder.set_new_window_folder` | the folder a new window opens on |
+| {func}`~macos.finder.search_scope` | {func}`~macos.finder.set_search_scope` | `"this_mac"`, `"current_folder"` or `"previous"` |
+
+```python
+macos.finder.set_default_view("columns")
+macos.finder.set_new_window_folder("~/Projects")
+macos.finder.set_search_scope("current_folder")
 ```
 
 ## Reference
@@ -186,4 +203,16 @@ macos.finder.set_show_extensions(True)
 - {func}`macos.finder.set_show_path_bar`
 - {func}`macos.finder.show_status_bar`
 - {func}`macos.finder.set_show_status_bar`
+- {func}`macos.finder.show_desktop_icons`
+- {func}`macos.finder.set_show_desktop_icons`
+- {func}`macos.finder.default_view`
+- {func}`macos.finder.set_default_view`
+- {func}`macos.finder.show_library_folder`
+- {func}`macos.finder.set_show_library_folder`
+- {func}`macos.finder.new_window_folder`
+- {func}`macos.finder.set_new_window_folder`
+- {func}`macos.finder.search_scope`
+- {func}`macos.finder.set_search_scope`
+- {func}`macos.finder.show_full_path_in_title`
+- {func}`macos.finder.set_show_full_path_in_title`
 - {func}`macos.finder.restart`

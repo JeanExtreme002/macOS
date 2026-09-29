@@ -41,6 +41,8 @@ __all__ = [
     "set_screenshot_format",
     "screenshot_shadow",
     "set_screenshot_shadow",
+    "screensaver_delay",
+    "set_screensaver_delay",
     "has_permission",
     "request_permission",
     "displays",
@@ -802,3 +804,20 @@ def record(
     if not target.exists():
         raise MacOSError("the screen recording wasn't saved")
     return target
+
+
+def screensaver_delay() -> Optional[float]:
+    """Minutes of inactivity before the screen saver starts; ``None`` when it never does."""
+    from . import defaults
+
+    seconds = defaults.read("com.apple.screensaver", "idleTime", default=1200, current_host=True)
+    return round(float(seconds) / 60, 2) if seconds else None
+
+
+def set_screensaver_delay(minutes: Optional[float]) -> None:
+    """Start the screen saver after ``minutes`` of inactivity, or never (``None``), like System Settings › Lock Screen."""
+    from . import defaults
+
+    if minutes is not None and minutes <= 0:
+        raise ValueError("minutes must be positive, or None for never, not {}".format(minutes))
+    defaults.write("com.apple.screensaver", "idleTime", int(round(minutes * 60)) if minutes else 0, current_host=True)

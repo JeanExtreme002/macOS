@@ -47,6 +47,8 @@ __all__ = [
     "scroll",
     "Click",
     "watch",
+    "tracking_speed",
+    "set_tracking_speed",
     "has_permission",
     "request_permission",
 ]
@@ -264,3 +266,28 @@ def watch(*, timeout: Optional[float] = None) -> Iterator[Click]:
         "listening to the mouse needs the Input Monitoring permission: allow the app running Python (your "
         "terminal or IDE) in System Settings › Privacy & Security › Input Monitoring, then restart it",
     )
+
+
+_SPEED_MAX = 3.0  # the slider's range in System Settings goes up to 3
+
+
+def tracking_speed() -> float:
+    """The pointer speed with a mouse, from 0.0 (slowest) to 1.0 (fastest). For the trackpad, see :mod:`macos.trackpad`."""
+    from . import defaults
+
+    return round(float(defaults.read(defaults.GLOBAL, "com.apple.mouse.scaling", default=1.0)) / _SPEED_MAX, 3)
+
+
+def set_tracking_speed(speed: float) -> None:
+    """
+    Set the pointer speed with a mouse, from 0.0 to 1.0, like the slider in System Settings.
+
+    Takes effect at the next login.
+    """
+    from . import defaults
+    from ._system import apply_input_settings
+
+    if not 0.0 <= speed <= 1.0:
+        raise ValueError("speed must be from 0.0 to 1.0, not {}".format(speed))
+    defaults.write(defaults.GLOBAL, "com.apple.mouse.scaling", round(speed * _SPEED_MAX, 3))
+    apply_input_settings()

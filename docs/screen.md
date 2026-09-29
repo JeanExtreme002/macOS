@@ -217,6 +217,15 @@ It starts the screen saver right away, like a hot corner. When the Mac asks
 for the password after the screen saver begins (System Settings › Lock Screen),
 this also locks it.
 
+{func}`~macos.screen.set_screensaver_delay` sets after how many minutes of
+inactivity it starts, or never (`None`), like System Settings › Lock Screen:
+
+```python
+macos.screen.screensaver_delay()      # 20.0
+macos.screen.set_screensaver_delay(5)
+macos.screen.set_screensaver_delay(None)
+```
+
 ## Reference
 
 - {func}`macos.screenshot`
@@ -247,3 +256,5 @@ this also locks it.
 - {func}`macos.screen.set_screenshot_format`
 - {func}`macos.screen.screenshot_shadow`
 - {func}`macos.screen.set_screenshot_shadow`
+- {func}`macos.screen.screensaver_delay`
+- {func}`macos.screen.set_screensaver_delay`

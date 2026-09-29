@@ -133,6 +133,28 @@ these functions raise {class}`~macos.NotSupportedError`.
 
 They use a private macOS framework, since there's no public one.
 
+## Keyboard settings
+
+The settings of System Settings › Keyboard, each with its reader:
+
+| Read | Change | Values |
+|---|---|---|
+| {func}`~macos.keyboard.key_repeat` | {func}`~macos.keyboard.set_key_repeat` | seconds between repeats of a held key, and before the first |
+| {func}`~macos.keyboard.press_and_hold` | {func}`~macos.keyboard.set_press_and_hold` | `True` shows the accents menu (é, ê...) instead of repeating |
+| {func}`~macos.keyboard.standard_function_keys` | {func}`~macos.keyboard.set_standard_function_keys` | `True` makes F1, F2... act as function keys without Fn |
+| {func}`~macos.keyboard.autocorrect` | {func}`~macos.keyboard.set_autocorrect` | spelling corrected as you type |
+| {func}`~macos.keyboard.smart_quotes` | {func}`~macos.keyboard.set_smart_quotes` | `"` typed as “ ” |
+| {func}`~macos.keyboard.smart_dashes` | {func}`~macos.keyboard.set_smart_dashes` | `--` typed as — |
+
+```python
+macos.keyboard.set_key_repeat(0.03, delay=0.225)   # System Settings' fastest
+macos.keyboard.set_press_and_hold(False)           # hold j in Vim to move down
+macos.keyboard.set_smart_quotes(False)             # code pasted in Notes stays code
+```
+
+The function keys apply at once. The key repeat waits for the next login;
+the other settings reach apps when they're reopened. No permission is needed.
+
 ## Reference
 
 - {func}`macos.keyboard.type`
@@ -150,3 +172,15 @@ They use a private macOS framework, since there's no public one.
 - {func}`macos.keyboard.set_auto_brightness`
 - {func}`macos.keyboard.watch`
 - {class}`macos.keyboard.KeyPress`
+- {func}`macos.keyboard.key_repeat`
+- {func}`macos.keyboard.set_key_repeat`
+- {func}`macos.keyboard.press_and_hold`
+- {func}`macos.keyboard.set_press_and_hold`
+- {func}`macos.keyboard.standard_function_keys`
+- {func}`macos.keyboard.set_standard_function_keys`
+- {func}`macos.keyboard.autocorrect`
+- {func}`macos.keyboard.set_autocorrect`
+- {func}`macos.keyboard.smart_quotes`
+- {func}`macos.keyboard.set_smart_quotes`
+- {func}`macos.keyboard.smart_dashes`
+- {func}`macos.keyboard.set_smart_dashes`

@@ -155,6 +155,23 @@ macos.system.wait_for_activity()
 macos.say("Welcome back")
 ```
 
+## System settings
+
+| Read | Change | Values |
+|---|---|---|
+| {func}`~macos.system.ds_store_on_network` | {func}`~macos.system.set_ds_store_on_network` | `False` stops Finder leaving `.DS_Store` files on network shares |
+| {func}`~macos.system.ds_store_on_usb` | {func}`~macos.system.set_ds_store_on_usb` | the same on USB drives and other external disks |
+| {func}`~macos.system.keep_windows_on_quit` | {func}`~macos.system.set_keep_windows_on_quit` | `True` makes apps reopen the windows they had |
+| {func}`~macos.system.battery_percentage_shown` | {func}`~macos.system.set_show_battery_percentage` | the percentage next to the battery in the menu bar |
+
+```python
+macos.system.set_ds_store_on_network(False)   # colleagues on the share will thank you
+macos.system.set_show_battery_percentage(True)
+```
+
+The `.DS_Store` settings take effect at the next login; the others at once or
+when apps are reopened. No permission is needed.
+
 ## Reference
 
 - {func}`macos.system.version`
@@ -183,3 +200,11 @@ macos.say("Welcome back")
 - {func}`macos.system.cpu_usage`
 - {func}`macos.system.memory_usage`
 - {class}`macos.system.MemoryUsage`
+- {func}`macos.system.ds_store_on_network`
+- {func}`macos.system.set_ds_store_on_network`
+- {func}`macos.system.ds_store_on_usb`
+- {func}`macos.system.set_ds_store_on_usb`
+- {func}`macos.system.keep_windows_on_quit`
+- {func}`macos.system.set_keep_windows_on_quit`
+- {func}`macos.system.battery_percentage_shown`
+- {func}`macos.system.set_show_battery_percentage`

@@ -39,6 +39,17 @@ __all__ = [
     "add_app",
     "remove_app",
     "restart",
+    "HOT_CORNER_ACTIONS",
+    "hot_corners",
+    "set_hot_corner",
+    "autohide_delay",
+    "set_autohide_delay",
+    "magnification",
+    "set_magnification",
+    "show_recents",
+    "set_show_recents",
+    "minimize_effect",
+    "set_minimize_effect",
 ]
 
 _DOMAIN = "com.apple.dock"
@@ -218,3 +229,116 @@ def remove_app(app: str) -> bool:
     defaults.write(_DOMAIN, "persistent-apps", kept)
     restart()
     return True
+
+
+# --- More settings ----------------------------------------------------------
+
+_CORNERS = {"top_left": "tl", "top_right": "tr", "bottom_left": "bl", "bottom_right": "br"}
+_ACTIONS = {
+    None: 1,
+    "mission_control": 2,
+    "app_windows": 3,
+    "desktop": 4,
+    "start_screensaver": 5,
+    "disable_screensaver": 6,
+    "display_sleep": 10,
+    "launchpad": 11,
+    "notification_center": 12,
+    "lock_screen": 13,
+    "quick_note": 14,
+}
+HOT_CORNER_ACTIONS = tuple(action for action in _ACTIONS if action)
+"""What a hot corner can do, for :func:`set_hot_corner`."""
+_EFFECTS = ("genie", "scale")
+
+
+def hot_corners() -> Dict[str, Optional[str]]:
+    """
+    What each hot corner does: ``{"top_left": "mission_control", "bottom_right": "desktop", ...}``.
+
+    ``None`` for a corner that does nothing.
+    """
+    names = {number: action for action, number in _ACTIONS.items()}
+    return {
+        corner: names.get(int(defaults.read(_DOMAIN, "wvous-{}-corner".format(code), default=1)))
+        for corner, code in _CORNERS.items()
+    }
+
+
+def set_hot_corner(corner: str, action: Optional[str]) -> None:
+    """
+    Make moving the pointer into ``corner`` do ``action``, like System Settings › Desktop & Dock › Hot Corners.
+
+    ::
+
+        macos.dock.set_hot_corner("bottom_right", "lock_screen")
+        macos.dock.set_hot_corner("top_left", None)          # nothing
+
+    ``corner`` is ``"top_left"``, ``"top_right"``, ``"bottom_left"`` or
+    ``"bottom_right"``; ``action`` one of :data:`HOT_CORNER_ACTIONS`.
+    """
+    if corner not in _CORNERS:
+        raise ValueError("corner must be one of {}, not {!r}".format(", ".join(_CORNERS), corner))
+    if action not in _ACTIONS:
+        raise ValueError("action must be one of {} or None, not {!r}".format(", ".join(HOT_CORNER_ACTIONS), action))
+    code = _CORNERS[corner]
+    defaults.write(_DOMAIN, "wvous-{}-corner".format(code), _ACTIONS[action])
+    defaults.write(_DOMAIN, "wvous-{}-modifier".format(code), 0)  # without holding a key
+    restart()
+
+
+def autohide_delay() -> float:
+    """Seconds a hidden Dock waits before showing, when the pointer reaches the edge."""
+    return float(defaults.read(_DOMAIN, "autohide-delay", default=0.5))
+
+
+def set_autohide_delay(seconds: float) -> None:
+    """Show a hidden Dock after ``seconds`` at the edge: ``0`` shows it at once, a classic tweak."""
+    if seconds < 0:
+        raise ValueError("seconds must not be negative, not {}".format(seconds))
+    defaults.write(_DOMAIN, "autohide-delay", float(seconds))
+    restart()
+
+
+def magnification() -> Optional[int]:
+    """The size icons grow to under the pointer, in points; ``None`` when they don't."""
+    if not defaults.read(_DOMAIN, "magnification", default=False):
+        return None
+    return int(round(float(defaults.read(_DOMAIN, "largesize", default=128))))
+
+
+def set_magnification(size: Optional[int]) -> None:
+    """Make icons grow to ``size`` points (16 to 128) under the pointer, or not (``None``)."""
+    if size is None:
+        defaults.write(_DOMAIN, "magnification", False)
+    else:
+        if not 16 <= size <= 128:
+            raise ValueError("size must be from 16 to 128 points, not {}".format(size))
+        defaults.write(_DOMAIN, "magnification", True)
+        defaults.write(_DOMAIN, "largesize", float(size))
+    restart()
+
+
+def show_recents() -> bool:
+    """Whether the Dock shows recent apps that aren't kept in it, in their own section."""
+    return bool(defaults.read(_DOMAIN, "show-recents", default=True))
+
+
+def set_show_recents(on: bool = True) -> None:
+    """Show recent apps in their own section of the Dock, or not."""
+    defaults.write(_DOMAIN, "show-recents", bool(on))
+    restart()
+
+
+def minimize_effect() -> str:
+    """How windows minimize into the Dock: ``'genie'`` or ``'scale'``."""
+    found = defaults.read(_DOMAIN, "mineffect", default="genie")
+    return found if found in _EFFECTS else "genie"
+
+
+def set_minimize_effect(effect: str) -> None:
+    """Minimize windows with the ``'genie'`` effect or the quicker ``'scale'``."""
+    if effect not in _EFFECTS:
+        raise ValueError("effect must be 'genie' or 'scale', not {!r}".format(effect))
+    defaults.write(_DOMAIN, "mineffect", effect)
+    restart()

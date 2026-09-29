@@ -61,6 +61,18 @@ __all__ = [
     "set_show_path_bar",
     "show_status_bar",
     "set_show_status_bar",
+    "show_desktop_icons",
+    "set_show_desktop_icons",
+    "default_view",
+    "set_default_view",
+    "show_library_folder",
+    "set_show_library_folder",
+    "new_window_folder",
+    "set_new_window_folder",
+    "search_scope",
+    "set_search_scope",
+    "show_full_path_in_title",
+    "set_show_full_path_in_title",
     "restart",
 ]
 
@@ -764,3 +776,126 @@ def quick_look(path: PathLike) -> None:
         stderr=subprocess.DEVNULL,
         start_new_session=True,  # outlives the script, as a preview opened from Finder does
     )
+
+
+def show_desktop_icons() -> bool:
+    """Whether the desktop shows its files and folders (and mounted disks)."""
+    return _setting_default(_FINDER, "CreateDesktop", True)
+
+
+def set_show_desktop_icons(on: bool = True) -> None:
+    """
+    Show the desktop's icons, or hide them all (``False``), for a clean screen in presentations and recordings.
+
+    The files stay on the Desktop, in its folder. Relaunches Finder.
+    """
+    _set(_FINDER, "CreateDesktop", on)
+
+
+def _setting_default(domain: str, key: str, default: bool) -> bool:
+    from . import defaults
+
+    return bool(defaults.read(domain, key, default=default))
+
+
+_VIEWS = {"icons": "icnv", "list": "Nlsv", "columns": "clmv", "gallery": "glyv"}
+
+
+def default_view() -> str:
+    """How Finder shows folders that have no view of their own: ``'icons'``, ``'list'``, ``'columns'`` or ``'gallery'``."""
+    from . import defaults
+
+    code = defaults.read(_FINDER, "FXPreferredViewStyle", default="icnv")
+    return next((view for view, found in _VIEWS.items() if found == code), "icons")
+
+
+def set_default_view(view: str) -> None:
+    """
+    Show folders as ``'icons'``, a ``'list'``, ``'columns'`` or a ``'gallery'`` by default. Relaunches Finder.
+
+    Folders already shown another way keep their own view.
+    """
+    from . import defaults
+
+    if view not in _VIEWS:
+        raise ValueError("view must be one of {}, not {!r}".format(", ".join(_VIEWS), view))
+    defaults.write(_FINDER, "FXPreferredViewStyle", _VIEWS[view])
+    restart()
+
+
+_UF_HIDDEN = 0x8000  # stat.UF_HIDDEN: the flag chflags hidden sets
+
+
+def show_library_folder() -> bool:
+    """Whether your Library folder (``~/Library``) shows in Finder; macOS hides it."""
+    return not os.stat(str(Path.home() / "Library")).st_flags & _UF_HIDDEN
+
+
+def set_show_library_folder(on: bool = True) -> None:
+    """Show your Library folder in Finder, or hide it again, as ``chflags nohidden ~/Library`` does."""
+    _run(["chflags", "nohidden" if on else "hidden", str(Path.home() / "Library")])
+
+
+_NEW_WINDOW_TARGETS = {"PfHm": "~", "PfDe": "~/Desktop", "PfDo": "~/Documents"}
+
+
+def new_window_folder() -> Path:
+    """The folder a new Finder window (⌘N) opens."""
+    from . import defaults
+
+    target = defaults.read(_FINDER, "NewWindowTarget", default="PfHm")
+    if target in _NEW_WINDOW_TARGETS:
+        return Path(os.path.expanduser(_NEW_WINDOW_TARGETS[target]))
+    url = defaults.read(_FINDER, "NewWindowTargetPath", default="")
+    from urllib.parse import unquote, urlparse
+
+    return Path(unquote(urlparse(url).path)).absolute() if url else Path.home()
+
+
+def set_new_window_folder(folder: PathLike) -> None:
+    """Open new Finder windows (⌘N) in ``folder``, such as ``"~/Downloads"``. Relaunches Finder."""
+    from urllib.parse import quote
+
+    from . import defaults
+
+    target = _existing(folder)
+    if not target.is_dir():
+        raise NotADirectoryError(str(target))
+    defaults.write(_FINDER, "NewWindowTarget", "PfLo")
+    defaults.write(_FINDER, "NewWindowTargetPath", "file://{}/".format(quote(str(target))))
+    restart()
+
+
+_SCOPES = {"this_mac": "SCev", "current_folder": "SCcf", "previous": "SCsp"}
+
+
+def search_scope() -> str:
+    """Where a Finder search looks first: ``'this_mac'``, ``'current_folder'`` or ``'previous'`` (the last scope used)."""
+    from . import defaults
+
+    code = defaults.read(_FINDER, "FXDefaultSearchScope", default="SCev")
+    return next((scope for scope, found in _SCOPES.items() if found == code), "this_mac")
+
+
+def set_search_scope(scope: str) -> None:
+    """
+    Search the ``'current_folder'``, the whole Mac (``'this_mac'``), or the ``'previous'`` scope by default.
+
+    Relaunches Finder.
+    """
+    from . import defaults
+
+    if scope not in _SCOPES:
+        raise ValueError("scope must be one of {}, not {!r}".format(", ".join(_SCOPES), scope))
+    defaults.write(_FINDER, "FXDefaultSearchScope", _SCOPES[scope])
+    restart()
+
+
+def show_full_path_in_title() -> bool:
+    """Whether Finder windows show the folder's full path in their title."""
+    return _setting_default(_FINDER, "_FXShowPosixPathInTitle", False)
+
+
+def set_show_full_path_in_title(on: bool = True) -> None:
+    """Show the folder's full path (``/Users/alice/Projects``) in Finder windows' title. Relaunches Finder."""
+    _set(_FINDER, "_FXShowPosixPathInTitle", on)

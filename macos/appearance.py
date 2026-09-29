@@ -23,7 +23,19 @@ from . import _cf, _objc
 from ._system import framework, run as _run
 from .errors import CommandError, PermissionDeniedError
 
-__all__ = ["is_dark", "mode", "set_mode", "is_auto", "accent_color", "wait_for_change"]
+__all__ = [
+    "is_dark",
+    "mode",
+    "set_mode",
+    "is_auto",
+    "set_auto_mode",
+    "accent_color",
+    "set_accent_color",
+    "ACCENT_COLORS",
+    "menu_bar_hidden",
+    "set_hide_menu_bar",
+    "wait_for_change",
+]
 
 
 def _read(key: str) -> Optional[int]:
@@ -119,3 +131,74 @@ def wait_for_change(*, timeout: Optional[float] = None, interval: float = 1.0) -
             time.sleep(min(interval, remaining))
         else:
             time.sleep(interval)
+
+
+def _announce(*names: str) -> None:
+    """Tell running apps a setting changed, as System Settings does, so they update at once."""
+    framework("Foundation")
+    with _objc.autorelease_pool():
+        center = _objc.send(_objc.cls("NSDistributedNotificationCenter"), "defaultCenter")
+        for name in names:
+            _objc.send(
+                center,
+                "postNotificationName:object:userInfo:deliverImmediately:",
+                _objc.nsstring(name),
+                None,
+                None,
+                True,
+                argtypes=(_objc.id, _objc.id, _objc.id, _objc.BOOL),
+                restype=None,
+            )
+
+
+def set_auto_mode(on: bool = True) -> None:
+    """
+    Switch between Light and Dark by the time of day (*Auto*), or keep the current one (``False``).
+
+    macOS may apply the switch only at the next login.
+    """
+    from . import defaults
+
+    defaults.write(defaults.GLOBAL, "AppleInterfaceStyleSwitchesAutomatically", bool(on))
+    _announce("AppleInterfaceThemeChangedNotification")
+
+
+# AppleAccentColor's values; Multicolor is the key left unset.
+_ACCENTS = {"multicolor": None, "graphite": -1, "red": 0, "orange": 1, "yellow": 2, "green": 3, "blue": 4, "purple": 5, "pink": 6}
+ACCENT_COLORS = tuple(_ACCENTS)
+"""The accent colors of System Settings › Appearance, for :func:`set_accent_color`."""
+
+
+def set_accent_color(name: str) -> None:
+    """
+    Set the accent color of buttons, checkboxes and selections, like System Settings › Appearance.
+
+    ``name`` is one of :data:`ACCENT_COLORS`: ``"blue"``, ``"purple"``,
+    ``"graphite"``, ``"multicolor"`` (each app's own color)... Running apps
+    update at once; a few only when reopened.
+    """
+    from . import defaults
+
+    if name not in _ACCENTS:
+        raise ValueError("name must be one of {}, not {!r}".format(", ".join(ACCENT_COLORS), name))
+    value = _ACCENTS[name]
+    if value is None:
+        defaults.delete(defaults.GLOBAL, "AppleAccentColor")
+    else:
+        defaults.write(defaults.GLOBAL, "AppleAccentColor", value)
+    _announce("AppleColorPreferencesChangedNotification", "AppleAquaColorVariantChanged")
+
+
+def menu_bar_hidden() -> bool:
+    """Whether the menu bar hides until the pointer reaches the top of the screen."""
+    from . import defaults
+
+    return bool(defaults.read(defaults.GLOBAL, "_HIHideMenuBar", default=False))
+
+
+def set_hide_menu_bar(on: bool = True) -> None:
+    """Hide the menu bar until the pointer reaches the top of the screen, like the Dock's autohide, or keep it shown."""
+    from . import defaults
+
+    defaults.write(defaults.GLOBAL, "_HIHideMenuBar", bool(on))
+    _announce("AppleInterfaceMenuBarHidingChangedNotification")

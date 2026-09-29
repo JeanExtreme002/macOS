@@ -88,6 +88,17 @@ for click in macos.mouse.watch():
 It only listens: the clicks still reach the apps. It needs the [Input Monitoring
 permission](permissions.md#input-monitoring).
 
+## Pointer speed
+
+{func}`~macos.mouse.set_tracking_speed` sets how fast the pointer moves with a
+mouse, from 0.0 to 1.0, like the slider in System Settings › Mouse; it takes
+effect at the next login. For the trackpad, see [Trackpad](trackpad.md).
+
+```python
+macos.mouse.tracking_speed()        # 0.333
+macos.mouse.set_tracking_speed(0.8)
+```
+
 ## Reference
 
 - {func}`macos.mouse.position`
@@ -100,3 +111,5 @@ permission](permissions.md#input-monitoring).
 - {func}`macos.mouse.click_text`
 - {func}`macos.mouse.watch`
 - {class}`macos.mouse.Click`
+- {func}`macos.mouse.tracking_speed`
+- {func}`macos.mouse.set_tracking_speed`

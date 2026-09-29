@@ -39,6 +39,18 @@ __all__ = [
     "caps_lock",
     "KeyPress",
     "watch",
+    "key_repeat",
+    "set_key_repeat",
+    "press_and_hold",
+    "set_press_and_hold",
+    "standard_function_keys",
+    "set_standard_function_keys",
+    "autocorrect",
+    "set_autocorrect",
+    "smart_quotes",
+    "set_smart_quotes",
+    "smart_dashes",
+    "set_smart_dashes",
     "layout",
     "layouts",
     "set_layout",
@@ -625,3 +637,107 @@ def watch(*, timeout: Optional[float] = None) -> Iterator[KeyPress]:
         "listening to the keyboard needs the Input Monitoring permission: allow the app running Python (your "
         "terminal or IDE) in System Settings › Privacy & Security › Input Monitoring, then restart it",
     )
+
+
+# --- Settings ---------------------------------------------------------------
+
+_KEY_REPEAT_UNIT = 0.015  # KeyRepeat and InitialKeyRepeat count 15 ms steps
+
+
+def _global(key: str, default: object) -> object:
+    from . import defaults
+
+    return defaults.read(defaults.GLOBAL, key, default=default)
+
+
+def _set_global(key: str, value: object, apply: bool = True) -> None:
+    from . import defaults
+    from ._system import apply_input_settings
+
+    defaults.write(defaults.GLOBAL, key, value)
+    if apply:
+        apply_input_settings()
+
+
+def key_repeat() -> Tuple[float, float]:
+    """``(interval, delay)``: seconds between the repeats of a held key, and before the first one."""
+    interval = float(_global("KeyRepeat", 6)) * _KEY_REPEAT_UNIT  # type: ignore[arg-type]
+    delay = float(_global("InitialKeyRepeat", 25)) * _KEY_REPEAT_UNIT  # type: ignore[arg-type]
+    return round(interval, 3), round(delay, 3)
+
+
+def set_key_repeat(interval: Optional[float] = None, *, delay: Optional[float] = None) -> None:
+    """
+    Set how fast a held key repeats: ``interval`` seconds between repeats, after ``delay`` seconds.
+
+    ::
+
+        macos.keyboard.set_key_repeat(0.03, delay=0.25)   # fast, the favorite of developers
+
+    System Settings' fastest are 0.03 and 0.225 seconds; shorter ones work
+    too. Takes effect at the next login.
+    """
+    if interval is None and delay is None:
+        raise ValueError("give interval, delay, or both")
+    for label, value in (("interval", interval), ("delay", delay)):
+        if value is not None and value <= 0:
+            raise ValueError("{} must be positive, not {}".format(label, value))
+    if interval is not None:
+        _set_global("KeyRepeat", max(1, round(interval / _KEY_REPEAT_UNIT)), apply=False)
+    if delay is not None:
+        _set_global("InitialKeyRepeat", max(1, round(delay / _KEY_REPEAT_UNIT)), apply=False)
+
+
+def press_and_hold() -> bool:
+    """Whether holding a key shows the accents menu (é, ê, è...) instead of repeating it."""
+    return bool(_global("ApplePressAndHoldEnabled", True))
+
+
+def set_press_and_hold(on: bool = True) -> None:
+    """
+    Show the accents menu when a key is held, or repeat the key instead (``False``).
+
+    Apps pick it up when they're reopened.
+    """
+    _set_global("ApplePressAndHoldEnabled", bool(on), apply=False)
+
+
+def standard_function_keys() -> bool:
+    """Whether F1, F2... act as function keys without holding Fn (instead of brightness, volume...)."""
+    return bool(_global("com.apple.keyboard.fnState", False))
+
+
+def set_standard_function_keys(on: bool = True) -> None:
+    """Make F1, F2... act as function keys without Fn, like System Settings › Keyboard › Keyboard Shortcuts › Function Keys."""
+    _set_global("com.apple.keyboard.fnState", bool(on))
+
+
+def autocorrect() -> bool:
+    """Whether macOS corrects spelling as you type."""
+    return bool(_global("NSAutomaticSpellingCorrectionEnabled", True))
+
+
+def set_autocorrect(on: bool = True) -> None:
+    """Correct spelling as you type, or not. Apps pick it up when they're reopened."""
+    _set_global("NSAutomaticSpellingCorrectionEnabled", bool(on), apply=False)
+    _set_global("WebAutomaticSpellingCorrectionEnabled", bool(on), apply=False)
+
+
+def smart_quotes() -> bool:
+    """Whether typed quotes become curly ones (“ ”), which break code pasted anywhere."""
+    return bool(_global("NSAutomaticQuoteSubstitutionEnabled", True))
+
+
+def set_smart_quotes(on: bool = True) -> None:
+    """Turn typed quotes into curly ones, or keep them straight (``False``). Apps pick it up when reopened."""
+    _set_global("NSAutomaticQuoteSubstitutionEnabled", bool(on), apply=False)
+
+
+def smart_dashes() -> bool:
+    """Whether a typed ``--`` becomes a dash (—)."""
+    return bool(_global("NSAutomaticDashSubstitutionEnabled", True))
+
+
+def set_smart_dashes(on: bool = True) -> None:
+    """Turn a typed ``--`` into a dash, or keep it (``False``). Apps pick it up when reopened."""
+    _set_global("NSAutomaticDashSubstitutionEnabled", bool(on), apply=False)
