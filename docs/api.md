@@ -249,6 +249,12 @@ explain how to use each part.
 .. autofunction:: macos.vision.duplicates
 .. autofunction:: macos.vision.best_shot
 .. autofunction:: macos.vision.horizon
+.. autofunction:: macos.vision.aesthetics
+.. autoclass:: macos.vision.Aesthetics
+.. autofunction:: macos.vision.body_pose
+.. autoclass:: macos.vision.Pose
+.. autofunction:: macos.vision.hand_pose
+.. autoclass:: macos.vision.Hand
 .. autoclass:: macos.vision.Animal
 ```
 
@@ -271,6 +277,12 @@ explain how to use each part.
 .. autofunction:: macos.image.flip
 .. autofunction:: macos.image.straighten
 .. autofunction:: macos.image.blur_faces
+.. autofunction:: macos.image.enhance
+.. autofunction:: macos.image.effect
+.. autofunction:: macos.image.blur_background
+.. autofunction:: macos.image.replace_background
+.. autofunction:: macos.image.watermark
+.. autofunction:: macos.image.contact_sheet
 .. autofunction:: macos.image.dominant_colors
 .. autofunction:: macos.image.qr_code
 .. autoclass:: macos.image.ImageInfo
@@ -305,6 +317,17 @@ explain how to use each part.
 .. autofunction:: macos.video.frame
 .. autofunction:: macos.video.convert
 .. autofunction:: macos.video.to_gif
+.. autofunction:: macos.video.frames
+.. autofunction:: macos.video.trim
+.. autofunction:: macos.video.concat
+.. autofunction:: macos.video.speed
+.. autofunction:: macos.video.rotate
+.. autofunction:: macos.video.crop
+.. autofunction:: macos.video.mute
+.. autofunction:: macos.video.reverse
+.. autofunction:: macos.video.add_audio
+.. autofunction:: macos.video.add_language_track
+.. autofunction:: macos.video.from_images
 .. autoclass:: macos.video.VideoInfo
 ```
 
@@ -343,6 +366,17 @@ explain how to use each part.
 .. autofunction:: macos.audio.input_level
 .. autofunction:: macos.audio.has_permission
 .. autofunction:: macos.audio.request_permission
+.. autofunction:: macos.audio.record_until_silence
+.. autofunction:: macos.audio.info
+.. autofunction:: macos.audio.convert
+.. autofunction:: macos.audio.trim
+.. autofunction:: macos.audio.concat
+.. autofunction:: macos.audio.fade
+.. autofunction:: macos.audio.gain
+.. autofunction:: macos.audio.reverse
+.. autofunction:: macos.audio.speed
+.. autofunction:: macos.audio.classify
+.. autoclass:: macos.audio.AudioInfo
 .. autoclass:: macos.audio.Device
 ```
 

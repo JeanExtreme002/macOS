@@ -25,7 +25,7 @@ first: the built-in one, USB webcams, an iPhone through Continuity. Each
 ## Photos
 
 ```python
-macos.camera.photo("me.jpg")                      # the default camera
+macos.camera.photo("me.jpg")                       # the default camera
 macos.camera.photo("desk.png", camera="Logitech")  # another one, by name
 path = macos.camera.photo()                        # a temporary .jpg
 ```
@@ -38,8 +38,8 @@ it when only one camera matches.
 ## Videos
 
 ```python
-macos.camera.record("hello.mov", 5)                   # with the sound
-macos.camera.record("silent.mov", 5, audio=False)     # without it
+macos.camera.record("hello.mov", 5)                              # with the sound
+macos.camera.record("silent.mov", 5, audio=False)                # without it
 macos.video.convert("hello.mov", "hello.mp4", quality="medium")
 ```
 

@@ -196,6 +196,13 @@ macos.audio.record("memo.m4a", 10)   # the microphone
 macos.camera.photo("me.jpg")         # the webcam
 ```
 
+## Edit audio and video
+
+```python
+macos.audio.trim("interview.m4a", "answer.m4a", start=95, duration=30)
+macos.video.add_audio("trip.mov", "music.m4a", "trip-music.mp4", volume=0.4)
+```
+
 ## Open a file with an app
 
 ```python
