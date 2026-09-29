@@ -46,6 +46,8 @@ __all__ = [
     "set_tiling",
     "click_wallpaper_to_show_desktop",
     "set_click_wallpaper_to_show_desktop",
+    "animations",
+    "set_animations",
 ]
 
 _SUCCESS = 0
@@ -631,3 +633,21 @@ def set_click_wallpaper_to_show_desktop(on: bool = True) -> None:
 
     defaults.write(_WINDOW_MANAGER, "EnableStandardClickToShowDesktop", bool(on))
     _restart_window_manager()
+
+
+def animations() -> bool:
+    """Whether windows, sheets and panels open with an animation."""
+    from . import defaults
+
+    return bool(defaults.read(defaults.GLOBAL, "NSAutomaticWindowAnimationsEnabled", default=True))
+
+
+def set_animations(on: bool = True) -> None:
+    """
+    Animate windows, sheets and panels as they open, or show them at once (``False``), for a snappier Mac.
+
+    Apps pick it up when they're reopened.
+    """
+    from . import defaults
+
+    defaults.write(defaults.GLOBAL, "NSAutomaticWindowAnimationsEnabled", bool(on))

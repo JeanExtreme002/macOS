@@ -71,6 +71,19 @@ __all__ = [
     "set_expanded_save_dialog",
     "clock_format",
     "set_clock_format",
+    "measurement_units",
+    "set_measurement_units",
+    "temperature_unit",
+    "set_temperature_unit",
+    "open_photos_on_device_connect",
+    "set_open_photos_on_device_connect",
+    "menu_bar_spacing",
+    "set_menu_bar_spacing",
+    "MENU_BAR_ITEMS",
+    "menu_bar_items",
+    "set_menu_bar_items",
+    "SecurityStatus",
+    "security_status",
 ]
 
 
@@ -865,3 +878,221 @@ def set_clock_format(
         _run(["killall", "ControlCenter"])  # it draws the clock; macOS starts it again, reading the settings
     except MacOSError:
         pass
+
+
+# --- Region -----------------------------------------------------------------
+
+
+def _locale_measurement() -> str:
+    """The measurement system the region implies, when none was chosen."""
+    framework("Foundation")
+    with _objc.autorelease_pool():
+        locale = _objc.send(_objc.cls("NSLocale"), "currentLocale")
+        return "metric" if _objc.send(locale, "usesMetricSystem", restype=_objc.BOOL) else "us"
+
+
+def measurement_units() -> str:
+    """The units of measure: ``'metric'`` or ``'us'`` (inches, pounds, miles)."""
+    from . import defaults
+
+    metric = defaults.read(defaults.GLOBAL, "AppleMetricUnits")
+    if metric is None:
+        return _locale_measurement()
+    return "metric" if metric else "us"
+
+
+def set_measurement_units(units: str) -> None:
+    """Use ``"metric"`` or ``"us"`` units, like System Settings › General › Language & Region. Apps pick it up when reopened."""
+    from . import defaults
+
+    if units not in ("metric", "us"):
+        raise ValueError("units must be 'metric' or 'us', not {!r}".format(units))
+    # macOS keeps both, and they must agree.
+    defaults.write(defaults.GLOBAL, "AppleMetricUnits", units == "metric")
+    defaults.write(defaults.GLOBAL, "AppleMeasurementUnits", "Centimeters" if units == "metric" else "Inches")
+
+
+def temperature_unit() -> str:
+    """The unit of temperatures: ``'celsius'`` or ``'fahrenheit'``."""
+    from . import defaults
+
+    found = defaults.read(defaults.GLOBAL, "AppleTemperatureUnit")
+    if found in ("Celsius", "Fahrenheit"):
+        return found.lower()
+    return "fahrenheit" if measurement_units() == "us" else "celsius"
+
+
+def set_temperature_unit(unit: str) -> None:
+    """Show temperatures in ``"celsius"`` or ``"fahrenheit"``, in Weather and everywhere. Apps pick it up when reopened."""
+    from . import defaults
+
+    if unit not in ("celsius", "fahrenheit"):
+        raise ValueError("unit must be 'celsius' or 'fahrenheit', not {!r}".format(unit))
+    defaults.write(defaults.GLOBAL, "AppleTemperatureUnit", unit.capitalize())
+
+
+# --- Photos and devices ---------------------------------------------------------
+
+
+def open_photos_on_device_connect() -> bool:
+    """Whether Photos opens by itself when an iPhone, an iPad or a camera is connected."""
+    from . import defaults
+
+    return not defaults.read("com.apple.ImageCapture", "disableHotPlug", default=False, current_host=True)
+
+
+def set_open_photos_on_device_connect(on: bool = True) -> None:
+    """Let Photos open by itself when an iPhone, an iPad or a camera is connected, or not (``False``)."""
+    from . import defaults
+
+    defaults.write("com.apple.ImageCapture", "disableHotPlug", not on, current_host=True)
+
+
+# --- The menu bar ---------------------------------------------------------------
+
+
+def menu_bar_spacing() -> Optional[int]:
+    """The space around each icon on the right of the menu bar, in points; ``None`` for macOS's own."""
+    from . import defaults
+
+    found = defaults.read(defaults.GLOBAL, "NSStatusItemSpacing", current_host=True)
+    return None if found is None else int(found)
+
+
+def set_menu_bar_spacing(spacing: Optional[int], *, padding: Optional[int] = None) -> None:
+    """
+    Space the icons on the right of the menu bar ``spacing`` points apart, or as macOS does (``None``).
+
+    ::
+
+        macos.system.set_menu_bar_spacing(6)   # more icons fit beside the notch
+
+    ``padding`` is the room around an icon when clicked (``spacing`` by
+    default). macOS's own is about 16 and 12; 0 to 30 is allowed. Takes
+    effect at the next login.
+    """
+    from . import defaults
+
+    if spacing is None:
+        for key in ("NSStatusItemSpacing", "NSStatusItemSelectionPadding"):
+            defaults.delete(defaults.GLOBAL, key, current_host=True)
+        return
+    padding = spacing if padding is None else padding
+    for name, value in (("spacing", spacing), ("padding", padding)):
+        if not 0 <= value <= 30:
+            raise ValueError("{} must be from 0 to 30 points, not {}".format(name, value))
+    defaults.write(defaults.GLOBAL, "NSStatusItemSpacing", int(spacing), current_host=True)
+    defaults.write(defaults.GLOBAL, "NSStatusItemSelectionPadding", int(padding), current_host=True)
+
+
+# The menu bar's items from Control Center, as it names them.
+_MENU_BAR_ITEMS = {
+    "wifi": "WiFi",
+    "bluetooth": "Bluetooth",
+    "sound": "Sound",
+    "display": "Display",
+    "battery": "Battery",
+    "focus": "FocusModes",
+    "now_playing": "NowPlaying",
+    "screen_mirroring": "ScreenMirroring",
+    "stage_manager": "StageManager",
+    "keyboard_brightness": "KeyboardBrightness",
+}
+_SHOWN, _HIDDEN = 18, 8  # Control Center's "always show in the menu bar", and "don't show"
+MENU_BAR_ITEMS = tuple(_MENU_BAR_ITEMS)
+"""The menu bar's icons :func:`set_menu_bar_items` shows and hides."""
+
+
+def menu_bar_items() -> Dict[str, bool]:
+    """Which of Control Center's icons the menu bar shows: ``{"wifi": True, "bluetooth": False, ...}``."""
+    from . import defaults
+
+    return {
+        name: bool(defaults.read("com.apple.controlcenter", "NSStatusItem Visible " + item, default=False))
+        for name, item in _MENU_BAR_ITEMS.items()
+    }
+
+
+def set_menu_bar_items(**items: bool) -> None:
+    """
+    Show or hide Control Center's icons in the menu bar, like System Settings › Control Center.
+
+    ::
+
+        macos.system.set_menu_bar_items(bluetooth=True, now_playing=False)
+
+    Each name is one of :data:`MENU_BAR_ITEMS`; those left out stay as
+    they are. The icons stay in Control Center either way. Applies at once.
+    """
+    from . import defaults
+
+    if not items:
+        raise ValueError("say which icons to show or hide, such as bluetooth=True")
+    unknown = set(items) - set(_MENU_BAR_ITEMS)
+    if unknown:
+        raise ValueError("unknown menu bar items: {}; use {}".format(", ".join(sorted(unknown)), ", ".join(MENU_BAR_ITEMS)))
+    for name, on in items.items():
+        item = _MENU_BAR_ITEMS[name]
+        # Control Center keeps the choice for this Mac, and only draws the icons it's also told are visible.
+        defaults.write("com.apple.controlcenter", item, _SHOWN if on else _HIDDEN, current_host=True)
+        defaults.write("com.apple.controlcenter", "NSStatusItem Visible " + item, bool(on))
+    try:
+        _run(["killall", "ControlCenter"])  # macOS starts it again, reading the settings
+    except MacOSError:
+        pass
+
+
+# --- Security -----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SecurityStatus:
+    """Whether the Mac's protections are on; ``None`` when macOS didn't say."""
+
+    filevault: Optional[bool]
+    """The disk is encrypted."""
+    firewall: Optional[bool]
+    """The application firewall blocks unwanted incoming connections."""
+    gatekeeper: Optional[bool]
+    """Apps are checked before they open."""
+    sip: Optional[bool]
+    """System Integrity Protection guards the system's files."""
+
+
+def _state(args: List[str], on: str, off: str) -> Optional[bool]:
+    try:
+        output = _run(args).lower()
+    except (MacOSError, OSError):
+        return None
+    if on in output:
+        return True
+    if off in output:
+        return False
+    return None
+
+
+def security_status() -> SecurityStatus:
+    """
+    Whether FileVault, the firewall, Gatekeeper and System Integrity Protection are on, without an administrator's password.
+
+    ::
+
+        status = macos.system.security_status()
+        if status.filevault is False:   # None: macOS didn't say
+            print("The disk isn't encrypted")
+
+    Handy to check a fleet of Macs against a security policy.
+    """
+    require_macos()
+    firewall: Optional[bool] = None
+    try:
+        found = re.search(r"State = (\d)", _run(["/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate"]))
+        firewall = None if found is None else found.group(1) != "0"
+    except (MacOSError, OSError):
+        pass
+    return SecurityStatus(
+        filevault=_state(["fdesetup", "status"], "filevault is on", "filevault is off"),
+        firewall=firewall,
+        gatekeeper=_state(["spctl", "--status"], "assessments enabled", "assessments disabled"),
+        sip=_state(["csrutil", "status"], "status: enabled", "status: disabled"),
+    )

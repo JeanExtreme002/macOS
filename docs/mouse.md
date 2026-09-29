@@ -110,6 +110,14 @@ macos.mouse.set_scroll_speed(1.0)
 macos.mouse.set_double_click_speed(0.3)   # quicker clicks
 ```
 
+{func}`~macos.mouse.set_acceleration` turns pointer acceleration off, so the
+pointer moves in proportion to the mouse, as gamers and designers like, or
+on again. It applies at once, and stays after a restart:
+
+```python
+macos.mouse.set_acceleration(False)
+```
+
 ## Reference
 
 - {func}`macos.mouse.position`
@@ -128,3 +136,5 @@ macos.mouse.set_double_click_speed(0.3)   # quicker clicks
 - {func}`macos.mouse.set_scroll_speed`
 - {func}`macos.mouse.double_click_speed`
 - {func}`macos.mouse.set_double_click_speed`
+- {func}`macos.mouse.acceleration`
+- {func}`macos.mouse.set_acceleration`

@@ -1,25 +1,18 @@
 """Tests of the keyboard, trackpad, mouse, Dock, Finder, appearance, screen and system settings. Skipped outside macOS."""
 
-from contextlib import contextmanager
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+import pytest
 
 import macos
 from tests.helpers import SETTINGS
 
-_UNSET = object()
-
-
-@contextmanager
-def restored(*keys, current_host=False):
-    """Put the ``(domain, key)`` pairs back as they were, deleting the ones that weren't set."""
-    before = [(domain, key, macos.defaults.read(domain, key, default=_UNSET, current_host=current_host)) for domain, key in keys]
-    try:
-        yield
-    finally:
-        for domain, key, value in before:
-            if value is _UNSET:
-                macos.defaults.delete(domain, key, current_host=current_host)
-            else:
-                macos.defaults.write(domain, key, value, current_host=current_host)
+restored = macos.defaults.restored
+G = macos.defaults.GLOBAL
 
 
 def test_settings_are_read():
@@ -160,3 +153,153 @@ def test_more_settings_round_trip():
             assert macos.system.expanded_save_dialog() is on and macos.dock.separate_spaces_per_display() is on
         macos.mouse.set_double_click_speed(0.8)
         assert macos.mouse.double_click_speed() == 0.8
+
+
+# --- v1.14 ------------------------------------------------------------------
+
+
+def test_v114_settings_are_read():
+    keyboard, trackpad, dock, finder, screen, system = (
+        macos.keyboard, macos.trackpad, macos.dock, macos.finder, macos.screen, macos.system
+    )
+    assert keyboard.fn_key_action() in (None, "emoji", "input_source", "dictation")
+    assert isinstance(keyboard.inline_predictions(), bool)
+    assert set(keyboard.system_shortcuts()) == set(keyboard.SYSTEM_SHORTCUTS)
+    assert isinstance(keyboard.app_shortcuts(), dict)
+    assert trackpad.click_pressure() in ("light", "medium", "firm")
+    assert set(trackpad.gestures()) == set(trackpad.GESTURES)
+    assert isinstance(macos.mouse.acceleration(), bool)
+    for setting in (dock.dim_hidden_apps, dock.only_open_apps, dock.launch_animation, dock.group_windows_by_app,
+                    dock.switch_to_space_with_app, finder.quit_menu, macos.windows.animations,
+                    macos.appearance.font_smoothing, macos.sound.ui_sounds, system.open_photos_on_device_connect):
+        assert isinstance(setting(), bool), setting.__name__
+    assert set(dock.hot_corner_modifiers()) == set(dock.hot_corners())
+    assert all(folder.view in ("automatic", "fan", "grid", "list") for folder in dock.folders())
+    assert 16 <= finder.desktop_view()["icon_size"] <= 128
+    assert 0 <= macos.sound.alert_volume() <= 1
+    assert screen.screenshot_target() in ("file", "clipboard", "preview", "mail", "messages")
+    assert system.measurement_units() in ("metric", "us") and system.temperature_unit() in ("celsius", "fahrenheit")
+    assert set(system.menu_bar_items()) == set(system.MENU_BAR_ITEMS)
+    status = system.security_status()
+    assert all(value in (True, False, None) for value in vars(status).values())
+    current = screen.display_mode()
+    assert current in screen.display_modes() and current.width > 0
+    assert isinstance(macos.printer.printers(), list)
+
+
+def test_settings_export_is_json():
+    exported = macos.settings.export()
+    assert json.loads(json.dumps(exported)).keys() == exported.keys()
+    assert {"dock", "finder", "keyboard"} <= set(exported)
+
+
+@SETTINGS
+def test_settings_apply_of_an_export_changes_nothing():
+    assert macos.settings.apply(json.loads(json.dumps(macos.settings.export()))) == []
+
+
+@SETTINGS
+def test_v114_quiet_settings_round_trip():
+    keys = [
+        ("com.apple.HIToolbox", "AppleFnUsageType"),
+        (G, "NSAutomaticInlinePredictionEnabled"),
+        (G, "NSAutomaticWindowAnimationsEnabled"),
+        (G, "AppleFontSmoothing"),
+        (G, "AppleMetricUnits"),
+        (G, "AppleMeasurementUnits"),
+        (G, "AppleTemperatureUnit"),
+        (G, "com.apple.sound.beep.volume"),
+        ("com.apple.systemsound", "com.apple.sound.uiaudio.enabled"),
+        ("com.apple.symbolichotkeys", "AppleSymbolicHotKeys"),
+    ]
+    with restored(*keys), restored(("com.apple.ImageCapture", "disableHotPlug"), current_host=True):
+        macos.keyboard.set_fn_key_action("dictation")
+        assert macos.keyboard.fn_key_action() == "dictation"
+        macos.keyboard.set_inline_predictions(False)
+        macos.windows.set_animations(False)
+        macos.appearance.set_font_smoothing(False)
+        assert not macos.keyboard.inline_predictions() and not macos.windows.animations()
+        assert not macos.appearance.font_smoothing()
+        for units, unit in (("us", "fahrenheit"), ("metric", "celsius")):
+            macos.system.set_measurement_units(units)
+            macos.system.set_temperature_unit(unit)
+            assert (macos.system.measurement_units(), macos.system.temperature_unit()) == (units, unit)
+        macos.sound.set_alert_volume(0.25)
+        macos.sound.set_ui_sounds(False)
+        assert macos.sound.alert_volume() == 0.25 and not macos.sound.ui_sounds()
+        macos.system.set_open_photos_on_device_connect(False)
+        assert not macos.system.open_photos_on_device_connect()
+        macos.keyboard.set_system_shortcut("move_left_a_space", False)
+        assert not macos.keyboard.system_shortcuts()["move_left_a_space"]
+
+
+@SETTINGS
+def test_app_shortcut_round_trip():
+    domain = "com.github.pymacos.test"
+    try:
+        macos.keyboard.set_app_shortcut(domain, "File > Export…", "cmd+shift+e")
+        assert macos.defaults.read(domain, "NSUserKeyEquivalents") == {"\x1bFile\x1bExport…": "@$e"}
+        assert macos.keyboard.app_shortcuts(domain) == {"File > Export…": "cmd+shift+e"}
+        macos.keyboard.set_app_shortcut(domain, "File > Export…", None)
+        assert macos.keyboard.app_shortcuts(domain) == {}
+    finally:
+        subprocess.run(["defaults", "delete", domain], capture_output=True)  # the whole test domain, through cfprefsd
+        Path("~/Library/Preferences/{}.plist".format(domain)).expanduser().unlink(missing_ok=True)  # left empty
+
+
+@SETTINGS
+def test_dock_and_finder_v114_round_trip(tmp_path):
+    folder = tmp_path / "Stack"
+    folder.mkdir()
+    try:
+        with restored("com.apple.dock"):
+            macos.dock.set_dim_hidden_apps(not macos.dock.dim_hidden_apps())
+            macos.dock.add_folder(folder, view="grid")
+            assert any(found.path == folder.resolve() and found.view == "grid" for found in macos.dock.folders())
+            assert macos.dock.remove_folder(folder)
+        with restored(("com.apple.finder", "DesktopViewSettings")):
+            size = macos.finder.desktop_view()["icon_size"]
+            macos.finder.set_desktop_view(icon_size=48 if size != 48 else 64)
+            assert macos.finder.desktop_view()["icon_size"] == (48 if size != 48 else 64)
+    finally:
+        macos.dock.restart()
+        macos.finder.restart()
+
+
+@SETTINGS
+def test_display_mode_round_trip():
+    before = macos.screen.display_mode()
+    others = [mode for mode in macos.screen.display_modes() if (mode.width, mode.height) != (before.width, before.height)]
+    try:
+        assert macos.screen.set_display_mode(before.width, before.height, hidpi=before.hidpi).width == before.width
+        if others:
+            chosen = macos.screen.set_display_mode(others[-1].width, others[-1].height)
+            assert (macos.screen.display_mode().width, macos.screen.display_mode().height) == (chosen.width, chosen.height)
+    finally:
+        macos.screen.set_display_mode(before.width, before.height, refresh_rate=before.refresh_rate or None, hidpi=before.hidpi)
+    assert macos.screen.display_mode() == before
+    macos.screen.stop_mirroring()  # nothing to stop: no error
+
+
+@SETTINGS
+def test_printing_to_a_test_queue():
+    ppd = (
+        "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/PrintCore.framework"
+        "/Versions/A/Resources/Generic.ppd"
+    )
+    queue = "pymacos_test"
+    command = ["lpadmin", "-p", queue, "-E", "-v", "socket://127.0.0.1:9", "-P", ppd, "-o", "printer-is-shared=false"]
+    added = subprocess.run(command, capture_output=True, text=True)
+    if added.returncode != 0:
+        pytest.skip("can't add a test printer here: " + added.stderr.strip())
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as file:
+        file.write("pymacos test\n")
+    try:
+        assert queue in [found.name for found in macos.printer.printers()]
+        job = macos.printer.print_file(file.name, queue, copies=2, title="pymacos test")
+        assert job.printer == queue and any(found.id == job.id for found in macos.printer.jobs(queue))
+        job.cancel()
+        assert not any(found.id == job.id for found in macos.printer.jobs(queue))
+    finally:
+        os.unlink(file.name)
+        subprocess.run(["lpadmin", "-x", queue], capture_output=True)

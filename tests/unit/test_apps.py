@@ -1,5 +1,6 @@
 """Unit tests for :mod:`macos.apps`. They run on any platform."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -77,3 +78,69 @@ def test_install_from_dmg_keeps_the_old_app_when_the_copy_fails(monkeypatch, tmp
         apps.install_from_dmg(tmp_path / "Tool.dmg", destination=tmp_path / "Applications", replace=True)
     assert (installed / "Contents" / "old").read_text() == "old version"  # still installed
     assert sorted(path.name for path in (tmp_path / "Applications").iterdir()) == ["Tool.app"]  # no leftovers
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="extended attributes as macOS keeps them")
+def test_unquarantine(tmp_path):
+    import subprocess
+
+    app = tmp_path / "Tool.app"
+    (app / "Contents").mkdir(parents=True)
+    binary = app / "Contents" / "tool"
+    binary.write_text("")
+    for path in (app, binary):
+        subprocess.run(["/usr/bin/xattr", "-w", "com.apple.quarantine", "0081;00000000;Safari;", str(path)], check=True)
+
+    assert macos.apps.is_quarantined(app) and macos.apps.is_quarantined(binary)
+    assert macos.apps.unquarantine(app) == 2
+    assert not macos.apps.is_quarantined(app) and not macos.apps.is_quarantined(binary)
+    assert macos.apps.unquarantine(app) == 0
+    with pytest.raises(FileNotFoundError):
+        macos.apps.is_quarantined(tmp_path / "missing.app")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="extended attributes as macOS keeps them")
+def test_is_quarantined_reports_errors_other_than_a_missing_mark(tmp_path, monkeypatch):
+    import ctypes
+    import errno
+
+    file = tmp_path / "file"
+    file.write_text("")
+
+    class Failing:
+        def getxattr(self, *args):
+            ctypes.set_errno(errno.EACCES)
+            return -1
+
+    monkeypatch.setattr(macos.apps, "_libc", lambda: Failing())
+    with pytest.raises(PermissionError):
+        macos.apps.is_quarantined(file)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="extended attributes as macOS keeps them")
+def test_unquarantine_keeps_the_error_and_stops_at_unreadable_folders(tmp_path, monkeypatch):
+    import ctypes
+    import errno
+
+    app = tmp_path / "Tool.app"
+    (app / "Contents").mkdir(parents=True)
+
+    class Failing:
+        def removexattr(self, *args):
+            ctypes.set_errno(errno.EIO)
+            return -1
+
+    monkeypatch.setattr(macos.apps, "_libc", lambda: Failing())
+    with pytest.raises(OSError) as raised:
+        macos.apps.unquarantine(app)
+    assert raised.value.errno == errno.EIO and not isinstance(raised.value, PermissionError)
+
+    monkeypatch.undo()
+    locked = app / "Contents" / "Locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        with pytest.raises(PermissionError):
+            macos.apps.unquarantine(app)
+    finally:
+        locked.chmod(0o755)

@@ -164,6 +164,9 @@ macos.say("Welcome back")
 | {func}`~macos.system.keep_windows_on_quit` | {func}`~macos.system.set_keep_windows_on_quit` | `True` makes apps reopen the windows they had |
 | {func}`~macos.system.save_to_icloud_by_default` | {func}`~macos.system.set_save_to_icloud_by_default` | iCloud Drive offered first when saving a new document |
 | {func}`~macos.system.expanded_save_dialog` | {func}`~macos.system.set_expanded_save_dialog` | the Save dialog opened with the sidebar and every folder |
+| {func}`~macos.system.measurement_units` | {func}`~macos.system.set_measurement_units` | `"metric"` or `"us"` |
+| {func}`~macos.system.temperature_unit` | {func}`~macos.system.set_temperature_unit` | `"celsius"` or `"fahrenheit"` |
+| {func}`~macos.system.open_photos_on_device_connect` | {func}`~macos.system.set_open_photos_on_device_connect` | `False` stops Photos opening when an iPhone or a camera is connected |
 | {func}`~macos.system.battery_percentage_shown` | {func}`~macos.system.set_show_battery_percentage` | the percentage next to the battery in the menu bar |
 
 ```python
@@ -184,6 +187,33 @@ macos.system.clock_format()   # {'seconds': True, 'day_of_week': True, 'am_pm': 
 
 It also takes `day_of_week`, `am_pm` and `analog`. Whether it's 12 or 24 hours
 follows System Settings › General › Date & Time.
+
+## The menu bar
+
+{func}`~macos.system.set_menu_bar_items` shows or hides Control Center's icons
+in the menu bar, and {func}`~macos.system.set_menu_bar_spacing` puts them
+closer together, so more fit beside the notch:
+
+```python
+macos.system.set_menu_bar_items(bluetooth=True, now_playing=False, focus=False)
+macos.system.menu_bar_items()            # {'wifi': True, 'bluetooth': True, 'now_playing': False, ...}
+macos.system.set_menu_bar_spacing(6)     # at the next login; None for macOS's own
+```
+
+The icons are in {data}`~macos.system.MENU_BAR_ITEMS`, and apply at once.
+
+## Security
+
+{func}`~macos.system.security_status` tells whether the Mac's protections are
+on, without an administrator's password, to check a fleet of Macs against
+a security policy:
+
+```python
+macos.system.security_status()
+# SecurityStatus(filevault=True, firewall=False, gatekeeper=True, sip=True)
+```
+
+Each is `None` when macOS doesn't say.
 
 ## Reference
 
@@ -227,3 +257,16 @@ follows System Settings › General › Date & Time.
 - {func}`macos.system.set_expanded_save_dialog`
 - {func}`macos.system.clock_format`
 - {func}`macos.system.set_clock_format`
+- {func}`macos.system.measurement_units`
+- {func}`macos.system.set_measurement_units`
+- {func}`macos.system.temperature_unit`
+- {func}`macos.system.set_temperature_unit`
+- {func}`macos.system.open_photos_on_device_connect`
+- {func}`macos.system.set_open_photos_on_device_connect`
+- {func}`macos.system.menu_bar_spacing`
+- {func}`macos.system.set_menu_bar_spacing`
+- {data}`macos.system.MENU_BAR_ITEMS`
+- {func}`macos.system.menu_bar_items`
+- {func}`macos.system.set_menu_bar_items`
+- {class}`macos.system.SecurityStatus`
+- {func}`macos.system.security_status`

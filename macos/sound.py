@@ -19,13 +19,23 @@ import threading
 import time
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Set, Union
+from typing import List, Optional, Set, Union
 
 from . import _objc
 from ._objc import BOOL
 from ._system import framework, require_macos
 
-__all__ = ["play", "beep", "names"]
+__all__ = [
+    "play",
+    "beep",
+    "names",
+    "alert_sound",
+    "set_alert_sound",
+    "alert_volume",
+    "set_alert_volume",
+    "ui_sounds",
+    "set_ui_sounds",
+]
 
 _SOUND_FOLDERS = (Path("/System/Library/Sounds"), Path("/Library/Sounds"), Path("~/Library/Sounds").expanduser())
 
@@ -104,3 +114,64 @@ def play(sound: Union[str, "os.PathLike[str]"], *, volume: float = 1.0, wait: bo
 def beep() -> None:
     """Play the alert sound chosen in System Settings › Sound, like an app's error beep."""
     _appkit().NSBeep()
+
+
+# --- Settings ---------------------------------------------------------------
+
+
+def alert_sound() -> Optional[str]:
+    """The name of the alert sound, as in :func:`names`; ``None`` for macOS's own."""
+    from . import defaults
+
+    path = defaults.read(defaults.GLOBAL, "com.apple.sound.beep.sound")
+    return Path(path).stem if path else None
+
+
+def set_alert_sound(name: Optional[str]) -> None:
+    """
+    Set the alert sound, by one of the :func:`names` (``"Funk"``, ``"Glass"``...), or macOS's own (``None``).
+
+    Apps pick it up when they're reopened.
+    """
+    from . import defaults
+
+    if name is None:
+        defaults.delete(defaults.GLOBAL, "com.apple.sound.beep.sound")
+        return
+    require_macos()
+    for folder in _SOUND_FOLDERS:
+        for path in sorted(folder.iterdir()) if folder.is_dir() else ():
+            if path.stem == name and path.suffix.lower() in (".aiff", ".aif", ".caf", ".wav"):
+                defaults.write(defaults.GLOBAL, "com.apple.sound.beep.sound", str(path))
+                return
+    raise ValueError("no alert sound is named {!r}; see macos.sound.names()".format(name))
+
+
+def alert_volume() -> float:
+    """The volume of alert sounds, from 0.0 to 1.0, as a share of the output volume."""
+    from . import defaults
+
+    return round(float(defaults.read(defaults.GLOBAL, "com.apple.sound.beep.volume", default=1.0)), 3)
+
+
+def set_alert_volume(volume: float) -> None:
+    """Set the volume of alert sounds, from 0.0 to 1.0, apart from music and videos, like System Settings › Sound."""
+    from . import defaults
+
+    if not 0.0 <= volume <= 1.0:
+        raise ValueError("volume must be from 0.0 to 1.0, not {}".format(volume))
+    defaults.write(defaults.GLOBAL, "com.apple.sound.beep.volume", float(volume))
+
+
+def ui_sounds() -> bool:
+    """Whether the interface plays sound effects, such as emptying the Trash or taking a screenshot."""
+    from . import defaults
+
+    return bool(defaults.read("com.apple.systemsound", "com.apple.sound.uiaudio.enabled", default=1))
+
+
+def set_ui_sounds(on: bool = True) -> None:
+    """Play the interface's sound effects, or keep it quiet (``False``). Alerts still play."""
+    from . import defaults
+
+    defaults.write("com.apple.systemsound", "com.apple.sound.uiaudio.enabled", 1 if on else 0)

@@ -131,6 +131,14 @@ With automatic brightness on, macOS keeps adjusting the backlight after
 {func}`~macos.keyboard.set_brightness`. On a Mac without a backlit keyboard
 these functions raise {class}`~macos.NotSupportedError`.
 
+{func}`~macos.keyboard.set_backlight_timeout` turns the backlight off after some
+seconds without use, or never (`None`):
+
+```python
+macos.keyboard.set_backlight_timeout(30)
+macos.keyboard.backlight_timeout()   # 30.0
+```
+
 They use a private macOS framework, since there's no public one.
 
 ## Keyboard settings
@@ -146,6 +154,8 @@ The settings of System Settings › Keyboard, each with its reader:
 | {func}`~macos.keyboard.smart_quotes` | {func}`~macos.keyboard.set_smart_quotes` | `"` typed as “ ” |
 | {func}`~macos.keyboard.smart_dashes` | {func}`~macos.keyboard.set_smart_dashes` | `--` typed as — |
 | {func}`~macos.keyboard.auto_capitalization` | {func}`~macos.keyboard.set_auto_capitalization` | the first letter of sentences capitalized |
+| {func}`~macos.keyboard.fn_key_action` | {func}`~macos.keyboard.set_fn_key_action` | `"emoji"`, `"input_source"`, `"dictation"` or `None`: what Fn (🌐) does alone |
+| {func}`~macos.keyboard.inline_predictions` | {func}`~macos.keyboard.set_inline_predictions` | the end of words suggested in gray as you type (macOS 14+) |
 | {func}`~macos.keyboard.double_space_period` | {func}`~macos.keyboard.set_double_space_period` | two spaces typed as a period and a space |
 | {func}`~macos.keyboard.full_keyboard_access` | {func}`~macos.keyboard.set_full_keyboard_access` | `True` lets Tab reach every control, buttons included |
 
@@ -157,6 +167,39 @@ macos.keyboard.set_smart_quotes(False)             # code pasted in Notes stays 
 
 The function keys apply at once. The key repeat waits for the next login;
 the other settings reach apps when they're reopened. No permission is needed.
+
+## Shortcuts for menu items
+
+{func}`~macos.keyboard.set_app_shortcut` gives a menu item a shortcut, as System
+Settings › Keyboard › Keyboard Shortcuts › App Shortcuts does, without its
+dialog:
+
+```python
+macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", "cmd+shift+e")
+macos.keyboard.set_app_shortcut("Preview", "File > Export…", "cmd+e")     # the one in the File menu
+macos.keyboard.set_app_shortcut(None, "Show Tab Bar", "cmd+option+t")     # in every app
+macos.keyboard.app_shortcuts("Safari")    # {'Export as PDF…': 'cmd+shift+e'}
+macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", None)         # remove it
+```
+
+The title must be exactly the menu's, in the system's language, the
+ellipsis (…) included. Keys are written as for
+{func}`~macos.keyboard.press`. Apps pick it up when they're reopened.
+
+## macOS's shortcuts
+
+{func}`~macos.keyboard.set_system_shortcut` turns macOS's own shortcuts on and
+off, to free them for another app, such as ⌘Space for Raycast or Alfred:
+
+```python
+macos.keyboard.set_system_shortcut("spotlight", False)
+macos.keyboard.system_shortcuts()   # {'spotlight': False, 'screenshot': True, ...}
+```
+
+The names are in {data}`~macos.keyboard.SYSTEM_SHORTCUTS`: `spotlight`,
+`finder_search`, the `screenshot` ones, `mission_control`,
+`application_windows`, `show_desktop`, `move_left_a_space`,
+`move_right_a_space`, the input sources and `dock_hiding`. It applies at once.
 
 ## Remapping keys
 
@@ -216,3 +259,14 @@ with [`macos.schedule`](schedule.md).
 - {func}`macos.keyboard.remap`
 - {func}`macos.keyboard.remappings`
 - {func}`macos.keyboard.clear_remappings`
+- {func}`macos.keyboard.fn_key_action`
+- {func}`macos.keyboard.set_fn_key_action`
+- {func}`macos.keyboard.inline_predictions`
+- {func}`macos.keyboard.set_inline_predictions`
+- {func}`macos.keyboard.app_shortcuts`
+- {func}`macos.keyboard.set_app_shortcut`
+- {data}`macos.keyboard.SYSTEM_SHORTCUTS`
+- {func}`macos.keyboard.system_shortcuts`
+- {func}`macos.keyboard.set_system_shortcut`
+- {func}`macos.keyboard.backlight_timeout`
+- {func}`macos.keyboard.set_backlight_timeout`

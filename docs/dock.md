@@ -29,6 +29,9 @@ permission is needed.
 | {func}`~macos.dock.minimize_effect` | {func}`~macos.dock.set_minimize_effect` | `"genie"` or `"scale"` |
 | {func}`~macos.dock.autohide_duration` | {func}`~macos.dock.set_autohide_duration` | seconds a hidden Dock takes to slide in; `0` has no animation, `None` is macOS's own |
 | {func}`~macos.dock.show_indicators` | {func}`~macos.dock.set_show_indicators` | a dot under the open apps |
+| {func}`~macos.dock.dim_hidden_apps` | {func}`~macos.dock.set_dim_hidden_apps` | translucent icons for hidden apps (⌘H) |
+| {func}`~macos.dock.only_open_apps` | {func}`~macos.dock.set_only_open_apps` | only the open apps, like a taskbar |
+| {func}`~macos.dock.launch_animation` | {func}`~macos.dock.set_launch_animation` | the icon bouncing while an app opens |
 | {func}`~macos.dock.minimize_to_app` | {func}`~macos.dock.set_minimize_to_app` | `True` minimizes windows into their app's icon |
 
 ## Hot corners
@@ -47,6 +50,14 @@ The corners are `"top_left"`, `"top_right"`, `"bottom_left"` and
 `"mission_control"`, `"app_windows"`, `"desktop"`, `"notification_center"`,
 `"launchpad"`, `"quick_note"`, `"start_screensaver"`, `"disable_screensaver"`,
 `"display_sleep"` and `"lock_screen"`.
+
+`modifier` makes a corner wait for keys held down, so it doesn't fire by
+accident:
+
+```python
+macos.dock.set_hot_corner("top_left", "mission_control", modifier="cmd")
+macos.dock.hot_corner_modifiers()   # {'top_left': 'cmd', 'top_right': None, ...}
+```
 
 ## Apps in the Dock
 
@@ -75,6 +86,23 @@ macos.dock.add_spacer(small=True)
 macos.dock.remove_spacers()   # 2
 ```
 
+## Folders
+
+{func}`~macos.dock.add_folder` keeps a folder next to the Trash, as a stack of
+its items or as the folder, opening as a fan, a grid or a list:
+
+```python
+macos.dock.add_folder("~/Downloads", view="grid", sort="date_added")
+macos.dock.add_folder("~/Projects", display="folder", sort="name")
+
+[folder.name for folder in macos.dock.folders()]   # ['Downloads', 'Projects']
+
+macos.dock.remove_folder("~/Projects")
+```
+
+A folder kept already is updated. Each {class}`~macos.dock.DockFolder` has its
+`name`, `path`, `view`, `sort` and `display`.
+
 ## Spaces
 
 Mission Control's settings live with the Dock's:
@@ -82,6 +110,8 @@ Mission Control's settings live with the Dock's:
 ```python
 macos.dock.set_auto_rearrange_spaces(False)        # keep the spaces where you put them
 macos.dock.set_separate_spaces_per_display(False)  # one set of spaces across the displays
+macos.dock.set_group_windows_by_app(True)          # Mission Control groups each app's windows
+macos.dock.set_switch_to_space_with_app(False)     # ⌘Tab doesn't jump to another space
 ```
 
 The second takes effect at the next login.
@@ -122,3 +152,18 @@ The second takes effect at the next login.
 - {func}`macos.dock.set_auto_rearrange_spaces`
 - {func}`macos.dock.separate_spaces_per_display`
 - {func}`macos.dock.set_separate_spaces_per_display`
+- {func}`macos.dock.hot_corner_modifiers`
+- {func}`macos.dock.dim_hidden_apps`
+- {func}`macos.dock.set_dim_hidden_apps`
+- {func}`macos.dock.only_open_apps`
+- {func}`macos.dock.set_only_open_apps`
+- {func}`macos.dock.launch_animation`
+- {func}`macos.dock.set_launch_animation`
+- {func}`macos.dock.group_windows_by_app`
+- {func}`macos.dock.set_group_windows_by_app`
+- {func}`macos.dock.switch_to_space_with_app`
+- {func}`macos.dock.set_switch_to_space_with_app`
+- {class}`macos.dock.DockFolder`
+- {func}`macos.dock.folders`
+- {func}`macos.dock.add_folder`
+- {func}`macos.dock.remove_folder`

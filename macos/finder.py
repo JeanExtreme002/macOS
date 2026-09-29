@@ -27,11 +27,11 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Union
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
-from ._system import applescript, framework, run as _run
+from ._system import applescript, framework, restart_later, run as _run
 from .errors import MacOSError
 
 __all__ = [
@@ -82,6 +82,10 @@ __all__ = [
     "set_remove_old_trash_items",
     "drives_on_desktop",
     "set_show_drives_on_desktop",
+    "quit_menu",
+    "set_quit_menu",
+    "desktop_view",
+    "set_desktop_view",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -681,6 +685,8 @@ _FINDER = "com.apple.finder"
 
 def restart() -> None:
     """Relaunch Finder, so it reads its settings again (the ``set_show_*`` functions do it for you)."""
+    if restart_later("Finder", restart):
+        return
     _run(["killall", "Finder"])  # macOS opens it again right away, with its windows
 
 
@@ -986,4 +992,109 @@ def set_show_drives_on_desktop(
     for kind, on in wanted.items():
         if on is not None:
             defaults.write(_FINDER, _DESKTOP_DRIVES[kind][0], bool(on))
+    restart()
+
+
+def quit_menu() -> bool:
+    """Whether Finder has a Quit item (⌘Q), so it can be closed like other apps."""
+    return _setting_default(_FINDER, "QuitMenuItem", False)
+
+
+def set_quit_menu(on: bool = True) -> None:
+    """Add Quit Finder (⌘Q) to Finder's menu, or take it away. Quitting Finder also hides the desktop's icons."""
+    _set(_FINDER, "QuitMenuItem", on)
+
+
+# The desktop's sort orders, as Finder's arrangeBy names them.
+_DESKTOP_SORTS = {
+    None: "none",
+    "snap_to_grid": "grid",
+    "name": "name",
+    "kind": "kind",
+    "date_last_opened": "dateLastOpened",
+    "date_added": "dateAdded",
+    "date_modified": "dateModified",
+    "date_created": "dateCreated",
+    "size": "size",
+    "tags": "label",
+}
+
+
+def _desktop_icons() -> Dict[str, Any]:
+    from . import defaults
+
+    view = defaults.read(_FINDER, "DesktopViewSettings", default={}) or {}
+    return dict(view.get("IconViewSettings", {}))
+
+
+def desktop_view() -> Dict[str, object]:
+    """
+    How the desktop shows its icons, as in its View › Show View Options.
+
+    ``{"icon_size": 64, "grid_spacing": 54, "text_size": 12, "sort": None,
+    "show_item_info": False, "labels_on_bottom": True}``; ``sort`` is
+    ``None`` when the icons are placed freely.
+    """
+    icons = _desktop_icons()
+    sorts = {value: name for name, value in _DESKTOP_SORTS.items()}
+    return {
+        "icon_size": int(float(icons.get("iconSize", 64))),
+        "grid_spacing": int(float(icons.get("gridSpacing", 54))),
+        "text_size": int(float(icons.get("textSize", 12))),
+        "sort": sorts.get(icons.get("arrangeBy", "none")),
+        "show_item_info": bool(icons.get("showItemInfo", False)),
+        "labels_on_bottom": bool(icons.get("labelOnBottom", True)),
+    }
+
+
+def set_desktop_view(
+    *,
+    icon_size: Optional[int] = None,
+    grid_spacing: Optional[int] = None,
+    text_size: Optional[int] = None,
+    sort: Union[str, None, bool] = False,
+    show_item_info: Optional[bool] = None,
+    labels_on_bottom: Optional[bool] = None,
+) -> None:
+    """
+    Change how the desktop shows its icons; the options left out stay as they are.
+
+    ::
+
+        macos.finder.set_desktop_view(icon_size=48, grid_spacing=30, sort="kind")
+
+    ``icon_size`` is from 16 to 128 points, ``grid_spacing`` from 1 to 100,
+    ``text_size`` from 10 to 16. ``sort`` keeps them in order:
+    ``"snap_to_grid"``, ``"name"``, ``"kind"``, ``"date_added"``,
+    ``"date_modified"``, ``"date_created"``, ``"date_last_opened"``,
+    ``"size"``, ``"tags"``, or ``None`` to place them freely. Relaunches Finder.
+    """
+    from . import defaults
+
+    changes: Dict[str, object] = {}
+    for name, value, low, high, key in (
+        ("icon_size", icon_size, 16, 128, "iconSize"),
+        ("grid_spacing", grid_spacing, 1, 100, "gridSpacing"),
+        ("text_size", text_size, 10, 16, "textSize"),
+    ):
+        if value is not None:
+            if not low <= value <= high:
+                raise ValueError("{} must be from {} to {}, not {}".format(name, low, high, value))
+            changes[key] = float(value)
+    if sort is not False:
+        if sort not in _DESKTOP_SORTS:
+            names = ", ".join(name for name in _DESKTOP_SORTS if name)
+            raise ValueError("sort must be one of {} or None, not {!r}".format(names, sort))
+        changes["arrangeBy"] = _DESKTOP_SORTS[sort]
+    if show_item_info is not None:
+        changes["showItemInfo"] = bool(show_item_info)
+    if labels_on_bottom is not None:
+        changes["labelOnBottom"] = bool(labels_on_bottom)
+    if not changes:
+        raise ValueError("say what to change: icon_size=, grid_spacing=, text_size=, sort=, show_item_info= or labels_on_bottom=")
+    view = dict(defaults.read(_FINDER, "DesktopViewSettings", default={}) or {})
+    icons = dict(view.get("IconViewSettings", {}))
+    icons.update(changes)
+    view["IconViewSettings"] = icons
+    defaults.write(_FINDER, "DesktopViewSettings", view)
     restart()

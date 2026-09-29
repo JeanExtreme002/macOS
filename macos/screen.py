@@ -23,7 +23,8 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from datetime import time as dt_time
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework, private_framework, run as _run
@@ -62,6 +63,22 @@ __all__ = [
     "is_locked",
     "is_asleep",
     "record",
+    "screenshot_name",
+    "set_screenshot_name",
+    "screenshot_target",
+    "set_screenshot_target",
+    "night_shift_schedule",
+    "set_night_shift_schedule",
+    "night_shift_strength",
+    "set_night_shift_strength",
+    "DisplayMode",
+    "display_modes",
+    "display_mode",
+    "set_display_mode",
+    "set_main_display",
+    "mirrored",
+    "mirror",
+    "stop_mirroring",
 ]
 
 _FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".heic": "heic", ".tiff": "tiff", ".gif": "gif", ".pdf": "pdf"}
@@ -344,6 +361,50 @@ def set_screenshot_thumbnail(on: bool = True) -> None:
     from . import defaults
 
     defaults.write(_CAPTURE_SETTINGS, "show-thumbnail", bool(on))
+    _apply_capture_settings()
+
+
+def screenshot_name() -> Optional[str]:
+    """The name screenshots' files start with; ``None`` for macOS's own ("Screenshot", in the system's language)."""
+    from . import defaults
+
+    return defaults.read(_CAPTURE_SETTINGS, "name") or None
+
+
+def set_screenshot_name(name: Optional[str]) -> None:
+    """Start screenshots' file names with ``name`` (``"Capture"``...), or macOS's own (``None``). The date follows it."""
+    from . import defaults
+
+    if name is None:
+        defaults.delete(_CAPTURE_SETTINGS, "name")
+    else:
+        if not name.strip() or "/" in name or ":" in name:
+            raise ValueError("name must be a file name, without / or :, not {!r}".format(name))
+        defaults.write(_CAPTURE_SETTINGS, "name", name)
+    _apply_capture_settings()
+
+
+_SCREENSHOT_TARGETS = ("file", "clipboard", "preview", "mail", "messages")
+
+
+def screenshot_target() -> str:
+    """Where the shortcuts send screenshots: ``'file'``, ``'clipboard'``, ``'preview'``, ``'mail'`` or ``'messages'``."""
+    from . import defaults
+
+    found = defaults.read(_CAPTURE_SETTINGS, "target", default="file")
+    return found if found in _SCREENSHOT_TARGETS else "file"
+
+
+def set_screenshot_target(target: str) -> None:
+    """
+    Send screenshots to a ``"file"`` (in :func:`screenshot_folder`), the ``"clipboard"``, or open them in
+    ``"preview"``, ``"mail"`` or ``"messages"``, like the Options menu of ⌘⇧5.
+    """
+    from . import defaults
+
+    if target not in _SCREENSHOT_TARGETS:
+        raise ValueError("target must be one of {}, not {!r}".format(", ".join(_SCREENSHOT_TARGETS), target))
+    defaults.write(_CAPTURE_SETTINGS, "target", target)
     _apply_capture_settings()
 
 
@@ -839,3 +900,346 @@ def set_screensaver_delay(minutes: Optional[float]) -> None:
         raise ValueError("minutes must be positive, or None for never, not {}".format(minutes))
     # At least a second: 0 is how macOS says "never".
     defaults.write("com.apple.screensaver", "idleTime", max(1, int(round(minutes * 60))) if minutes else 0, current_host=True)
+
+
+# --- Night Shift's schedule and strength -----------------------------------
+
+_NIGHT_SHIFT_MODES = {0: None, 1: "sunset", 2: "custom"}
+
+
+class _NightShiftSchedule(ctypes.Structure):
+    _fields_ = [("start", _NightShiftTime), ("end", _NightShiftTime)]
+
+
+def _clock_time(value: Union[str, dt_time]) -> dt_time:
+    if isinstance(value, dt_time):
+        return value
+    try:
+        hour, minute = (int(part) for part in str(value).split(":"))
+        return dt_time(hour, minute)
+    except ValueError:
+        raise ValueError("times must be datetime.time or 'HH:MM', not {!r}".format(value)) from None
+
+
+def night_shift_schedule() -> Union[None, str, Tuple[dt_time, dt_time]]:
+    """
+    When Night Shift turns on by itself: ``None`` (never), ``'sunset'`` (sunset to sunrise), or ``(start, end)`` times.
+
+    ::
+
+        macos.screen.night_shift_schedule()   # (datetime.time(22, 0), datetime.time(7, 0))
+    """
+    status = _night_shift_status()
+    mode = _NIGHT_SHIFT_MODES.get(status.mode)
+    if mode == "custom":
+        return dt_time(status.start.hour, status.start.minute), dt_time(status.end.hour, status.end.minute)
+    return mode
+
+
+def set_night_shift_schedule(schedule: Union[None, str, Tuple[Union[str, dt_time], Union[str, dt_time]]]) -> None:
+    """
+    Turn Night Shift on by itself from ``"sunset"`` to sunrise, between two times, or never (``None``).
+
+    ::
+
+        macos.screen.set_night_shift_schedule(("22:00", "07:00"))
+        macos.screen.set_night_shift_schedule("sunset")      # needs Location Services
+        macos.screen.set_night_shift_schedule(None)
+
+    Like the Schedule menu in System Settings › Displays › Night Shift.
+    """
+    status = _night_shift_status()
+    with _objc.autorelease_pool():
+        client = _night_shift_client()
+        if schedule is None or schedule == "sunset":
+            if schedule == "sunset" and not status.sun_schedule_permitted:
+                raise PermissionDeniedError(
+                    "Night Shift needs Location Services to follow the sun: turn them on in System Settings › "
+                    "Privacy & Security › Location Services"
+                )
+            mode = 1 if schedule == "sunset" else 0
+        else:
+            if isinstance(schedule, str) or len(schedule) != 2:
+                raise ValueError("schedule must be None, 'sunset' or (start, end), not {!r}".format(schedule))
+            start, end = (_clock_time(value) for value in schedule)
+            times = _NightShiftSchedule(_NightShiftTime(start.hour, start.minute), _NightShiftTime(end.hour, end.minute))
+            if not _objc.send(client, "setSchedule:", ctypes.byref(times), argtypes=(ctypes.c_void_p,), restype=_objc.BOOL):
+                raise MacOSError("macOS refused Night Shift's schedule")
+            mode = 2
+        if not _objc.send(client, "setMode:", mode, argtypes=(ctypes.c_int,), restype=_objc.BOOL):
+            raise MacOSError("macOS refused to change Night Shift's schedule")
+
+
+def night_shift_strength() -> float:
+    """How warm Night Shift makes the display, from 0.0 (least) to 1.0 (most)."""
+    _night_shift_status()  # raises when unavailable
+    strength = ctypes.c_float()
+    with _objc.autorelease_pool():
+        ok = _objc.send(
+            _night_shift_client(), "getStrength:", ctypes.byref(strength), argtypes=(ctypes.c_void_p,), restype=_objc.BOOL
+        )
+    if not ok:
+        raise MacOSError("could not read Night Shift's strength")
+    return round(float(strength.value), 3)
+
+
+def set_night_shift_strength(strength: float) -> None:
+    """Set how warm Night Shift makes the display, from 0.0 to 1.0, like its Color Temperature slider."""
+    if not 0.0 <= strength <= 1.0:
+        raise ValueError("strength must be from 0.0 to 1.0, not {}".format(strength))
+    _night_shift_status()
+    with _objc.autorelease_pool():
+        ok = _objc.send(
+            _night_shift_client(),
+            "setStrength:commit:",
+            float(strength),
+            True,
+            argtypes=(ctypes.c_float, _objc.BOOL),
+            restype=_objc.BOOL,
+        )
+    if not ok:
+        raise MacOSError("macOS refused to change Night Shift's strength")
+
+
+# --- Display modes, arrangement and mirroring ----------------------------------
+
+
+@dataclass(frozen=True)
+class DisplayMode:
+    """A resolution a display can use. Sizes are in points, as the desktop lays out windows."""
+
+    width: int
+    height: int
+    pixel_width: int
+    pixel_height: int
+    refresh_rate: float
+    """In Hz; 0.0 when the display doesn't say (most built-in ones, besides ProMotion)."""
+
+    @property
+    def hidpi(self) -> bool:
+        """Whether it draws with more pixels than points, for sharp text: Retina."""
+        return self.pixel_width > self.width
+
+
+_CONFIGURE_PERMANENTLY = 2  # kCGConfigurePermanently: kept after a restart, like System Settings
+
+
+@lru_cache(maxsize=None)
+def _arrangement_api() -> ctypes.CDLL:
+    cg = _display_api()
+    pointer = ctypes.c_void_p
+    cg.CGDisplayCopyAllDisplayModes.argtypes = (ctypes.c_uint32, pointer)
+    cg.CGDisplayCopyAllDisplayModes.restype = pointer
+    for name in ("CGDisplayModeGetWidth", "CGDisplayModeGetHeight"):
+        getattr(cg, name).argtypes = (pointer,)
+        getattr(cg, name).restype = ctypes.c_size_t
+    cg.CGDisplayModeIsUsableForDesktopGUI.argtypes = (pointer,)
+    cg.CGDisplayModeIsUsableForDesktopGUI.restype = ctypes.c_bool
+    cg.CGBeginDisplayConfiguration.argtypes = (ctypes.POINTER(pointer),)
+    cg.CGBeginDisplayConfiguration.restype = ctypes.c_int32
+    cg.CGConfigureDisplayWithDisplayMode.argtypes = (pointer, ctypes.c_uint32, pointer, pointer)
+    cg.CGConfigureDisplayWithDisplayMode.restype = ctypes.c_int32
+    cg.CGConfigureDisplayOrigin.argtypes = (pointer, ctypes.c_uint32, ctypes.c_int32, ctypes.c_int32)
+    cg.CGConfigureDisplayOrigin.restype = ctypes.c_int32
+    cg.CGConfigureDisplayMirrorOfDisplay.argtypes = (pointer, ctypes.c_uint32, ctypes.c_uint32)
+    cg.CGConfigureDisplayMirrorOfDisplay.restype = ctypes.c_int32
+    cg.CGCompleteDisplayConfiguration.argtypes = (pointer, ctypes.c_uint32)
+    cg.CGCompleteDisplayConfiguration.restype = ctypes.c_int32
+    cg.CGCancelDisplayConfiguration.argtypes = (pointer,)
+    cg.CGCancelDisplayConfiguration.restype = ctypes.c_int32
+    cg.CGGetOnlineDisplayList.argtypes = cg.CGGetActiveDisplayList.argtypes
+    cg.CGGetOnlineDisplayList.restype = ctypes.c_int32
+    cg.CGDisplayMirrorsDisplay.argtypes = (ctypes.c_uint32,)
+    cg.CGDisplayMirrorsDisplay.restype = ctypes.c_uint32
+    return cg
+
+
+def _display_id(display: Union[None, int, Display]) -> int:
+    if display is None:
+        return int(_display_api().CGMainDisplayID())
+    return int(display.id if isinstance(display, Display) else display)
+
+
+def _mode(cg: ctypes.CDLL, ref: int) -> DisplayMode:
+    return DisplayMode(
+        width=int(cg.CGDisplayModeGetWidth(ref)),
+        height=int(cg.CGDisplayModeGetHeight(ref)),
+        pixel_width=int(cg.CGDisplayModeGetPixelWidth(ref)),
+        pixel_height=int(cg.CGDisplayModeGetPixelHeight(ref)),
+        refresh_rate=round(float(cg.CGDisplayModeGetRefreshRate(ref)), 2),
+    )
+
+
+def _all_modes(cg: ctypes.CDLL, display_id: int) -> int:
+    """An owned CFArray of every mode, the Retina ("looks like") ones included."""
+    key = _cf.constant(cg, "kCGDisplayShowDuplicateLowResolutionModes")
+    with _cf.owned(_cf.dictionary({key: _cf.constant(_cf.lib(), "kCFBooleanTrue")})) as options:
+        return cg.CGDisplayCopyAllDisplayModes(display_id, options)
+
+
+def display_modes(display: Union[None, int, Display] = None) -> List[DisplayMode]:
+    """
+    The resolutions ``display`` (the main one by default) can use, largest first.
+
+    ::
+
+        [f"{m.width}×{m.height} @ {m.refresh_rate:g} Hz" for m in macos.screen.display_modes()]
+
+    Includes the scaled Retina ones System Settings › Displays shows as
+    "looks like"; each is a :class:`DisplayMode`.
+    """
+    cg = _arrangement_api()
+    found = set()
+    with _cf.owned(_all_modes(cg, _display_id(display))) as modes:
+        for ref in _cf.items(modes):
+            if cg.CGDisplayModeIsUsableForDesktopGUI(ref):
+                found.add(_mode(cg, ref))
+    return sorted(found, key=lambda mode: (mode.width, mode.height, mode.hidpi, mode.refresh_rate), reverse=True)
+
+
+def display_mode(display: Union[None, int, Display] = None) -> DisplayMode:
+    """The resolution ``display`` (the main one by default) uses now."""
+    cg = _arrangement_api()
+    ref = cg.CGDisplayCopyDisplayMode(_display_id(display))
+    if not ref:
+        raise MacOSError("could not read the display's mode")
+    try:
+        return _mode(cg, ref)
+    finally:
+        cg.CGDisplayModeRelease(ref)
+
+
+def _configure(change: Callable[[ctypes.CDLL, int], int]) -> None:
+    """Make a display change the way System Settings does: in one configuration, kept after a restart."""
+    cg = _arrangement_api()
+    config = ctypes.c_void_p()
+    if cg.CGBeginDisplayConfiguration(ctypes.byref(config)) != 0 or not config.value:
+        raise MacOSError("could not start changing the displays")
+    handle = config.value
+    status = change(cg, handle)
+    if status != 0:
+        cg.CGCancelDisplayConfiguration(handle)
+        raise MacOSError("macOS refused the display change (error {})".format(status))
+    status = cg.CGCompleteDisplayConfiguration(handle, _CONFIGURE_PERMANENTLY)
+    if status != 0:
+        raise MacOSError("macOS refused the display change (error {})".format(status))
+
+
+def set_display_mode(
+    width: int,
+    height: int,
+    *,
+    refresh_rate: Optional[float] = None,
+    hidpi: Optional[bool] = None,
+    display: Union[None, int, Display] = None,
+) -> DisplayMode:
+    """
+    Change the resolution of ``display`` (the main one by default) to ``width`` × ``height`` points, and return it.
+
+    ::
+
+        macos.screen.set_display_mode(1728, 1117)                    # more space on a MacBook Pro
+        macos.screen.set_display_mode(2560, 1440, refresh_rate=144, display=external)
+
+    It must be one of :func:`display_modes`. With ``refresh_rate``, the
+    closest to it; without, the highest. Without ``hidpi``, the sharp Retina
+    mode when there's one.
+    Kept after a restart, like System Settings › Displays. To go back, call
+    it again with the :func:`display_mode` read before.
+    """
+    display_id = _display_id(display)
+    cg = _arrangement_api()
+    with _cf.owned(_all_modes(cg, display_id)) as modes:
+        candidates = []
+        for ref in _cf.items(modes):
+            mode = _mode(cg, ref)
+            if (mode.width, mode.height) != (width, height) or not cg.CGDisplayModeIsUsableForDesktopGUI(ref):
+                continue
+            if refresh_rate is not None and abs(mode.refresh_rate - refresh_rate) > 0.5:
+                continue
+            if hidpi is not None and mode.hidpi != hidpi:
+                continue
+            closeness = -abs(mode.refresh_rate - refresh_rate) if refresh_rate is not None else mode.refresh_rate
+            candidates.append((mode.hidpi, closeness, mode.pixel_width, ref, mode))
+        if not candidates:
+            raise ValueError(
+                "display {} has no {}×{} mode{}; see macos.screen.display_modes()".format(
+                    display_id, width, height, " at {:g} Hz".format(refresh_rate) if refresh_rate else ""
+                )
+            )
+        *_, chosen, mode = max(candidates, key=lambda candidate: candidate[:3])
+        _configure(lambda cg, config: cg.CGConfigureDisplayWithDisplayMode(config, display_id, chosen, None))
+    return mode
+
+
+def _online() -> List[int]:
+    cg = _arrangement_api()
+    ids = (ctypes.c_uint32 * 32)()
+    count = ctypes.c_uint32()
+    cg.CGGetOnlineDisplayList(len(ids), ids, ctypes.byref(count))
+    return list(ids[: count.value])
+
+
+def set_main_display(display: Union[int, Display]) -> None:
+    """
+    Make ``display`` the main one, with the menu bar and the Dock, like dragging the menu bar in System Settings › Displays.
+
+    The displays keep their places: the whole arrangement moves so that
+    ``display`` is at its top-left corner.
+    """
+    display_id = _display_id(display)
+    cg = _arrangement_api()
+    if display_id not in _online():
+        raise ValueError("no display {} is connected".format(display_id))
+    target = cg.CGDisplayBounds(display_id).origin
+    dx, dy = round(target.x), round(target.y)
+    if (dx, dy) == (0, 0):
+        return  # already the main display
+
+    def move(cg: ctypes.CDLL, config: int) -> int:
+        for other in _online():
+            origin = cg.CGDisplayBounds(other).origin
+            status = cg.CGConfigureDisplayOrigin(config, other, round(origin.x) - dx, round(origin.y) - dy)
+            if status != 0:
+                return int(status)
+        return 0
+
+    _configure(move)
+
+
+def mirrored() -> bool:
+    """Whether some display shows the same picture as another (mirroring)."""
+    cg = _arrangement_api()
+    return any(cg.CGDisplayMirrorsDisplay(display_id) for display_id in _online())
+
+
+def mirror(display: Union[int, Display], of: Union[None, int, Display] = None) -> None:
+    """
+    Make ``display`` show the same picture as ``of`` (the main display by default), like Mirror Displays.
+
+    ::
+
+        projector = next(d for d in macos.screen.displays() if not d.is_builtin)
+        macos.screen.mirror(projector)
+    """
+    display_id, source = _display_id(display), _display_id(of)
+    if display_id == source:
+        raise ValueError("a display can't mirror itself")
+    if display_id not in _online():
+        raise ValueError("no display {} is connected".format(display_id))
+    _configure(lambda cg, config: cg.CGConfigureDisplayMirrorOfDisplay(config, display_id, source))
+
+
+def stop_mirroring() -> None:
+    """Give every display its own picture again: extend the desktop across them."""
+    if not mirrored():
+        return
+
+    def extend(cg: ctypes.CDLL, config: int) -> int:
+        for display_id in _online():
+            status = cg.CGConfigureDisplayMirrorOfDisplay(config, display_id, 0)  # kCGNullDirectDisplay
+            if status != 0:
+                return int(status)
+        return 0
+
+    _configure(extend)
