@@ -1,5 +1,7 @@
 """Unit tests for :mod:`macos.finder`. They run on any platform."""
 
+from pathlib import Path
+
 import pytest
 
 import macos
@@ -58,3 +60,22 @@ def test_watch_needs_a_folder(tmp_path):
     (tmp_path / "file.txt").write_text("x")
     with pytest.raises(NotADirectoryError):
         macos.finder.wait_for_change(tmp_path / "file.txt")
+
+
+def test_watch_pattern():
+    from macos.finder import _matches
+
+    assert _matches("Report.PDF", "*.pdf")
+    assert _matches("photo.png", ["*.pdf", "*.png"]) and not _matches("notes.txt", ["*.pdf", "*.png"])
+    assert _matches("anything", None)
+
+
+def test_finder_selection_and_current_folder(fake_run):
+    fake_run.stdout = "/Users/alice/report.pdf\x1e/Users/alice/Photos/\x1e\n"
+    assert macos.finder.selection() == [Path("/Users/alice/report.pdf"), Path("/Users/alice/Photos")]
+    assert fake_run.args[:2] == ["osascript", "-e"] and "selection" in fake_run.args[2]
+
+    fake_run.stdout = "\n"
+    assert macos.finder.selection() == [] and macos.finder.current_folder() is None
+    fake_run.stdout = "/Users/alice/Documents/\n"
+    assert macos.finder.current_folder() == Path("/Users/alice/Documents")

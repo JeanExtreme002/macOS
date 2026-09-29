@@ -14,6 +14,10 @@ itself, so a script can work in one terminal and not in another.
 | {mod}`macos.windows` | Accessibility | System Settings › Privacy & Security › Accessibility |
 | {mod}`macos.hotkeys` | Input Monitoring, and Accessibility to keep shortcuts from the app in front | System Settings › Privacy & Security › Input Monitoring |
 | {func}`macos.screen.record` | Screen Recording (and Microphone with `audio=True`) | System Settings › Privacy & Security › Screen & System Audio Recording |
+| {func}`macos.screen.find_text`, {func}`~macos.screen.wait_for_text`, {func}`~macos.screen.color_at`, {meth}`Window.screenshot() <macos.windows.Window.screenshot>` | Screen Recording | System Settings › Privacy & Security › Screen & System Audio Recording |
+| {func}`macos.mouse.click_text` | Screen Recording and Accessibility | System Settings › Privacy & Security |
+| {func}`macos.keyboard.watch`, {func}`macos.mouse.watch` | Input Monitoring | System Settings › Privacy & Security › Input Monitoring |
+| {func}`macos.finder.selection`, {func}`~macos.finder.current_folder` | Automation of Finder (asked the first time) | System Settings › Privacy & Security › Automation |
 | {mod}`macos.music` | Automation of Music or Spotify (asked the first time) | System Settings › Privacy & Security › Automation |
 | {mod}`macos.browser` | Automation of the browser (asked the first time); {func}`~macos.browser.run_js` also needs the browser's *Allow JavaScript from Apple Events* | System Settings › Privacy & Security › Automation |
 | {func}`macos.appearance.set_mode` | Automation of *System Events* (asked the first time) | System Settings › Privacy & Security › Automation |

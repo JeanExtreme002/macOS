@@ -251,6 +251,16 @@ def test_other_platforms_raise_not_supported(monkeypatch):
         lambda: macos.schedule.remove("job"),
         lambda: macos.browser.tabs(),
         lambda: macos.browser.open("https://example.com"),
+        lambda: macos.screen.find_text("Submit"),
+        lambda: macos.screen.color_at(1, 1),
+        lambda: macos.mouse.click_text("Submit"),
+        lambda: macos.finder.selection(),
+        lambda: macos.finder.current_folder(),
+        lambda: next(macos.clipboard.watch(timeout=0)),
+        lambda: macos.system.wait_for_idle(1),
+        lambda: macos.windows.wait_for(timeout=0),
+        lambda: next(macos.keyboard.watch(timeout=0)),
+        lambda: next(macos.mouse.watch(timeout=0)),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):

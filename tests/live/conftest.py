@@ -1,8 +1,12 @@
 """Fixtures shared by the live tests."""
 
 import time
+import uuid
+from pathlib import Path
 
 import pytest
+
+import macos
 
 
 @pytest.fixture
@@ -44,3 +48,34 @@ def speech(tmp_path):
     tone = tmp_path / "tone.aiff"
     subprocess.run(["afconvert", "-f", "AIFF", "-d", "BEI16", str(raw), str(tone)], check=True)
     return tone
+
+
+@pytest.fixture
+def test_window():
+    """A window of our own, in a helper process, to move around without touching the user's."""
+    import subprocess
+    import sys
+
+    if not macos.windows.has_permission():
+        pytest.skip("no Accessibility permission")
+    front = macos.windows.focused()
+    title = "pymacos test {}".format(uuid.uuid4().hex[:8])
+    helper = Path(__file__).with_name("_window_app.py")
+    process = subprocess.Popen([sys.executable, str(helper), title, "20"], stdout=subprocess.PIPE, text=True)
+    try:
+        process.stdout.readline()
+        app = next(app for app in macos.apps.running(include_background=True) if app.pid == process.pid)
+        for _ in range(20):
+            found = macos.windows.list(app, title=title)
+            if found:
+                break
+            time.sleep(0.1)
+        yield found[0]
+    finally:
+        process.kill()
+        process.wait()
+        if front is not None:
+            try:
+                front.focus()  # give the focus back
+            except macos.MacOSError:
+                pass

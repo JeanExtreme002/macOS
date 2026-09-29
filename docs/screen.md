@@ -54,6 +54,34 @@ If a capture without other apps' windows is fine, pass
 `check_permission=False` to skip the check. See
 [Permissions](permissions.md#screen-recording).
 
+## Finding text on the screen
+
+{func}`~macos.screen.find_text` reads the screen with Vision's text recognition
+and returns where some text is, ignoring case, top to bottom. It works in any
+app, even on text drawn in images. Each {class}`~macos.screen.TextMatch`
+surrounds the matching characters, in points like {func}`macos.mouse.click`
+takes, and its `center` is where to click:
+
+```python
+match = macos.screen.find_text("Submit")[0]
+macos.mouse.click(*match.center)
+
+macos.mouse.click_text("Submit")                    # the same, in one call
+macos.screen.wait_for_text("Export complete", timeout=120)
+```
+
+{func}`~macos.screen.wait_for_text` looks again every `interval` seconds (0.5
+by default) until the text shows up. `region` or `display` limit where to look;
+by default, the main display. A search of a whole display takes a second or two.
+
+{func}`~macos.screen.color_at` reads the color of one point, as `'#rrggbb'`:
+
+```python
+macos.screen.color_at(100, 200)   # '#34c759'
+```
+
+These need the [Screen Recording permission](permissions.md#screen-recording).
+
 ## Displays
 
 {func}`~macos.screen.displays` lists the connected displays, the main one (with
@@ -195,3 +223,7 @@ this also locks it.
 - {func}`macos.screen.lock`
 - {func}`macos.screen.is_locked`
 - {func}`macos.screen.is_asleep`
+- {func}`macos.screen.find_text`
+- {func}`macos.screen.wait_for_text`
+- {func}`macos.screen.color_at`
+- {class}`macos.screen.TextMatch`

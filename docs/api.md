@@ -23,6 +23,7 @@ explain how to use each part.
 .. autofunction:: macos.clipboard.clear
 .. autofunction:: macos.clipboard.change_count
 .. autofunction:: macos.clipboard.wait_for_change
+.. autofunction:: macos.clipboard.watch
 .. autofunction:: macos.clipboard.copy_files
 .. autofunction:: macos.clipboard.paste_files
 .. autofunction:: macos.clipboard.copy_image
@@ -76,6 +77,8 @@ explain how to use each part.
 .. autofunction:: macos.keyboard.press
 .. autofunction:: macos.keyboard.hold
 .. autofunction:: macos.keyboard.caps_lock
+.. autofunction:: macos.keyboard.watch
+.. autoclass:: macos.keyboard.KeyPress
 .. autofunction:: macos.keyboard.layouts
 .. autofunction:: macos.keyboard.layout
 .. autofunction:: macos.keyboard.set_layout
@@ -97,6 +100,9 @@ explain how to use each part.
 .. autofunction:: macos.mouse.click
 .. autofunction:: macos.mouse.drag
 .. autofunction:: macos.mouse.scroll
+.. autofunction:: macos.mouse.click_text
+.. autofunction:: macos.mouse.watch
+.. autoclass:: macos.mouse.Click
 .. autofunction:: macos.mouse.has_permission
 .. autofunction:: macos.mouse.request_permission
 ```
@@ -108,8 +114,9 @@ explain how to use each part.
 
 .. autofunction:: macos.windows.list
 .. autofunction:: macos.windows.focused
+.. autofunction:: macos.windows.wait_for
 .. autoclass:: macos.windows.Window
-   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, center, focus, minimize, restore, close, set_fullscreen
+   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, center, focus, minimize, restore, close, set_fullscreen, screenshot
 .. autofunction:: macos.windows.has_permission
 .. autofunction:: macos.windows.request_permission
 ```
@@ -253,6 +260,8 @@ explain how to use each part.
 .. autofunction:: macos.finder.make_alias
 .. autofunction:: macos.finder.watch
 .. autofunction:: macos.finder.wait_for_change
+.. autofunction:: macos.finder.selection
+.. autofunction:: macos.finder.current_folder
 .. autoclass:: macos.finder.Event
 ```
 
@@ -490,6 +499,11 @@ explain how to use each part.
 .. autofunction:: macos.screen.wallpaper
 .. autofunction:: macos.screen.set_wallpaper
 .. autofunction:: macos.screen.record
+.. autofunction:: macos.screen.find_text
+.. autofunction:: macos.screen.wait_for_text
+.. autofunction:: macos.screen.color_at
+.. autoclass:: macos.screen.TextMatch
+   :members: center
 .. autofunction:: macos.screen.start_screensaver
 .. autofunction:: macos.screen.brightness
 .. autofunction:: macos.screen.set_brightness
@@ -530,6 +544,8 @@ explain how to use each part.
 .. autofunction:: macos.system.computer_name
 .. autofunction:: macos.system.uptime
 .. autofunction:: macos.system.idle_time
+.. autofunction:: macos.system.wait_for_idle
+.. autofunction:: macos.system.wait_for_activity
 .. autofunction:: macos.system.volumes
 .. autofunction:: macos.system.eject
 .. autofunction:: macos.system.fonts

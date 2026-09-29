@@ -11,6 +11,9 @@ Type text, press keys and shortcuts, and control the keyboard backlight.
     macos.keyboard.set_brightness(0.5)          # the keyboard backlight
     macos.keyboard.set_layout("ABC")            # the input source
 
+    for key in macos.keyboard.watch():          # every key pressed, in any app
+        print(key.shortcut)                     # 'cmd+shift+k'
+
 Typing and pressing keys need the *Accessibility* permission for the app
 running Python (your terminal or IDE); without it macOS silently drops the
 keystrokes, so these functions raise :class:`~macos.errors.PermissionDeniedError`
@@ -21,8 +24,9 @@ import ctypes
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import lru_cache
-from typing import Dict, Iterator, List, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 from . import _cf, _events, _objc
 from ._system import framework, private_framework
@@ -33,6 +37,8 @@ __all__ = [
     "press",
     "hold",
     "caps_lock",
+    "KeyPress",
+    "watch",
     "layout",
     "layouts",
     "set_layout",
@@ -538,3 +544,84 @@ def set_auto_brightness(on: bool) -> None:
         )
     if not ok:
         raise MacOSError("macOS refused to change the keyboard backlight")
+
+
+@dataclass(frozen=True)
+class KeyPress:
+    """A key pressed, as :func:`watch` sees it."""
+
+    key: str
+    """The key, named as :func:`press` takes it: ``'a'``, ``'1'``, ``'enter'``, ``'f5'``, ``'left'``..."""
+    modifiers: Tuple[str, ...]
+    """The modifiers held, among ``'cmd'``, ``'ctrl'``, ``'option'`` and ``'shift'``."""
+    text: str
+    """What the key typed, such as ``'A'`` with Shift; ``''`` for keys that type nothing."""
+    code: int
+    """The virtual key code, which names the physical key whatever the layout."""
+    repeat: bool
+    """Whether it comes from holding the key down."""
+
+    @property
+    def shortcut(self) -> str:
+        """The key and its modifiers as :func:`press` and :mod:`macos.hotkeys` write them, such as ``'cmd+shift+k'``."""
+        return "+".join(self.modifiers + (self.key,))
+
+
+# Names for the codes of the keys that type nothing (the first name of each in _KEYS).
+_KEY_NAMES: Dict[int, str] = {}
+for _name, _code in _KEYS.items():
+    _KEY_NAMES.setdefault(_code, _name)
+
+_WATCHED_MODIFIERS = (("cmd", 1 << 20), ("ctrl", 1 << 18), ("option", 1 << 19), ("shift", 1 << 17))
+_KEY_DOWN = 10  # kCGEventKeyDown
+_AUTOREPEAT = 8  # kCGKeyboardEventAutorepeat
+_KEYCODE = 9  # kCGKeyboardEventKeycode
+
+
+def _typed(event: int) -> str:
+    length = ctypes.c_ulong()
+    chars = (ctypes.c_uint16 * 8)()
+    _events.graphics().CGEventKeyboardGetUnicodeString(event, len(chars), ctypes.byref(length), chars)
+    text = bytes(chars)[: length.value * 2].decode("utf-16-le", "replace")
+    return text if text.isprintable() else ""
+
+
+def watch(*, timeout: Optional[float] = None) -> Iterator[KeyPress]:
+    """
+    Yield a :class:`KeyPress` for each key pressed, in any app, as it happens.
+
+    ::
+
+        for key in macos.keyboard.watch():
+            if key.shortcut == "ctrl+option+q":
+                break
+            log.write(key.text)
+
+    It only listens: the keys still reach the app in front (to take a
+    shortcut for yourself, see :mod:`macos.hotkeys`). It goes on until you
+    ``break`` out of the loop, or ``timeout`` seconds pass. Needs the *Input
+    Monitoring* permission. macOS hides the keys typed in password fields.
+    """
+    unshifted = {code: char for char, (code, shifted) in _layout().items() if not shifted}
+    cg = _events.graphics()
+
+    def convert(kind: int, event: int) -> KeyPress:
+        code = int(cg.CGEventGetIntegerValueField(event, _KEYCODE))
+        flags = cg.CGEventGetFlags(event)
+        text = _typed(event)
+        key = _KEY_NAMES.get(code) or unshifted.get(code) or text.lower() or "key{}".format(code)
+        return KeyPress(
+            key=key,
+            modifiers=tuple(name for name, flag in _WATCHED_MODIFIERS if flags & flag),
+            text="" if code in _KEY_NAMES and code != _KEYS["space"] else text,
+            code=code,
+            repeat=bool(cg.CGEventGetIntegerValueField(event, _AUTOREPEAT)),
+        )
+
+    return _events.listen(
+        [_KEY_DOWN],
+        convert,
+        timeout,
+        "listening to the keyboard needs the Input Monitoring permission: allow the app running Python (your "
+        "terminal or IDE) in System Settings › Privacy & Security › Input Monitoring, then restart it",
+    )

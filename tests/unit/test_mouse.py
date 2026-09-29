@@ -50,3 +50,20 @@ def test_mouse_argument_checks():
         macos.mouse.click(10)
     with pytest.raises(ValueError, match="duration"):
         macos.mouse.move(1, 1, duration=-1)
+
+
+def test_click_text_clicks_the_middle_of_the_first_match(monkeypatch):
+    from macos import screen
+
+    clicks = []
+    monkeypatch.setattr(macos.mouse, "click", lambda x, y, **kwargs: clicks.append((x, y, kwargs)))
+    monkeypatch.setattr(screen, "find_text", lambda text, **kwargs: [screen.TextMatch("Send", 10, 20, 40, 10)])
+
+    assert macos.mouse.click_text("send", button="right").center == (30, 25)
+    assert clicks == [(30, 25, {"button": "right", "count": 1})]
+
+    waited = []
+    monkeypatch.setattr(screen, "wait_for_text", lambda text, timeout, **kwargs: waited.append(timeout))
+    with pytest.raises(macos.MacOSError, match="'Send' isn't on the screen"):
+        macos.mouse.click_text("Send", timeout=5)
+    assert waited == [5]

@@ -34,6 +34,7 @@ macos.clipboard.paste()                              # 'hello'
 macos.keyboard.type("Hello from Python")
 macos.keyboard.press("cmd+s")
 macos.mouse.click(300, 400)
+macos.mouse.click_text("Submit")                     # wherever it shows on the screen
 
 macos.windows.focused().set_frame(0, 25, 1280, 800)
 

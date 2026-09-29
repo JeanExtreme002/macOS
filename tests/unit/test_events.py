@@ -69,3 +69,11 @@ def test_events_wait_returns_the_awaited_event(monkeypatch):
     assert events.wait("wake") == macos.events.Event("wake")
     monkeypatch.setattr(events, "_listen", lambda names, on_event, timeout: None)
     assert events.wait("wake", timeout=0.1) is None
+
+
+def test_events_names_cover_every_source():
+    assert set(events.NAMES) >= {
+        "space_changed", "app_hidden", "app_unhidden", "power_connected", "power_disconnected",
+        "network_changed", "usb_connected", "usb_disconnected", "displays_changed",
+    }  # fmt: skip
+    assert events.Event("usb_connected", device="USB Keyboard").device == "USB Keyboard"

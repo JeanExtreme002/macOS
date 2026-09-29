@@ -2,43 +2,10 @@
 
 import os
 import time
-import uuid
-from pathlib import Path
 
 import pytest
 
 import macos
-
-
-@pytest.fixture
-def test_window():
-    """A window of our own, in a helper process, to move around without touching the user's."""
-    import subprocess
-    import sys
-
-    if not macos.windows.has_permission():
-        pytest.skip("no Accessibility permission")
-    front = macos.windows.focused()
-    title = "pymacos test {}".format(uuid.uuid4().hex[:8])
-    helper = Path(__file__).with_name("_window_app.py")
-    process = subprocess.Popen([sys.executable, str(helper), title, "20"], stdout=subprocess.PIPE, text=True)
-    try:
-        process.stdout.readline()
-        app = next(app for app in macos.apps.running(include_background=True) if app.pid == process.pid)
-        for _ in range(20):
-            found = macos.windows.list(app, title=title)
-            if found:
-                break
-            time.sleep(0.1)
-        yield found[0]
-    finally:
-        process.kill()
-        process.wait()
-        if front is not None:
-            try:
-                front.focus()  # give the focus back
-            except macos.MacOSError:
-                pass
 
 
 def test_windows(test_window):
@@ -93,3 +60,20 @@ def test_windows(test_window):
     time.sleep(0.5)
     with pytest.raises(macos.MacOSError):
         window.title
+
+
+def test_window_screenshot_and_wait_for(test_window):
+    if not macos.screen.has_permission():
+        pytest.skip("no Screen Recording permission")
+    test_window.set_frame(100, 100, 400, 250)
+    time.sleep(0.5)
+
+    shot = test_window.screenshot()
+    try:
+        details = macos.image.info(shot)
+        scale = macos.screen.displays()[0].scale
+        assert (details.width, details.height) == (round(400 * scale), round(250 * scale))  # no shadow
+    finally:
+        shot.unlink()
+    assert macos.windows.wait_for(title=test_window.title, timeout=5) == test_window
+    assert macos.windows.wait_for(title="no such window, surely", timeout=0.3) is None

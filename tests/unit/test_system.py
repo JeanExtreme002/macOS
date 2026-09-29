@@ -96,3 +96,24 @@ def test_camera_in_use(monkeypatch):
     assert macos.system.camera_in_use() is False
     running[35] = [1]
     assert macos.system.camera_in_use() is True
+
+
+def test_wait_for_idle_and_activity(monkeypatch):
+    from datetime import timedelta
+
+    system = macos.system
+    sleeps = []
+    monkeypatch.setattr(system.time, "sleep", sleeps.append)
+    idle = iter([10.0, 250.0, 300.0])
+    monkeypatch.setattr(system, "idle_time", lambda: timedelta(seconds=next(idle)))
+
+    assert system.wait_for_idle(timedelta(minutes=5)) is True
+    assert sleeps[:2] == [290.0, 50.0]  # it sleeps until the goal could be reached, not in small steps
+
+    idle = iter([5.0, 5.2, 5.4, 0.1])
+    assert system.wait_for_activity() is True  # the idle time starts over
+    monkeypatch.setattr(system, "idle_time", lambda: timedelta(seconds=1))
+    assert system.wait_for_idle(60, timeout=0) is False
+    assert system.wait_for_activity(timeout=0) is False
+    with pytest.raises(ValueError):
+        system.wait_for_idle(-1)

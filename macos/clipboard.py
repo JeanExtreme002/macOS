@@ -17,7 +17,7 @@ regardless of the terminal's locale (``pbcopy``/``pbpaste`` mangle it unless
 import os
 import time
 from pathlib import Path
-from typing import Iterable, List, Optional, Union
+from typing import Iterable, Iterator, List, Optional, Union
 
 from . import _objc
 from ._objc import BOOL, NSInteger
@@ -30,6 +30,7 @@ __all__ = [
     "clear",
     "change_count",
     "wait_for_change",
+    "watch",
     "copy_image",
     "paste_image",
     "has_image",
@@ -113,6 +114,35 @@ def wait_for_change(*, timeout: Optional[float] = None, interval: float = 0.2) -
         # Never sleep past the deadline, even with a long interval.
         time.sleep(min(interval, remaining))
     return paste()
+
+
+def watch(*, timeout: Optional[float] = None, interval: float = 0.2) -> Iterator[Optional[str]]:
+    """
+    Yield each new thing copied, as text (``None`` for images, files...), for a clipboard history::
+
+        for text in macos.clipboard.watch():
+            if text:
+                history.append(text)
+
+    It goes on until you ``break`` out of the loop, or ``timeout`` seconds
+    pass. macOS doesn't announce copies, so it checks every ``interval``
+    seconds, as :func:`wait_for_change` does.
+    """
+    if interval <= 0:
+        raise ValueError("interval must be positive, not {}".format(interval))
+    seen = change_count()
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        # An empty clipboard is a copy being made (see wait_for_change): wait for its content.
+        count = change_count()
+        if count != seen and not _is_empty():
+            seen = count
+            yield paste()
+            continue
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
+            return
+        time.sleep(interval if remaining is None else min(interval, remaining))
 
 
 def _is_empty() -> bool:

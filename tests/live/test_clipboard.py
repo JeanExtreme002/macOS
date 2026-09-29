@@ -99,3 +99,23 @@ def test_clipboard_files_round_trip(tmp_path):
 
     macos.clipboard.copy("text")
     assert macos.clipboard.paste_files() == []
+
+
+@pytest.mark.usefixtures("restore_clipboard")
+def test_clipboard_watch():
+    import threading
+    import time
+
+    def copies():
+        for text in ("one", "two"):
+            time.sleep(0.4)
+            macos.clipboard.copy(text)
+
+    threading.Thread(target=copies).start()
+    seen = []
+    for text in macos.clipboard.watch(timeout=3):
+        seen.append(text)
+        if len(seen) == 2:
+            break
+    assert seen == ["one", "two"]
+    assert list(macos.clipboard.watch(timeout=0.3)) == []

@@ -21,8 +21,10 @@ need.
 
 import builtins
 import ctypes
+import os
 import time
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 
 from . import _cf, _objc, apps
@@ -30,7 +32,7 @@ from ._objc import CGPoint, CGSize
 from ._system import framework
 from .errors import MacOSError, PermissionDeniedError
 
-__all__ = ["Window", "list", "focused", "has_permission", "request_permission"]
+__all__ = ["Window", "list", "wait_for", "focused", "has_permission", "request_permission"]
 
 _SUCCESS = 0
 _API_DISABLED = -25211  # kAXErrorAPIDisabled: no Accessibility permission
@@ -332,6 +334,22 @@ class Window:
         """Bring it back from the Dock."""
         self._set_flag("AXMinimized", False, "restore the window")
 
+    def screenshot(self, path: Union[str, "os.PathLike[str]", None] = None, *, shadow: bool = False) -> Path:
+        """
+        Capture just this window, even when others cover it, and return the image's path.
+
+        ``path`` works as in :func:`macos.screenshot` (a temporary PNG by
+        default). ``shadow=True`` keeps the window's shadow, as ⌘⇧4 does.
+        Needs the Screen Recording permission.
+        """
+        from . import screen
+
+        number = ctypes.c_uint32()
+        if _window_number()(self._element, ctypes.byref(number)) != 0 or not number.value:
+            raise MacOSError("could not capture the window of {}: it may have closed".format(self.app))
+        options = ["-l{}".format(number.value)] + ([] if shadow else ["-o"])
+        return screen._capture(path, options)
+
     def close(self) -> None:
         """
         Close it, like its red button.
@@ -346,6 +364,15 @@ class Window:
 
 
 _REGULAR, _ACCESSORY = 0, 1  # NSApplicationActivationPolicy: apps that can have windows
+
+
+@lru_cache(maxsize=None)
+def _window_number() -> Any:
+    """``_AXUIElementGetWindow``: the window server's number for a window, which ``screencapture -l`` takes."""
+    function = framework("ApplicationServices")._AXUIElementGetWindow
+    function.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))
+    function.restype = ctypes.c_int32
+    return function
 
 
 def _apps_with_windows() -> "builtins.list[apps.App]":
@@ -397,6 +424,35 @@ def list(app: Union[str, apps.App, None] = None, *, title: Optional[str] = None)
         wanted = title.casefold()
         windows = [window for window in windows if wanted in window.title.casefold()]
     return windows
+
+
+def wait_for(
+    app: Union[str, apps.App, None] = None,
+    *,
+    title: Optional[str] = None,
+    timeout: float = 10.0,
+    interval: float = 0.25,
+) -> Optional[Window]:
+    """
+    Wait until a window shows up, and return it; ``None`` if ``timeout`` seconds pass first.
+
+    ``app`` and ``title`` work as in :func:`list`. Handy after an action that
+    opens a window::
+
+        macos.keyboard.press("cmd+s")
+        dialog = macos.windows.wait_for("TextEdit", title="Save")
+    """
+    if interval <= 0:
+        raise ValueError("interval must be positive, not {}".format(interval))
+    deadline = time.monotonic() + timeout
+    while True:
+        found = list(app, title=title)
+        if found:
+            return found[0]
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        time.sleep(min(interval, remaining))
 
 
 def focused() -> Optional[Window]:

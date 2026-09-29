@@ -27,3 +27,14 @@ def test_set_fullscreen_asks_again_when_macos_drops_the_request(monkeypatch):
     window.set_fullscreen(False)
 
     assert window.fullscreen is False and window.requests == 2
+
+
+def test_windows_wait_for(monkeypatch):
+    windows = macos.windows
+    answers = iter([[], [], ["the window"]])
+    monkeypatch.setattr(windows, "list", lambda app=None, title=None: next(answers))
+    monkeypatch.setattr(windows.time, "sleep", lambda seconds: None)
+
+    assert windows.wait_for("TextEdit", title="Save") == "the window"
+    monkeypatch.setattr(windows, "list", lambda app=None, title=None: [])
+    assert windows.wait_for(title="Save", timeout=0) is None

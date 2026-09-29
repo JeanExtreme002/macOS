@@ -37,6 +37,20 @@ with macos.keyboard.hold("cmd"):
     macos.mouse.click(200, 300)
 ```
 
+## Clicking on text
+
+{func}`~macos.mouse.click_text` finds some text on the screen and clicks its
+middle, so a script doesn't depend on where a button is:
+
+```python
+macos.mouse.click_text("Accept")
+macos.mouse.click_text("Download", timeout=30)   # wait for it to show up first
+```
+
+It raises {class}`~macos.MacOSError` when the text isn't on the screen. It needs
+the [Screen Recording permission](permissions.md#screen-recording) too. See
+{func}`macos.screen.find_text` for how the text is found.
+
 ## Dragging
 
 {func}`~macos.mouse.drag` holds a button from where the pointer is to another
@@ -60,6 +74,20 @@ macos.mouse.scroll(10)
 macos.mouse.scroll(-3, horizontal=True)
 ```
 
+## Watching clicks
+
+{func}`~macos.mouse.watch` yields a {class}`~macos.mouse.Click` each time a mouse
+button goes down, in any app, with where, which button, and whether it's a
+double-click:
+
+```python
+for click in macos.mouse.watch():
+    print(click.x, click.y, click.button, click.count)
+```
+
+It only listens: the clicks still reach the apps. It needs the [Input Monitoring
+permission](permissions.md#input-monitoring).
+
 ## Reference
 
 - {func}`macos.mouse.position`
@@ -69,3 +97,6 @@ macos.mouse.scroll(-3, horizontal=True)
 - {func}`macos.mouse.scroll`
 - {func}`macos.mouse.has_permission`
 - {func}`macos.mouse.request_permission`
+- {func}`macos.mouse.click_text`
+- {func}`macos.mouse.watch`
+- {class}`macos.mouse.Click`

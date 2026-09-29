@@ -21,16 +21,17 @@ tags show up in Finder's sidebar and in Spotlight.
 
 import collections
 import ctypes
+import fnmatch
 import os
 import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Set, Union
+from typing import Iterable, Iterator, List, Optional, Sequence, Set, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
-from ._system import framework, run as _run
+from ._system import applescript, framework, run as _run
 from .errors import MacOSError
 
 __all__ = [
@@ -47,6 +48,8 @@ __all__ = [
     "Event",
     "watch",
     "wait_for_change",
+    "selection",
+    "current_folder",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -493,7 +496,21 @@ def _kind(path: Path, flags: int, seen: Set[Path]) -> str:
     return "modified"
 
 
-def watch(path: PathLike, *, recursive: bool = True, timeout: Optional[float] = None) -> Iterator[Event]:
+def _matches(name: str, pattern: Union[str, Sequence[str], None]) -> bool:
+    if pattern is None:
+        return True
+    patterns = [pattern] if isinstance(pattern, str) else pattern
+    # Mac file systems ignore case, and so does the match.
+    return any(fnmatch.fnmatchcase(name.casefold(), wanted.casefold()) for wanted in patterns)
+
+
+def watch(
+    path: PathLike,
+    *,
+    pattern: Union[str, Sequence[str], None] = None,
+    recursive: bool = True,
+    timeout: Optional[float] = None,
+) -> Iterator[Event]:
     """
     Yield an :class:`Event` each time something changes in the folder ``path``, as it happens.
 
@@ -504,7 +521,9 @@ def watch(path: PathLike, *, recursive: bool = True, timeout: Optional[float] = 
                 print("new PDF:", event.path.name)
 
     It goes on until you ``break`` out of the loop, or ``timeout`` seconds
-    pass. ``recursive=False`` ignores what happens in subfolders. Writing a
+    pass. ``pattern`` keeps the files whose name matches it, such as
+    ``"*.pdf"`` (or any of a list, ignoring case), and ``recursive=False``
+    ignores what happens in subfolders. Writing a
     new file usually yields ``'created'`` and then ``'modified'``; saving
     over a file yields ``'modified'``. Uses FSEvents, like Spotlight and Time
     Machine: no polling, and no permission needed, except that the
@@ -523,6 +542,8 @@ def watch(path: PathLike, *, recursive: bool = True, timeout: Optional[float] = 
         for index in range(count):
             changed_path = Path(os.fsdecode(names[index]))
             if changed_path == folder or (not recursive and changed_path.parent != folder):
+                continue
+            if not _matches(changed_path.name, pattern):
                 continue
             pending.append(Event(changed_path, _kind(changed_path, flags[index], seen), bool(flags[index] & _IS_DIR)))
 
@@ -550,15 +571,74 @@ def watch(path: PathLike, *, recursive: bool = True, timeout: Optional[float] = 
         services.FSEventStreamRelease(stream)
 
 
-def wait_for_change(path: PathLike, *, recursive: bool = True, timeout: Optional[float] = None) -> Optional[Event]:
+def wait_for_change(
+    path: PathLike,
+    *,
+    pattern: Union[str, Sequence[str], None] = None,
+    recursive: bool = True,
+    timeout: Optional[float] = None,
+) -> Optional[Event]:
     """
     Wait until something changes in the folder ``path``, and return that :class:`Event`.
 
     Returns ``None`` if ``timeout`` seconds pass first. Handy to wait for a
     download or an export to show up::
 
-        event = macos.finder.wait_for_change("~/Downloads", timeout=60)
+        event = macos.finder.wait_for_change("~/Downloads", pattern="*.pdf", timeout=60)
+
+    ``pattern`` and ``recursive`` work as in :func:`watch`.
     """
-    for event in watch(path, recursive=recursive, timeout=timeout):
+    for event in watch(path, pattern=pattern, recursive=recursive, timeout=timeout):
         return event
     return None
+
+
+_SELECTION = """
+on run argv
+    tell application "Finder" to set picked to selection as alias list
+    set out to ""
+    repeat with item_ in picked
+        set out to out & (POSIX path of item_) & (ASCII character 30)
+    end repeat
+    return out
+end run
+"""
+
+_CURRENT_FOLDER = """
+on run argv
+    tell application "Finder"
+        if (count of Finder windows) is 0 then return ""
+        try
+            return POSIX path of (target of front Finder window as alias)
+        on error
+            return ""
+        end try
+    end tell
+end run
+"""
+
+
+def selection() -> List[Path]:
+    """
+    The files and folders selected in Finder, in the window in front (or on the Desktop).
+
+    Handy for scripts that act on what you picked, from a hotkey or a Shortcut::
+
+        for path in macos.finder.selection():
+            macos.image.convert(path, path.with_suffix(".jpg"))
+
+    Goes through AppleScript: the first time, macOS asks to allow the app
+    running Python to control Finder.
+    """
+    output = applescript("Finder", _SELECTION).rstrip("\n")
+    return [Path(item.rstrip("/") or "/") for item in output.split("\x1e") if item]
+
+
+def current_folder() -> Optional[Path]:
+    """
+    The folder shown in Finder's window in front, or ``None`` with no window open.
+
+    Places that aren't folders (Recents, AirDrop, a search) give ``None`` too.
+    """
+    output = applescript("Finder", _CURRENT_FOLDER).rstrip("\n")
+    return Path(output.rstrip("/") or "/") if output else None

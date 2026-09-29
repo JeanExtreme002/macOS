@@ -39,6 +39,8 @@ __all__ = [
     "computer_name",
     "uptime",
     "idle_time",
+    "wait_for_idle",
+    "wait_for_activity",
     "volumes",
     "eject",
     "fonts",
@@ -168,6 +170,62 @@ def idle_time() -> timedelta:
     if value is None:
         raise MacOSError("the idle time is not available")
     return timedelta(microseconds=value / 1000)  # nanoseconds
+
+
+def wait_for_idle(seconds: Union[float, timedelta], *, timeout: Optional[float] = None) -> bool:
+    """
+    Wait until nobody has touched the keyboard, mouse or trackpad for ``seconds``; return ``False`` on ``timeout``.
+
+    For work that should wait for you to step away::
+
+        macos.system.wait_for_idle(300)       # 5 minutes away
+        run_backup()
+
+    ``seconds`` may be a :class:`~datetime.timedelta`. See :func:`idle_time`.
+    """
+    wanted = seconds.total_seconds() if isinstance(seconds, timedelta) else float(seconds)
+    if wanted < 0:
+        raise ValueError("seconds must not be negative, not {}".format(seconds))
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        idle = idle_time().total_seconds()
+        if idle >= wanted:
+            return True
+        # Nothing can happen sooner than the idle time reaching the goal: sleep until then.
+        pause = max(0.2, wanted - idle)
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            pause = min(pause, remaining)
+        time.sleep(pause)
+
+
+def wait_for_activity(*, timeout: Optional[float] = None, interval: float = 0.2) -> bool:
+    """
+    Wait until someone uses the keyboard, mouse or trackpad; return ``False`` on ``timeout``.
+
+    ::
+
+        macos.system.wait_for_idle(300)
+        macos.system.wait_for_activity()      # back at the Mac
+        macos.say("Welcome back")
+
+    Checks every ``interval`` seconds.
+    """
+    if interval <= 0:
+        raise ValueError("interval must be positive, not {}".format(interval))
+    deadline = None if timeout is None else time.monotonic() + timeout
+    last = idle_time()
+    while True:
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
+            return False
+        time.sleep(interval if remaining is None else min(interval, remaining))
+        idle = idle_time()
+        if idle < last:  # the idle time starts over at each input
+            return True
+        last = idle
 
 
 @dataclass(frozen=True)

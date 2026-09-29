@@ -1,6 +1,8 @@
 """Tests of :mod:`macos.screen` against the real system. Skipped outside macOS."""
 
 import os
+import re
+import time
 
 import pytest
 
@@ -77,3 +79,22 @@ def test_screen_record(tmp_path):
         assert details.duration > 0 and details.width >= 160
     finally:
         target.unlink(missing_ok=True)  # don't keep a picture of the screen around
+
+
+def test_find_text_on_the_screen(test_window):
+    if not macos.screen.has_permission():
+        pytest.skip("no Screen Recording permission")
+    test_window.set_frame(200, 200, 700, 300)
+    test_window.focus()
+    time.sleep(0.8)
+    title = test_window.title
+
+    matches = macos.screen.find_text(title)
+    assert matches, "the window's title should be readable on the screen"
+    x, y = matches[0].center
+    assert 200 <= x <= 900 and 200 <= y <= 240  # in the window's title bar
+    within = macos.screen.find_text(title.split()[-1], region=(200, 200, 700, 300))
+    assert within and 200 <= within[0].center[0] <= 900 and within[0].center[1] == pytest.approx(y, abs=4)
+    assert macos.screen.wait_for_text(title, timeout=5) is not None
+    assert macos.screen.wait_for_text("zq{}xj".format(title[-6:]), timeout=0.5) is None
+    assert re.fullmatch(r"#[0-9a-f]{6}", macos.screen.color_at(550, 380))

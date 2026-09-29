@@ -78,6 +78,22 @@ with macos.keyboard.hold("cmd", "option"):
 Keys are written as for {func}`~macos.keyboard.press`. They are released at
 the end of the block, even when it raises.
 
+## Watching keys
+
+{func}`~macos.keyboard.watch` yields a {class}`~macos.keyboard.KeyPress` for each
+key pressed, in any app. Its `shortcut` is written as {func}`~macos.keyboard.press`
+takes it:
+
+```python
+for key in macos.keyboard.watch():
+    print(key.shortcut, repr(key.text))   # cmd+shift+k 'K'
+```
+
+It only listens: the keys still reach the app in front. To take a shortcut for
+yourself, see [Hotkeys](hotkeys.md). It needs the [Input Monitoring
+permission](permissions.md#input-monitoring), and macOS hides what's typed in
+password fields.
+
 ## Caps Lock
 
 ```python
@@ -132,3 +148,5 @@ They use a private macOS framework, since there's no public one.
 - {func}`macos.keyboard.set_brightness`
 - {func}`macos.keyboard.auto_brightness`
 - {func}`macos.keyboard.set_auto_brightness`
+- {func}`macos.keyboard.watch`
+- {class}`macos.keyboard.KeyPress`

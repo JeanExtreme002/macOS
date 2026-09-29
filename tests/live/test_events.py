@@ -99,3 +99,26 @@ def test_events_space_changed():
 
     threading.Thread(target=post).start()
     assert macos.events.wait("space_changed", timeout=10) == macos.events.Event("space_changed")
+
+
+def test_events_system_sources_start_and_stop():
+    from macos import events
+
+    events._received.clear()
+    for watch in (events._NetworkWatch, events._USBWatch, events._DisplayWatch, events._PowerWatch):
+        watcher = watch()
+        watcher.close()
+    network = events._NetworkWatch()
+    try:
+        network.changed(0, 0, 0)  # nothing actually changed
+    finally:
+        network.close()
+    displays = events._DisplayWatch()
+    try:
+        for display, flags in ((1, 1), (1, 16), (2, 16)):  # "about to change", then two displays
+            displays.changed(display, flags, None)
+    finally:
+        displays.close()
+    assert list(events._received) == [events.Event("displays_changed")]
+    events._received.clear()
+    assert macos.events.wait("network_changed", timeout=0.3) is None

@@ -10,6 +10,10 @@ Read the pointer position, move it, click, drag and scroll.
     macos.mouse.click()                  # where the pointer is
     macos.mouse.click(300, 400, button="right")
     macos.mouse.scroll(5)                # 5 lines down
+    macos.mouse.click_text("Submit")     # wherever it shows on the screen
+
+    for click in macos.mouse.watch():    # every click, in any app
+        print(click.x, click.y, click.button)
 
     with macos.keyboard.hold("shift"):   # Shift-click
         macos.mouse.click(300, 400)
@@ -24,13 +28,28 @@ IDE); without it macOS silently drops the events, so these functions raise
 """
 
 import time
-from typing import Optional, Tuple
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Iterator, Optional, Sequence, Tuple
 
 from . import _events
 from ._objc import CGPoint
 from .errors import MacOSError
 
-__all__ = ["position", "move", "click", "drag", "scroll", "has_permission", "request_permission"]
+if TYPE_CHECKING:
+    from .screen import TextMatch
+
+__all__ = [
+    "position",
+    "move",
+    "click",
+    "click_text",
+    "drag",
+    "scroll",
+    "Click",
+    "watch",
+    "has_permission",
+    "request_permission",
+]
 
 has_permission = _events.has_permission
 request_permission = _events.request_permission
@@ -124,6 +143,43 @@ def click(x: Optional[float] = None, y: Optional[float] = None, *, button: str =
         _events.post(_mouse_event(up, x, y, number, clicks))
 
 
+def click_text(
+    text: str,
+    *,
+    timeout: Optional[float] = None,
+    button: str = "left",
+    count: int = 1,
+    region: Optional[Tuple[int, int, int, int]] = None,
+    display: Optional[int] = None,
+    languages: Optional[Sequence[str]] = None,
+) -> "TextMatch":
+    """
+    Click the middle of ``text`` where it shows on the screen, and return the :class:`~macos.screen.TextMatch`.
+
+    ::
+
+        macos.mouse.click_text("Accept")
+        macos.mouse.click_text("Download", timeout=30)   # wait for it to show up first
+
+    Text is found as :func:`macos.screen.find_text` does, ignoring case; the
+    first match from the top is clicked. With ``timeout``, it waits up to that
+    many seconds for the text to show up. Raises
+    :class:`~macos.errors.MacOSError` when it isn't on the screen. Needs the
+    Screen Recording and Accessibility permissions.
+    """
+    from . import screen
+
+    if timeout is None:
+        found = screen.find_text(text, region=region, display=display, languages=languages)
+        match = found[0] if found else None
+    else:
+        match = screen.wait_for_text(text, timeout=timeout, region=region, display=display, languages=languages)
+    if match is None:
+        raise MacOSError("{!r} isn't on the screen".format(text))
+    click(*match.center, button=button, count=count)
+    return match
+
+
 def drag(x: float, y: float, *, button: str = "left", duration: float = 0.3) -> None:
     """
     Press ``button`` where the pointer is, move to ``(x, y)`` over ``duration`` seconds, and release it.
@@ -160,3 +216,51 @@ def scroll(lines: int, *, horizontal: bool = False) -> None:
     if not event:
         raise MacOSError("could not create a scroll event")
     _events.post(event)
+
+
+@dataclass(frozen=True)
+class Click:
+    """A mouse click, as :func:`watch` sees it."""
+
+    x: float
+    y: float
+    """Where, in points from the main display's top-left corner, like :func:`click` takes."""
+    button: str
+    """``'left'``, ``'right'`` or ``'middle'`` (``'button4'`` and up for extra buttons)."""
+    count: int
+    """1 for a single click, 2 for the second click of a double-click, and so on."""
+
+
+_BUTTON_NUMBER = 3  # kCGMouseEventButtonNumber
+
+
+def watch(*, timeout: Optional[float] = None) -> Iterator[Click]:
+    """
+    Yield a :class:`Click` each time a mouse button goes down, in any app, as it happens.
+
+    ::
+
+        for click in macos.mouse.watch():
+            print("clicked at", click.x, click.y)
+
+    It only listens: the clicks still reach the apps. It goes on until you
+    ``break`` out of the loop, or ``timeout`` seconds pass.
+    """
+    cg = _events.graphics()
+    downs = {_BUTTONS["left"][0]: "left", _BUTTONS["right"][0]: "right", _BUTTONS["middle"][0]: None}
+
+    def convert(kind: int, event: int) -> Click:
+        where = cg.CGEventGetLocation(event)
+        button = downs[kind]
+        if button is None:  # the other buttons: 2 is the middle one
+            number = int(cg.CGEventGetIntegerValueField(event, _BUTTON_NUMBER))
+            button = "middle" if number == 2 else "button{}".format(number + 1)
+        return Click(where.x, where.y, button, int(cg.CGEventGetIntegerValueField(event, _CLICK_STATE)))
+
+    return _events.listen(
+        list(downs),
+        convert,
+        timeout,
+        "listening to the mouse needs the Input Monitoring permission: allow the app running Python (your "
+        "terminal or IDE) in System Settings › Privacy & Security › Input Monitoring, then restart it",
+    )

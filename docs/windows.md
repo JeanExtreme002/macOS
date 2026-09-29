@@ -81,6 +81,28 @@ macOS animates it into a Space of its own; {meth}`~macos.windows.Window.set_full
 returns once that's done, after a second or two.
 Windows whose app doesn't allow full screen raise {class}`~macos.MacOSError`.
 
+## Capturing a window
+
+{meth}`Window.screenshot() <macos.windows.Window.screenshot>` captures just that
+window, even when others cover it, without its shadow unless `shadow=True`:
+
+```python
+window = macos.windows.list("Safari")[0]
+window.screenshot("safari.png")
+```
+
+It needs the [Screen Recording permission](permissions.md#screen-recording).
+
+## Waiting for a window
+
+{func}`~macos.windows.wait_for` waits until a window shows up, after an action
+that opens one:
+
+```python
+macos.keyboard.press("cmd+s")
+dialog = macos.windows.wait_for("TextEdit", title="Save", timeout=5)
+```
+
 ## Reference
 
 - {func}`macos.windows.list`
@@ -88,3 +110,4 @@ Windows whose app doesn't allow full screen raise {class}`~macos.MacOSError`.
 - {class}`macos.windows.Window`
 - {func}`macos.windows.has_permission`
 - {func}`macos.windows.request_permission`
+- {func}`macos.windows.wait_for`

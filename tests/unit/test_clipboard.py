@@ -47,3 +47,26 @@ def test_clipboard_wait_for_change_never_sleeps_past_the_timeout(monkeypatch):
 def test_copy_files_needs_paths():
     with pytest.raises(ValueError):
         macos.clipboard.copy_files([])
+
+
+def test_clipboard_watch_yields_each_copy(monkeypatch):
+    clipboard = macos.clipboard
+    # (change count, empty, content), one per check: a copy clears, then writes.
+    states = iter([(1, False, None), (1, False, None), (2, True, None), (3, False, "one"), (3, False, "one"), (4, False, None)])
+    current = {}
+
+    def read():
+        current["state"] = next(states, (4, False, None))
+        return current["state"][0]
+
+    monkeypatch.setattr(clipboard, "change_count", read)
+    monkeypatch.setattr(clipboard, "_is_empty", lambda: current["state"][1])
+    monkeypatch.setattr(clipboard, "paste", lambda: current["state"][2])
+    monkeypatch.setattr(clipboard.time, "sleep", lambda seconds: None)
+
+    watched = clipboard.watch()
+    assert next(watched) == "one"
+    assert next(watched) is None  # something that isn't text
+    watched.close()
+    with pytest.raises(ValueError, match="interval"):
+        next(clipboard.watch(interval=0))
