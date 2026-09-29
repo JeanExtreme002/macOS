@@ -50,6 +50,18 @@ __all__ = [
     "wait_for_change",
     "selection",
     "current_folder",
+    "compress",
+    "extract",
+    "quick_look",
+    "show_hidden_files",
+    "set_show_hidden_files",
+    "show_extensions",
+    "set_show_extensions",
+    "show_path_bar",
+    "set_show_path_bar",
+    "show_status_bar",
+    "set_show_status_bar",
+    "restart",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -642,3 +654,113 @@ def current_folder() -> Optional[Path]:
     """
     output = applescript("Finder", _CURRENT_FOLDER).rstrip("\n")
     return Path(output.rstrip("/") or "/") if output else None
+
+
+_FINDER = "com.apple.finder"
+
+
+def restart() -> None:
+    """Relaunch Finder, so it reads its settings again (the ``set_show_*`` functions do it for you)."""
+    _run(["killall", "Finder"])  # macOS opens it again right away, with its windows
+
+
+def _setting(domain: str, key: str) -> bool:
+    from . import defaults
+
+    return bool(defaults.read(domain, key, default=False))
+
+
+def _set(domain: str, key: str, on: bool) -> None:
+    from . import defaults
+
+    defaults.write(domain, key, bool(on))
+    restart()
+
+
+def show_hidden_files() -> bool:
+    """Whether Finder shows hidden files (``.git``, ``.env``...), as ⌘⇧. toggles."""
+    return _setting(_FINDER, "AppleShowAllFiles")
+
+
+def set_show_hidden_files(on: bool = True) -> None:
+    """Show hidden files in Finder, or hide them again. Relaunches Finder."""
+    _set(_FINDER, "AppleShowAllFiles", on)
+
+
+def show_extensions() -> bool:
+    """Whether Finder shows every file name's extension (``.pdf``, ``.txt``...)."""
+    return _setting("NSGlobalDomain", "AppleShowAllExtensions")
+
+
+def set_show_extensions(on: bool = True) -> None:
+    """Show every file name's extension in Finder, like Finder › Settings › Advanced. Relaunches Finder."""
+    _set("NSGlobalDomain", "AppleShowAllExtensions", on)
+
+
+def show_path_bar() -> bool:
+    """Whether Finder windows show the path bar, the folders leading to the one shown."""
+    return _setting(_FINDER, "ShowPathbar")
+
+
+def set_show_path_bar(on: bool = True) -> None:
+    """Show the path bar at the bottom of Finder windows, or hide it. Relaunches Finder."""
+    _set(_FINDER, "ShowPathbar", on)
+
+
+def show_status_bar() -> bool:
+    """Whether Finder windows show the status bar, with the item count and the free space."""
+    return _setting(_FINDER, "ShowStatusBar")
+
+
+def set_show_status_bar(on: bool = True) -> None:
+    """Show the status bar at the bottom of Finder windows, or hide it. Relaunches Finder."""
+    _set(_FINDER, "ShowStatusBar", on)
+
+
+def compress(path: PathLike, output: Optional[PathLike] = None) -> Path:
+    """
+    Zip a file or folder, like Finder's *Compress*, and return the ``.zip``.
+
+    By default the archive goes next to it, as ``<name>.zip``. It keeps what
+    plain zip tools lose: extended attributes, tags, resource forks and
+    permissions. Uses the ``ditto`` command, as Finder does.
+    """
+    source = _existing(path)
+    target = Path(output).expanduser().absolute() if output is not None else source.with_name(source.name + ".zip")
+    if target.suffix.lower() != ".zip":
+        raise ValueError("the archive must end in .zip, not {!r}".format(target.name))
+    _run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(source), str(target)])
+    return target
+
+
+def extract(archive: PathLike, destination: Optional[PathLike] = None) -> Path:
+    """
+    Unzip an archive, like double-clicking it, into ``destination`` (by default, its folder); return ``destination``.
+
+    Keeps the attributes and permissions :func:`compress` stores.
+    """
+    source = _existing(archive)
+    target = Path(destination).expanduser().absolute() if destination is not None else source.parent
+    target.mkdir(parents=True, exist_ok=True)
+    _run(["ditto", "-x", "-k", str(source), str(target)])
+    return target
+
+
+def quick_look(path: PathLike) -> None:
+    """
+    Show a file in Quick Look, the preview Space opens in Finder, and return at once.
+
+    The preview stays until the user closes it.
+    """
+    import subprocess
+
+    from ._system import require_macos
+
+    source = _existing(path)
+    require_macos()
+    subprocess.Popen(
+        ["qlmanage", "-p", str(source)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,  # outlives the script, as a preview opened from Finder does
+    )

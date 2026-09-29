@@ -18,6 +18,8 @@ itself, so a script can work in one terminal and not in another.
 | {func}`macos.mouse.click_text` | Screen Recording and Accessibility | System Settings › Privacy & Security |
 | {func}`macos.keyboard.watch`, {func}`macos.mouse.watch` | Input Monitoring | System Settings › Privacy & Security › Input Monitoring |
 | {func}`macos.finder.selection`, {func}`~macos.finder.current_folder` | Automation of Finder (asked the first time) | System Settings › Privacy & Security › Automation |
+| {func}`macos.apps.login_items`, {func}`~macos.apps.add_login_item`, {func}`~macos.apps.remove_login_item` | Automation of *System Events* (asked the first time) | System Settings › Privacy & Security › Automation |
+| {func}`macos.time_machine.last_backup` | may need Full Disk Access | System Settings › Privacy & Security › Full Disk Access |
 | {mod}`macos.music` | Automation of Music or Spotify (asked the first time) | System Settings › Privacy & Security › Automation |
 | {mod}`macos.browser` | Automation of the browser (asked the first time); {func}`~macos.browser.run_js` also needs the browser's *Allow JavaScript from Apple Events* | System Settings › Privacy & Security › Automation |
 | {func}`macos.appearance.set_mode` | Automation of *System Events* (asked the first time) | System Settings › Privacy & Security › Automation |
@@ -28,7 +30,8 @@ Shortcuts, Finder, volume, Spotlight, dialogs, system info, Vision, images,
 PDFs, language, audio devices, sounds, network, brightness, the keyboard
 backlight, the mouse position, listing Bluetooth devices, Caps Lock, microphone
 volume, camera and microphone use, locking the screen, system events, scheduling
-scripts) need no permission. Watching folders needs none either, except that
+scripts, the Dock, defaults, Finder and screenshot settings, disk images,
+Touch ID) need no permission. Watching folders needs none either, except that
 the Desktop, Documents and Downloads folders ask for access the first time,
 like any access to them.
 

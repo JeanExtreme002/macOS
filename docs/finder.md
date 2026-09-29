@@ -119,6 +119,45 @@ macos.finder.current_folder()   # PosixPath('/Users/alice/Downloads')
 They ask Finder through AppleScript, so the first time macOS asks to allow it
 ([Automation](permissions.md#automation)).
 
+## Zip archives
+
+{func}`~macos.finder.compress` zips a file or folder, like Finder's *Compress*,
+and {func}`~macos.finder.extract` unzips an archive:
+
+```python
+archive = macos.finder.compress("Project")        # Project.zip, next to it
+macos.finder.extract(archive, "~/Desktop/copy")
+```
+
+Unlike plain zip tools, they keep what macOS stores with files: tags, extended
+attributes and permissions.
+
+## Quick Look
+
+{func}`~macos.finder.quick_look` shows a file in Quick Look, the preview Space
+opens, and returns at once:
+
+```python
+macos.finder.quick_look("report.pdf")
+```
+
+## Finder settings
+
+The settings people change most, each with its reader: they apply at once, as
+Finder is relaunched.
+
+| Read | Change | Shows |
+|---|---|---|
+| {func}`~macos.finder.show_hidden_files` | {func}`~macos.finder.set_show_hidden_files` | hidden files, such as `.git` (⌘⇧. toggles it too) |
+| {func}`~macos.finder.show_extensions` | {func}`~macos.finder.set_show_extensions` | every file name's extension |
+| {func}`~macos.finder.show_path_bar` | {func}`~macos.finder.set_show_path_bar` | the folders leading to the one shown |
+| {func}`~macos.finder.show_status_bar` | {func}`~macos.finder.set_show_status_bar` | the item count and the free space |
+
+```python
+macos.finder.set_show_hidden_files(True)
+macos.finder.set_show_extensions(True)
+```
+
 ## Reference
 
 - {func}`macos.finder.reveal`
@@ -136,3 +175,15 @@ They ask Finder through AppleScript, so the first time macOS asks to allow it
 - {class}`macos.finder.Event`
 - {func}`macos.finder.selection`
 - {func}`macos.finder.current_folder`
+- {func}`macos.finder.compress`
+- {func}`macos.finder.extract`
+- {func}`macos.finder.quick_look`
+- {func}`macos.finder.show_hidden_files`
+- {func}`macos.finder.set_show_hidden_files`
+- {func}`macos.finder.show_extensions`
+- {func}`macos.finder.set_show_extensions`
+- {func}`macos.finder.show_path_bar`
+- {func}`macos.finder.set_show_path_bar`
+- {func}`macos.finder.show_status_bar`
+- {func}`macos.finder.set_show_status_bar`
+- {func}`macos.finder.restart`

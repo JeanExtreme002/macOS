@@ -134,7 +134,44 @@ macos.apps.default_browser()                  # '/Applications/Safari.app'
 
 {func}`~macos.apps.default_for` takes an extension (`"pdf"`, `".png"`,
 `"tar.gz"`) or a type identifier (`"public.image"`), and returns `None` when no
-app opens it.
+app opens it. {func}`~macos.apps.set_default_for` changes it, like Get Info ›
+Open with › Change All:
+
+```python
+macos.apps.set_default_for("md", "Visual Studio Code")
+```
+
+The default browser can't be changed this way: macOS asks the user to confirm
+that one, in System Settings.
+
+## Login items
+
+{func}`~macos.apps.login_items` lists the apps that open when you log in, and
+{func}`~macos.apps.add_login_item` and {func}`~macos.apps.remove_login_item`
+change them:
+
+```python
+macos.apps.add_login_item("Rectangle")
+[item.name for item in macos.apps.login_items()]   # ['Rectangle', ...]
+macos.apps.remove_login_item("Rectangle")
+```
+
+They go through System Events, so the first time macOS asks to allow it
+([Automation](permissions.md#automation)). Apps that register themselves as
+background items, with their own switch in System Settings, aren't listed.
+
+## Installing from a disk image
+
+{func}`~macos.apps.install_from_dmg` installs the app a `.dmg` holds, as
+dragging it to Applications does:
+
+```python
+macos.apps.install_from_dmg("~/Downloads/Rectangle.dmg")   # '/Applications/Rectangle.app'
+```
+
+It mounts the image, copies the `.app`, and unmounts it. An app already
+installed raises `FileExistsError`, unless `replace=True`. To mount an image
+yourself, see {func}`macos.system.mount_image`.
 
 ## Threads
 
@@ -151,3 +188,9 @@ All functions work from any thread, not only the main one.
 - {func}`macos.apps.open_with`
 - {func}`macos.apps.default_for`
 - {func}`macos.apps.default_browser`
+- {func}`macos.apps.set_default_for`
+- {func}`macos.apps.login_items`
+- {func}`macos.apps.add_login_item`
+- {func}`macos.apps.remove_login_item`
+- {func}`macos.apps.install_from_dmg`
+- {class}`macos.apps.LoginItem`

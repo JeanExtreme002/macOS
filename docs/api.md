@@ -66,6 +66,12 @@ explain how to use each part.
    :members: is_running, is_active, is_hidden, activate, hide, unhide, quit
 .. autofunction:: macos.apps.default_for
 .. autofunction:: macos.apps.default_browser
+.. autofunction:: macos.apps.set_default_for
+.. autofunction:: macos.apps.login_items
+.. autofunction:: macos.apps.add_login_item
+.. autofunction:: macos.apps.remove_login_item
+.. autoclass:: macos.apps.LoginItem
+.. autofunction:: macos.apps.install_from_dmg
 ```
 
 ## macos.keyboard
@@ -116,7 +122,9 @@ explain how to use each part.
 .. autofunction:: macos.windows.focused
 .. autofunction:: macos.windows.wait_for
 .. autoclass:: macos.windows.Window
-   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, center, focus, minimize, restore, close, set_fullscreen, screenshot
+   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, center, focus, minimize, restore, close, set_fullscreen, screenshot, snap
+.. autodata:: macos.windows.LAYOUTS
+   :no-value:
 .. autofunction:: macos.windows.has_permission
 .. autofunction:: macos.windows.request_permission
 ```
@@ -201,6 +209,58 @@ explain how to use each part.
 .. autoclass:: macos.music.Track
 ```
 
+## macos.auth
+
+```{eval-rst}
+.. module:: macos.auth
+
+.. autofunction:: macos.auth.confirm
+.. autofunction:: macos.auth.is_available
+```
+
+## macos.defaults
+
+```{eval-rst}
+.. module:: macos.defaults
+
+.. autofunction:: macos.defaults.read
+.. autofunction:: macos.defaults.write
+.. autofunction:: macos.defaults.delete
+.. autofunction:: macos.defaults.keys
+.. autodata:: macos.defaults.GLOBAL
+```
+
+## macos.dock
+
+```{eval-rst}
+.. module:: macos.dock
+
+.. autofunction:: macos.dock.autohide
+.. autofunction:: macos.dock.set_autohide
+.. autofunction:: macos.dock.size
+.. autofunction:: macos.dock.set_size
+.. autofunction:: macos.dock.position
+.. autofunction:: macos.dock.set_position
+.. autofunction:: macos.dock.apps
+.. autofunction:: macos.dock.add_app
+.. autofunction:: macos.dock.remove_app
+.. autofunction:: macos.dock.restart
+.. autoclass:: macos.dock.DockApp
+```
+
+## macos.time_machine
+
+```{eval-rst}
+.. module:: macos.time_machine
+
+.. autofunction:: macos.time_machine.destinations
+.. autofunction:: macos.time_machine.backup_now
+.. autofunction:: macos.time_machine.stop_backup
+.. autofunction:: macos.time_machine.is_backing_up
+.. autofunction:: macos.time_machine.progress
+.. autofunction:: macos.time_machine.last_backup
+```
+
 ## macos.keychain
 
 ```{eval-rst}
@@ -262,6 +322,18 @@ explain how to use each part.
 .. autofunction:: macos.finder.wait_for_change
 .. autofunction:: macos.finder.selection
 .. autofunction:: macos.finder.current_folder
+.. autofunction:: macos.finder.compress
+.. autofunction:: macos.finder.extract
+.. autofunction:: macos.finder.quick_look
+.. autofunction:: macos.finder.show_hidden_files
+.. autofunction:: macos.finder.set_show_hidden_files
+.. autofunction:: macos.finder.show_extensions
+.. autofunction:: macos.finder.set_show_extensions
+.. autofunction:: macos.finder.show_path_bar
+.. autofunction:: macos.finder.set_show_path_bar
+.. autofunction:: macos.finder.show_status_bar
+.. autofunction:: macos.finder.set_show_status_bar
+.. autofunction:: macos.finder.restart
 .. autoclass:: macos.finder.Event
 ```
 
@@ -360,6 +432,7 @@ explain how to use each part.
 .. autofunction:: macos.pdf.rotate
 .. autofunction:: macos.pdf.encrypt
 .. autofunction:: macos.pdf.watermark
+.. autofunction:: macos.pdf.ocr
 .. autofunction:: macos.pdf.compress
 .. autofunction:: macos.pdf.grayscale
 .. autofunction:: macos.pdf.render
@@ -502,6 +575,12 @@ explain how to use each part.
 .. autofunction:: macos.screen.find_text
 .. autofunction:: macos.screen.wait_for_text
 .. autofunction:: macos.screen.color_at
+.. autofunction:: macos.screen.screenshot_folder
+.. autofunction:: macos.screen.set_screenshot_folder
+.. autofunction:: macos.screen.screenshot_format
+.. autofunction:: macos.screen.set_screenshot_format
+.. autofunction:: macos.screen.screenshot_shadow
+.. autofunction:: macos.screen.set_screenshot_shadow
 .. autoclass:: macos.screen.TextMatch
    :members: center
 .. autofunction:: macos.screen.start_screensaver
@@ -544,10 +623,18 @@ explain how to use each part.
 .. autofunction:: macos.system.computer_name
 .. autofunction:: macos.system.uptime
 .. autofunction:: macos.system.idle_time
+.. autofunction:: macos.system.cpu_usage
+.. autofunction:: macos.system.memory_usage
+.. autoclass:: macos.system.MemoryUsage
+   :members: free, percent
 .. autofunction:: macos.system.wait_for_idle
 .. autofunction:: macos.system.wait_for_activity
 .. autofunction:: macos.system.volumes
 .. autofunction:: macos.system.eject
+.. autofunction:: macos.system.mount_image
+.. autofunction:: macos.system.unmount_image
+.. autofunction:: macos.system.available_updates
+.. autoclass:: macos.system.Update
 .. autofunction:: macos.system.fonts
 .. autofunction:: macos.system.thermal_state
 .. autofunction:: macos.system.lid_closed

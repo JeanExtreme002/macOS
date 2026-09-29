@@ -38,6 +38,45 @@ SD cards) or `is_ejectable`.
 {func}`~macos.system.eject` only accepts ejectable
 volumes; when two share a name, pass the path.
 
+## Disk images
+
+{func}`~macos.system.mount_image` mounts a `.dmg` (or `.iso`) without opening a
+Finder window, and returns where; {func}`~macos.system.unmount_image` unmounts it:
+
+```python
+mounted = macos.system.mount_image("~/Downloads/Tool.dmg")   # PosixPath('/Volumes/Tool')
+print(list(mounted.iterdir()))
+macos.system.unmount_image(mounted)
+```
+
+A license the image shows first is accepted. To install the app it holds, see
+{func}`macos.apps.install_from_dmg`.
+
+## Software updates
+
+{func}`~macos.system.available_updates` lists the updates Software Update offers,
+as {class}`~macos.system.Update` objects:
+
+```python
+for update in macos.system.available_updates():
+    print(update.title, update.version, "(restart)" if update.restart else "")
+```
+
+It asks Apple's servers, so it takes a while (often 10 to 30 seconds).
+
+## Processor and memory
+
+{func}`~macos.system.cpu_usage` measures how busy the processor is over a short
+`interval`, from 0.0 to 1.0, all cores together, and
+{func}`~macos.system.memory_usage` how the memory is used, as Activity Monitor
+counts it:
+
+```python
+macos.system.cpu_usage()            # 0.23
+memory = macos.system.memory_usage()
+print(memory.percent, memory.used // 2**30, "GB used of", memory.total // 2**30)
+```
+
 ## Fonts
 
 {func}`~macos.system.fonts` lists the installed font families, sorted, as apps
@@ -137,3 +176,10 @@ macos.say("Welcome back")
 - {class}`macos.system.Volume`
 - {func}`macos.system.wait_for_idle`
 - {func}`macos.system.wait_for_activity`
+- {func}`macos.system.mount_image`
+- {func}`macos.system.unmount_image`
+- {func}`macos.system.available_updates`
+- {class}`macos.system.Update`
+- {func}`macos.system.cpu_usage`
+- {func}`macos.system.memory_usage`
+- {class}`macos.system.MemoryUsage`

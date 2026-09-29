@@ -26,7 +26,7 @@ from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
@@ -42,6 +42,7 @@ __all__ = [
     "rotate",
     "encrypt",
     "watermark",
+    "ocr",
     "compress",
     "grayscale",
     "render",
@@ -354,6 +355,137 @@ def _color(text: str) -> Tuple[float, float, float]:
     return (int(value[0:2], 16) / 255, int(value[2:4], 16) / 255, int(value[4:6], 16) / 255)
 
 
+def _open_for_drawing(source: Path, password: Optional[str]) -> int:
+    """An owned, unlocked ``CGPDFDocument``, to draw its pages elsewhere; release it with ``CGPDFDocumentRelease``."""
+    from . import _cf
+
+    graphics = _graphics()
+    with _cf.owned(_cf.file_url(str(source))) as url:
+        document = graphics.CGPDFDocumentCreateWithURL(url)
+    if not document:
+        raise ValueError("{} is not a PDF".format(source))
+    if graphics.CGPDFDocumentIsEncrypted(document) and not graphics.CGPDFDocumentIsUnlocked(document):
+        unlocked = password is not None and graphics.CGPDFDocumentUnlockWithPassword(document, password.encode("utf-8"))
+        if not unlocked:
+            graphics.CGPDFDocumentRelease(document)
+            raise PermissionDeniedError(
+                "{} is encrypted: {}".format(source, "wrong password" if password else "pass its password")
+            )
+    return int(document)
+
+
+_INVISIBLE = 3  # kCGTextInvisible: text that selection and search find, but that doesn't show
+
+
+def ocr(
+    path: PathLike,
+    output: PathLike,
+    *,
+    languages: Optional[Sequence[str]] = None,
+    redo: bool = False,
+    password: Optional[str] = None,
+) -> Path:
+    """
+    Make a scanned PDF searchable: add the text Vision reads on each page, invisibly, and save it to ``output``.
+
+    ::
+
+        macos.pdf.ocr("scan.pdf", "scan-searchable.pdf")
+        macos.pdf.text("scan-searchable.pdf")   # the text of the scan
+
+    The pages look the same, and their text can now be selected, copied and
+    searched, in Preview, Spotlight or :func:`text`. Pages that already have
+    text are kept as they are, unless ``redo=True``. ``languages`` works as in
+    :func:`macos.vision.lines` (``["pt-BR", "en-US"]``). ``password`` opens an
+    encrypted PDF; the result isn't encrypted.
+    """
+    from . import _cf, vision
+
+    source = Path(path).expanduser().absolute()
+    if not source.exists():
+        raise FileNotFoundError(str(source))
+    graphics, core_text = _graphics(), _core_text()
+    document = _open_for_drawing(source, password)
+    try:
+        pages = graphics.CGPDFDocumentGetNumberOfPages(document)
+        # Read every page first: rendering and OCR use the file, not the context being written.
+        found: Dict[int, List[Any]] = {}
+        for number in range(1, pages + 1):
+            if not redo and text(source, [number], password=password).strip():
+                continue
+            page = graphics.CGPDFDocumentGetPage(document, number)
+            box = graphics.CGPDFPageGetBoxRect(page, _MEDIA_BOX)
+            longest = max(box.size.width, box.size.height)
+            image = render(source, number, size=int(min(4096, max(1024, longest * 3))), password=password)
+            # Word by word: one stretched line would space its words wrong for search and copy.
+            found[number] = vision._words(image, languages=languages)
+
+        def write(name: str) -> bool:
+            with _cf.owned(_cf.file_url(name)) as url:
+                context = graphics.CGPDFContextCreateWithURL(url, None, None)
+            if not context:
+                return False
+            try:
+                for number in range(1, pages + 1):
+                    page = graphics.CGPDFDocumentGetPage(document, number)
+                    box = graphics.CGPDFPageGetBoxRect(page, _MEDIA_BOX)
+                    width, height = box.size.width, box.size.height
+                    if graphics.CGPDFPageGetRotationAngle(page) % 180:
+                        width, height = height, width  # drawn as it shows, turned, like render() reads it
+                    frame = _objc.CGRect(_objc.CGPoint(0, 0), _objc.CGSize(width, height))
+                    graphics.CGContextBeginPage(context, ctypes.byref(frame))
+                    graphics.CGContextSaveGState(context)
+                    graphics.CGContextConcatCTM(
+                        context, graphics.CGPDFPageGetDrawingTransform(page, _MEDIA_BOX, frame, 0, True)
+                    )
+                    graphics.CGContextDrawPDFPage(context, page)
+                    graphics.CGContextRestoreGState(context)
+                    for word, word_box in found.get(number, []):
+                        _draw_invisible(graphics, core_text, context, word, word_box, width, height)
+                    graphics.CGContextEndPage(context)
+                graphics.CGPDFContextClose(context)
+            finally:
+                graphics.CGContextRelease(context)
+            return True
+
+        return _write_atomically(output, write)
+    finally:
+        graphics.CGPDFDocumentRelease(document)
+
+
+def _draw_invisible(
+    graphics: ctypes.CDLL,
+    core_text: ctypes.CDLL,
+    context: int,
+    words: str,
+    box: Tuple[float, float, float, float],
+    width: float,
+    height: float,
+) -> None:
+    """Write ``words`` invisibly over ``box`` (fractions of the page from its top-left), stretched to its width."""
+    from . import _cf
+
+    if not words.strip():
+        return
+    left, top, wide, tall = box[0] * width, box[1] * height, box[2] * width, box[3] * height
+    size = max(tall, 1.0)
+    probe, natural_width, _ = _line(words, size)
+    _cf.release(probe)
+    # A real space after the word: text extraction spaces words by their space characters.
+    line, _, _ = _line(words + " ", size)
+    try:
+        graphics.CGContextSaveGState(context)
+        graphics.CGContextSetTextDrawingMode(context, _INVISIBLE)
+        # PDF pages measure from their bottom-left corner, going up.
+        graphics.CGContextTranslateCTM(context, left, height - top - tall + tall * 0.2)
+        graphics.CGContextScaleCTM(context, wide / max(natural_width, 1.0), 1.0)
+        graphics.CGContextSetTextPosition(context, 0, 0)
+        core_text.CTLineDraw(line, context)
+        graphics.CGContextRestoreGState(context)
+    finally:
+        _cf.release(line)
+
+
 def watermark(
     path: PathLike,
     text: str,
@@ -388,19 +520,8 @@ def watermark(
     from . import _cf
 
     graphics, core_text = _graphics(), _core_text()
-    with _cf.owned(_cf.file_url(str(source))) as url:
-        document = graphics.CGPDFDocumentCreateWithURL(url)
-    if not document:
-        raise ValueError("{} is not a PDF".format(source))
+    document = _open_for_drawing(source, password)
     try:
-        if graphics.CGPDFDocumentIsEncrypted(document) and not graphics.CGPDFDocumentIsUnlocked(document):
-            unlocked = password is not None and graphics.CGPDFDocumentUnlockWithPassword(
-                document, password.encode("utf-8")
-            )
-            if not unlocked:
-                raise PermissionDeniedError(
-                    "{} is encrypted: {}".format(source, "wrong password" if password else "pass its password")
-                )
         pages = graphics.CGPDFDocumentGetNumberOfPages(document)
 
         def write(name: str) -> bool:
@@ -594,6 +715,8 @@ def _graphics() -> ctypes.CDLL:
         "CGContextTranslateCTM": ((pointer, ctypes.c_double, ctypes.c_double), None),
         "CGContextRotateCTM": ((pointer, ctypes.c_double), None),
         "CGContextSetTextPosition": ((pointer, ctypes.c_double, ctypes.c_double), None),
+        "CGContextSetTextDrawingMode": ((pointer, ctypes.c_int32), None),
+        "CGContextScaleCTM": ((pointer, ctypes.c_double, ctypes.c_double), None),
     }
     for name, (argtypes, restype) in signatures.items():
         function = getattr(graphics, name)

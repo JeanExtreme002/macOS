@@ -57,6 +57,32 @@ accept. {attr}`~macos.windows.Window.title`,
 {attr}`~macos.windows.Window.frame` and the other attributes are read fresh
 each time, so they follow the user moving the window.
 
+## Snapping to part of the screen
+
+{meth}`Window.snap() <macos.windows.Window.snap>` fits a window to part of its
+display, like Rectangle, leaving out the menu bar and the Dock:
+
+```python
+window = macos.windows.focused()
+window.snap("left")             # the left half
+window.snap("top_right")        # a quarter
+window.snap("right_third")
+window.snap("maximize")
+```
+
+The layouts are {data}`~macos.windows.LAYOUTS`: halves (`"left"`, `"right"`,
+`"top"`, `"bottom"`), quarters (`"top_left"`, `"top_right"`, `"bottom_left"`,
+`"bottom_right"`), thirds (`"left_third"`, `"center_third"`, `"right_third"`,
+`"left_two_thirds"`, `"right_two_thirds"`) and `"maximize"`. With `display=2`
+the window goes to another display. Combined with [Hotkeys](hotkeys.md), it
+makes a window manager in a few lines:
+
+```python
+for keys, layout in {"ctrl+option+left": "left", "ctrl+option+right": "right"}.items():
+    macos.hotkeys.register(keys, lambda layout=layout: macos.windows.focused().snap(layout))
+macos.hotkeys.run()
+```
+
 ## Focusing, minimizing and closing
 
 ```python
@@ -111,3 +137,4 @@ dialog = macos.windows.wait_for("TextEdit", title="Save", timeout=5)
 - {func}`macos.windows.has_permission`
 - {func}`macos.windows.request_permission`
 - {func}`macos.windows.wait_for`
+- {data}`macos.windows.LAYOUTS`
