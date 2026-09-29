@@ -1,0 +1,108 @@
+"""Tests of :mod:`macos.audio` against the real system. Skipped outside macOS."""
+
+from pathlib import Path
+
+import pytest
+
+import macos
+from tests.helpers import CAPTURE
+
+
+def test_audio_devices():
+    outputs = macos.audio.outputs()
+    if not outputs:
+        pytest.skip("no audio output device")
+    assert all(device.is_output and device.name and device.uid for device in outputs)
+    assert all(device.is_input for device in macos.audio.inputs())
+
+    current = macos.audio.default_output()
+    assert current in outputs
+    assert macos.audio.set_output(current) == current  # switching to the same device changes nothing
+    assert macos.audio.default_output() == current
+
+
+def test_microphone_volume_and_mute():
+    if macos.audio.default_input() is None:
+        pytest.skip("no microphone")
+    try:
+        volume = macos.audio.input_volume()
+    except macos.NotSupportedError:
+        pytest.skip("the microphone has no adjustable volume")
+    assert 0.0 <= volume <= 1.0
+    macos.audio.set_input_volume(volume)  # the same value: nothing changes
+    assert abs(macos.audio.input_volume() - volume) < 0.01
+    try:
+        muted = macos.audio.input_muted()
+    except macos.NotSupportedError:
+        return
+    macos.audio.mute_input(muted)
+    assert macos.audio.input_muted() == muted
+
+
+@CAPTURE
+def test_microphone_record_and_level(tmp_path):
+    if macos.audio.default_input() is None:
+        pytest.skip("no microphone")
+    for name in ("memo.m4a", "memo.wav"):
+        target = macos.audio.record(tmp_path / name, 1)
+        try:
+            details = macos.video.info(target)
+            assert details.has_audio and 0.8 < details.duration < 1.5
+        finally:
+            target.unlink()  # don't keep what the microphone heard
+    assert 0.0 <= macos.audio.input_level() <= 1.0
+
+
+def _samples(path):
+    import array
+
+    return array.array("h", macos.audio._read_wav(Path(path).read_bytes())[2])
+
+
+def test_audio_editing(speech, tmp_path):
+    audio = macos.audio
+    details = audio.info(speech)
+    assert details.codec == "pcm" and details.duration > 2 and details.channels == 1
+
+    for name, options, codec in (
+        ("speech.m4a", {}, "aac"),
+        ("speech-lossless.m4a", {"lossless": True}, "alac"),
+        ("speech.wav", {}, "pcm"),
+        ("speech.aiff", {}, "pcm"),
+        ("speech.caf", {}, "pcm"),
+    ):
+        converted = audio.convert(speech, tmp_path / name, **options)
+        assert audio.info(converted).codec == codec
+    small = audio.convert(speech, tmp_path / "small.m4a", quality="low")
+    assert small.stat().st_size < (tmp_path / "speech.m4a").stat().st_size
+
+    wav = tmp_path / "speech.wav"
+    assert abs(audio.info(audio.trim(wav, tmp_path / "part.wav", 0.5, 1.0)).duration - 1.0) < 0.01
+    joined = audio.concat([wav, tmp_path / "speech.m4a", wav], tmp_path / "joined.wav")
+    assert abs(audio.info(joined).duration - 3 * details.duration) < 0.2
+    faded = _samples(audio.fade(wav, tmp_path / "faded.wav", fade_in=0.5, fade_out=0.5))
+    assert faded[0] == 0 and faded[-1] == 0
+    assert max(map(abs, _samples(audio.gain(wav, tmp_path / "loud.wav", 6)))) > max(map(abs, _samples(wav)))
+    twice = audio.reverse(audio.reverse(wav, tmp_path / "backwards.wav"), tmp_path / "forwards.wav")
+    assert _samples(twice) == _samples(wav)
+    fast = audio.speed(speech, tmp_path / "fast.wav", 2)
+    assert abs(audio.info(fast).duration - details.duration / 2) < 0.02
+    # Some macOS versions count AAC's padding in the duration they read back (up to about 0.15 s).
+    assert abs(audio.info(audio.speed(speech, tmp_path / "fast.m4a", 2)).duration - details.duration / 2) < 0.2
+
+    if speech.name == "speech.aiff":  # not the tone the fixture falls back to
+        labels = dict(audio.classify(speech))
+        assert labels.get("speech", 0) > 0.5
+    # Shorter than the classifier's usual 3-second window: still heard.
+    assert audio.classify("/System/Library/Sounds/Tink.aiff")
+
+
+@CAPTURE
+def test_record_until_silence(tmp_path):
+    if macos.audio.default_input() is None:
+        pytest.skip("no microphone")
+    target = macos.audio.record_until_silence(tmp_path / "note.m4a", max_seconds=2, silence=1)
+    try:
+        assert macos.audio.info(target).duration <= 2.5
+    finally:
+        target.unlink()

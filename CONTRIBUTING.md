@@ -19,8 +19,18 @@ for example `make check` (lint, type check and tests) or `make docs`.
 
 ```bash
 pytest                  # everything, including live tests on your Mac
-pytest -m "not live"    # unit tests only (these also run on Linux)
+pytest tests/unit       # unit tests only (these also run on Linux)
+pytest tests/unit/test_audio.py tests/live/test_audio.py   # one module
 ```
+
+The tests are in two folders, with one file per module (`test_audio.py`
+tests `macos.audio`):
+
+- `tests/unit`: fake the system commands and frameworks, and run anywhere.
+- `tests/live`: talk to the real system, and are skipped outside macOS.
+
+Helpers shared by several files are in `tests/helpers.py`, and each folder's
+fixtures in its `conftest.py`.
 
 The live tests talk to the real system. They restore your clipboard and delete
 the Keychain items they create. The ones that turn the camera or the microphone
