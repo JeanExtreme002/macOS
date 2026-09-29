@@ -176,7 +176,7 @@ dialog:
 
 ```python
 macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", "cmd+shift+e")
-macos.keyboard.set_app_shortcut("Preview", "File > Export…", "cmd+e")      # the one in the File menu
+macos.keyboard.set_app_shortcut("Preview", "File > Export…", "cmd+e")     # the one in the File menu
 macos.keyboard.set_app_shortcut(None, "Show Tab Bar", "cmd+option+t")     # in every app
 macos.keyboard.app_shortcuts("Safari")    # {'Export as PDF…': 'cmd+shift+e'}
 macos.keyboard.set_app_shortcut("Safari", "Export as PDF…", None)         # remove it

@@ -8,6 +8,7 @@ import json
 import macos
 
 json.dump(macos.settings.export(), open("my-mac.json", "w"), indent=2)
+
 # on the new Mac:
 macos.settings.apply(json.load(open("my-mac.json")))
 ```

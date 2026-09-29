@@ -196,8 +196,8 @@ closer together, so more fit beside the notch:
 
 ```python
 macos.system.set_menu_bar_items(bluetooth=True, now_playing=False, focus=False)
-macos.system.menu_bar_items()   # {'wifi': True, 'bluetooth': True, 'now_playing': False, ...}
-macos.system.set_menu_bar_spacing(6)      # at the next login; None for macOS's own
+macos.system.menu_bar_items()            # {'wifi': True, 'bluetooth': True, 'now_playing': False, ...}
+macos.system.set_menu_bar_spacing(6)     # at the next login; None for macOS's own
 ```
 
 The icons are in {data}`~macos.system.MENU_BAR_ITEMS`, and apply at once.

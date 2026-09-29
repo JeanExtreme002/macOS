@@ -125,8 +125,8 @@ the scaled Retina ones included, and {func}`~macos.screen.set_display_mode`
 changes it, as System Settings › Displays does:
 
 ```python
-macos.screen.display_mode()      # DisplayMode(width=1512, height=982, ..., refresh_rate=120.0)
-macos.screen.set_display_mode(1728, 1117)                  # more space on a MacBook Pro
+macos.screen.display_mode()   # DisplayMode(width=1512, height=982, ..., refresh_rate=120.0)
+macos.screen.set_display_mode(1728, 1117)                 # more space on a MacBook Pro
 macos.screen.set_display_mode(2560, 1440, refresh_rate=144, display=external)
 ```
 
@@ -140,6 +140,7 @@ same picture on two, for a projector:
 
 ```python
 projector = next(d for d in macos.screen.displays() if not d.is_builtin)
+
 macos.screen.mirror(projector)
 macos.screen.stop_mirroring()
 macos.screen.set_main_display(projector)

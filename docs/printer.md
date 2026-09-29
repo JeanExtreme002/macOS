@@ -7,6 +7,7 @@ queue, through CUPS, the printing system of macOS.
 import macos
 
 [p.description for p in macos.printer.printers()]   # ['Office LaserJet', 'Home Inkjet']
+
 job = macos.printer.print_file("report.pdf", copies=2, two_sided=True)
 macos.printer.jobs()   # [PrintJob(id=12, title='report.pdf', state='processing', ...)]
 job.cancel()

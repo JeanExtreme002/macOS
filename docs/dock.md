@@ -94,7 +94,9 @@ its items or as the folder, opening as a fan, a grid or a list:
 ```python
 macos.dock.add_folder("~/Downloads", view="grid", sort="date_added")
 macos.dock.add_folder("~/Projects", display="folder", sort="name")
+
 [folder.name for folder in macos.dock.folders()]   # ['Downloads', 'Projects']
+
 macos.dock.remove_folder("~/Projects")
 ```
 
