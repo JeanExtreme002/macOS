@@ -828,7 +828,8 @@ _UF_HIDDEN = 0x8000  # stat.UF_HIDDEN: the flag chflags hidden sets
 
 def show_library_folder() -> bool:
     """Whether your Library folder (``~/Library``) shows in Finder; macOS hides it."""
-    return not os.stat(str(Path.home() / "Library")).st_flags & _UF_HIDDEN
+    flags = getattr(os.stat(str(Path.home() / "Library")), "st_flags", 0)  # only BSD systems have file flags
+    return not flags & _UF_HIDDEN
 
 
 def set_show_library_folder(on: bool = True) -> None:
