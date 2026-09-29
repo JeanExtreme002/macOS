@@ -22,7 +22,7 @@ import os
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
-from ._system import run
+from ._system import run as _run
 
 __all__ = ["alert", "confirm", "prompt", "choose", "choose_file", "choose_files", "choose_folder"]
 
@@ -53,7 +53,7 @@ def _show(body: List[str], args: Sequence[str]) -> List[str]:
     command = ["osascript"]
     for line in script:
         command += ["-e", line]
-    return run([*command, "--", *args]).rstrip("\n").split("\n")
+    return _run([*command, "--", *args]).rstrip("\n").split("\n")
 
 
 def _giving_up(timeout: Optional[float]) -> str:

@@ -44,6 +44,8 @@ def test_events_run_calls_the_callbacks_of_each_event(monkeypatch):
     events.on("wake", lambda event: calls.append(("a", event.name)))
     events.on("wake", lambda event: calls.append(("b", event.name)))
     events.on("sleep", lambda event: calls.append(("c", event.name)))
+    events.on("sleep", lambda: calls.append(("d", "no arguments")))
+    events.on("sleep", print)  # a builtin: it gets the event
 
     def listen(names, on_event, timeout):
         assert names == ["sleep", "wake"]
@@ -53,7 +55,7 @@ def test_events_run_calls_the_callbacks_of_each_event(monkeypatch):
     monkeypatch.setattr(events, "_listen", listen)
     events.run()
 
-    assert calls == [("a", "wake"), ("b", "wake"), ("c", "sleep")]
+    assert calls == [("a", "wake"), ("b", "wake"), ("c", "sleep"), ("d", "no arguments")]
 
 
 def test_events_wait_returns_the_awaited_event(monkeypatch):

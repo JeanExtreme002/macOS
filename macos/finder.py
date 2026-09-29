@@ -29,7 +29,7 @@ from typing import Iterable, Iterator, List, Optional, Set, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
-from ._system import framework, run
+from ._system import framework, run as _run
 from .errors import MacOSError
 
 __all__ = [
@@ -71,7 +71,7 @@ def reveal(path: PathLike) -> None:
     """Open a Finder window with ``path`` selected."""
     # Through LaunchServices (`open -R`), which, unlike asking NSWorkspace,
     # also brings Finder to the front when called from a script.
-    run(["open", "-R", str(_existing(path))])
+    _run(["open", "-R", str(_existing(path))])
 
 
 def trash(path: PathLike) -> Path:

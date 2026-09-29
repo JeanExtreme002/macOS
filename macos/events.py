@@ -16,6 +16,7 @@ notifications, the same ones apps listen to. No permission is needed.
 """
 
 import ctypes
+import inspect
 import threading
 import time
 from dataclasses import dataclass
@@ -43,7 +44,6 @@ _NOTIFICATIONS: Dict[str, Tuple[str, str]] = {
     "app_activated": (_WORKSPACE, "NSWorkspaceDidActivateApplicationNotification"),
     "volume_mounted": (_WORKSPACE, "NSWorkspaceDidMountNotification"),
     "volume_unmounted": (_WORKSPACE, "NSWorkspaceDidUnmountNotification"),
-    "appearance_changed": (_DISTRIBUTED, "AppleInterfaceThemeChangedNotification"),
 }
 
 NAMES = tuple(_NOTIFICATIONS)
@@ -65,7 +65,7 @@ class Event:
 class Handler:
     """A callback registered with :func:`on`. :meth:`remove` unregisters it."""
 
-    def __init__(self, name: str, callback: Callable[[Event], object]) -> None:
+    def __init__(self, name: str, callback: Callable[..., object]) -> None:
         self.name = name
         self.callback = callback
 
@@ -87,7 +87,7 @@ def _check(name: str) -> None:
         raise ValueError("unknown event {!r}; use one of {}".format(name, ", ".join(NAMES)))
 
 
-def on(name: str, callback: Callable[[Event], object]) -> Handler:
+def on(name: str, callback: Callable[..., object]) -> Handler:
     """
     Call ``callback(event)`` each time ``name`` happens, while :func:`run` runs; return a :class:`Handler`.
 
@@ -100,9 +100,11 @@ def on(name: str, callback: Callable[[Event], object]) -> Handler:
       front), with the :class:`~macos.apps.App` in ``event.app``.
     - ``'volume_mounted'`` and ``'volume_unmounted'`` (disks, USB drives,
       disk images), with the mount point in ``event.path``.
-    - ``'appearance_changed'``: dark or light mode was switched.
 
-    A callback registered for several events can tell them apart by ``event.name``.
+    To wait for dark or light mode to switch, see :func:`macos.appearance.wait_for_change`.
+
+    The callback may also take no arguments. One registered for several
+    events can tell them apart by ``event.name``.
     """
     _check(name)
     handler = Handler(name, callback)
@@ -145,6 +147,8 @@ def _center(kind: str) -> int:
         return _objc.send(_objc.send(_objc.cls("NSWorkspace"), "sharedWorkspace"), "notificationCenter")
     return _objc.send(_objc.cls("NSDistributedNotificationCenter"), "defaultCenter")
 
+
+_DELIVER_IMMEDIATELY = 4  # NSNotificationSuspensionBehaviorDeliverImmediately
 
 _received: List[Event] = []
 _Handle = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
@@ -191,16 +195,31 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
     # The notification names, as AppKit spells them.
     spelled = {ours: notification for notification, ours in _notification_names().items()}
     for name, (kind, _) in wanted.items():
-        _objc.send(
-            centers[kind],
-            "addObserver:selector:name:object:",
-            observer,
-            _objc.sel("handle:"),
-            _objc.nsstring(spelled[name]),
-            None,
-            argtypes=(_objc.id, _objc.SEL, _objc.id, _objc.id),
-            restype=None,
-        )
+        if kind == _WORKSPACE:
+            _objc.send(
+                centers[kind],
+                "addObserver:selector:name:object:",
+                observer,
+                _objc.sel("handle:"),
+                _objc.nsstring(spelled[name]),
+                None,
+                argtypes=(_objc.id, _objc.SEL, _objc.id, _objc.id),
+                restype=None,
+            )
+        else:
+            # By default the distributed center may hold notifications back while it deems the
+            # process suspended; a script has no app lifecycle to resume it, so ask for them now.
+            _objc.send(
+                centers[kind],
+                "addObserver:selector:name:object:suspensionBehavior:",
+                observer,
+                _objc.sel("handle:"),
+                _objc.nsstring(spelled[name]),
+                None,
+                _DELIVER_IMMEDIATELY,
+                argtypes=(_objc.id, _objc.SEL, _objc.id, _objc.id, ctypes.c_ulong),
+                restype=None,
+            )
     _stop.clear()
     del _received[:]
     deadline = None if timeout is None else time.monotonic() + timeout
@@ -217,6 +236,18 @@ def _listen(names: List[str], on_event: Callable[[Event], bool], timeout: Option
         for center in centers.values():
             _objc.send(center, "removeObserver:", observer, argtypes=(_objc.id,), restype=None)
         _objc.send(observer, "release", restype=None)
+
+
+def _takes_event(callback: Callable[..., object]) -> bool:
+    """Whether ``callback`` accepts the event; callbacks may also take no arguments."""
+    try:
+        parameters = inspect.signature(callback).parameters.values()
+    except (TypeError, ValueError):  # some builtins have no signature: pass the event
+        return True
+    return any(
+        parameter.kind in (parameter.POSITIONAL_ONLY, parameter.POSITIONAL_OR_KEYWORD, parameter.VAR_POSITIONAL)
+        for parameter in parameters
+    )
 
 
 def run(*, timeout: Optional[float] = None) -> None:
@@ -236,7 +267,10 @@ def run(*, timeout: Optional[float] = None) -> None:
         with _lock:
             callbacks = [handler.callback for handler in _handlers if handler.name == event.name]
         for callback in callbacks:
-            callback(event)
+            if _takes_event(callback):
+                callback(event)
+            else:
+                callback()
         return False
 
     _listen(names, call, timeout)

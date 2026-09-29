@@ -20,7 +20,7 @@ import plistlib
 import subprocess
 from typing import List, Optional
 
-from ._system import require_macos, run
+from ._system import require_macos, run as _run
 from .errors import PermissionDeniedError
 
 __all__ = ["notify", "is_allowed"]
@@ -94,7 +94,7 @@ def notify(
     if allowed is False:
         _refuse()
 
-    run(["osascript", "-e", "on run argv", "-e", statement, "-e", "end run", "--", *values])
+    _run(["osascript", "-e", "on run argv", "-e", statement, "-e", "end run", "--", *values])
 
     # The first notification ever registers Script Editor with notifications
     # off, and macOS drops it without a prompt: check again now that it's known.

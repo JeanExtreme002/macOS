@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Union
 
-from ._system import require_macos, run
+from ._system import require_macos, run as _run
 from .errors import NotSupportedError
 
 __all__ = ["say", "voices", "Voice"]
@@ -76,7 +76,7 @@ def say(
     args += ["-f", "-"]
 
     if wait or target is not None:
-        run(args, input=text)
+        _run(args, input=text)
         return target
 
     require_macos()
@@ -103,7 +103,7 @@ def say(
 def voices() -> List[Voice]:
     """Return the voices installed on this Mac."""
     found = []
-    for line in run(["say", "-v", "?"]).splitlines():
+    for line in _run(["say", "-v", "?"]).splitlines():
         # Format: "<name, may contain spaces> <locale>    # <sample sentence>"
         head, _, sample = line.partition("#")
         parts = head.split()

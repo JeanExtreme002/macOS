@@ -23,10 +23,13 @@ They are the notifications macOS sends apps, so no permission is needed.
 | `screen_locked`, `screen_unlocked` | The screen locks, and unlocks | |
 | `app_launched`, `app_quit`, `app_activated` | An app opens, quits, or comes to the front | `event.app`, an {class}`~macos.apps.App` |
 | `volume_mounted`, `volume_unmounted` | A disk, USB drive or disk image is mounted or ejected | `event.path`, where it's mounted |
-| `appearance_changed` | Dark or light mode was switched | |
 
-Each callback gets an {class}`~macos.events.Event`; its `name` tells events
-apart when one callback handles several:
+To wait for dark or light mode to switch, see
+{func}`macos.appearance.wait_for_change`.
+
+Each callback gets an {class}`~macos.events.Event`, or nothing if it takes no
+arguments; the event's `name` tells events apart when one callback handles
+several:
 
 ```python
 def log(event):

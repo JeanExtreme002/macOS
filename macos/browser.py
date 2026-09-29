@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from . import apps
-from ._system import applescript, run
+from ._system import applescript, run as _run
 from .errors import CommandError, MacOSError, NotSupportedError, PermissionDeniedError
 
 __all__ = ["Tab", "BROWSERS", "current_tab", "tabs", "open", "run_js"]
@@ -227,9 +227,9 @@ def open(url: str, app: Optional[str] = None) -> None:
     browser = _browser(app)
     if browser is None:
         default = apps.default_browser()
-        run(["open", url] if default is None else ["open", "-a", default, url])
+        _run(["open", url] if default is None else ["open", "-a", default, url])
         return
-    run(["open", "-a", browser, url])
+    _run(["open", "-a", browser, url])
 
 
 def run_js(script: str, app: Optional[str] = None) -> Optional[str]:

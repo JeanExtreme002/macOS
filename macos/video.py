@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Generator, Iterable, List, Optional, Sequence, Tuple, Union
 
 from . import _cf, _media, _objc
-from ._system import framework, run
+from ._system import framework, run as _run
 from .errors import MacOSError
 
 __all__ = [
@@ -282,7 +282,7 @@ def convert(
         args += ["--start", str(start)]
     if duration is not None:
         args += ["--duration", str(duration)]
-    run(args)
+    _run(args)
     return target
 
 
@@ -465,7 +465,7 @@ def trim(source: PathLike, output: PathLike, start: float = 0.0, duration: Optio
     target.parent.mkdir(parents=True, exist_ok=True)
     if target == original:
         raise ValueError("trim() can't write over its source; pick another output")
-    run(args)
+    _run(args)
     return target
 
 

@@ -21,7 +21,7 @@ from functools import lru_cache
 from typing import Optional
 
 from . import _cf
-from ._system import framework, run
+from ._system import framework, run as _run
 from .errors import CommandError, NotSupportedError
 
 __all__ = ["is_online", "ip", "interface", "wifi_power", "set_wifi_power"]
@@ -74,7 +74,7 @@ def is_online() -> bool:
 def interface() -> Optional[str]:
     """The network interface internet traffic goes through, e.g. ``'en0'``, or ``None`` when offline."""
     try:
-        output = run(["route", "-n", "get", "default"])
+        output = _run(["route", "-n", "get", "default"])
     except CommandError:  # no default route
         return None
     found = re.search(r"interface:\s*(\S+)", output)
@@ -87,14 +87,14 @@ def ip() -> Optional[str]:
     if name is None:
         return None
     try:
-        address = run(["ipconfig", "getifaddr", name]).strip()
+        address = _run(["ipconfig", "getifaddr", name]).strip()
     except CommandError:  # the interface has no IPv4 address (e.g. a VPN tunnel)
         return None
     return address or None
 
 
 def _wifi_device() -> str:
-    ports = run(["networksetup", "-listallhardwareports"])
+    ports = _run(["networksetup", "-listallhardwareports"])
     found = re.search(r"Hardware Port: (?:Wi-Fi|AirPort)\s*\nDevice: (\S+)", ports)
     if not found:
         raise NotSupportedError("this Mac has no Wi-Fi")
@@ -103,10 +103,10 @@ def _wifi_device() -> str:
 
 def wifi_power() -> bool:
     """Whether Wi-Fi is turned on. Raises :class:`~macos.errors.NotSupportedError` on a Mac without Wi-Fi."""
-    output = run(["networksetup", "-getairportpower", _wifi_device()])
+    output = _run(["networksetup", "-getairportpower", _wifi_device()])
     return output.strip().lower().endswith("on")
 
 
 def set_wifi_power(on: bool) -> None:
     """Turn Wi-Fi on or off, like the switch in Control Center."""
-    run(["networksetup", "-setairportpower", _wifi_device(), "on" if on else "off"])
+    _run(["networksetup", "-setairportpower", _wifi_device(), "on" if on else "off"])

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 from . import _cf, _objc
-from ._system import framework, require_macos, run
+from ._system import framework, require_macos, run as _run
 from .errors import MacOSError, NotSupportedError
 
 __all__ = [
@@ -92,14 +92,14 @@ def version() -> str:
 
 def build() -> str:
     """The macOS build number, e.g. ``'24G90'``."""
-    return run(["sw_vers", "-buildVersion"]).strip()
+    return _run(["sw_vers", "-buildVersion"]).strip()
 
 
 @lru_cache(maxsize=None)
 def model() -> str:
     """The Mac's marketing name, e.g. ``'MacBook Pro'`` or ``'Mac mini'``."""
     # system_profiler takes a moment, and the answer never changes: cache it.
-    report = json.loads(run(["system_profiler", "SPHardwareDataType", "-json"]))
+    report = json.loads(_run(["system_profiler", "SPHardwareDataType", "-json"]))
     return str(report["SPHardwareDataType"][0]["machine_name"])
 
 
@@ -120,7 +120,7 @@ def memory() -> int:
 
 def computer_name() -> str:
     """The name shown in System Settings › General › About (and on the network)."""
-    return run(["scutil", "--get", "ComputerName"]).strip()
+    return _run(["scutil", "--get", "ComputerName"]).strip()
 
 
 def uptime() -> timedelta:
@@ -280,7 +280,7 @@ def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
         raise ValueError("the startup disk can't be ejected")
     if not chosen.is_ejectable:
         raise ValueError("{} can't be ejected".format(chosen.name))
-    run(["diskutil", "eject", str(chosen.path)])
+    _run(["diskutil", "eject", str(chosen.path)])
 
 
 def fonts() -> List[str]:

@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
-from ._system import run, require_macos
+from ._system import run as _run, require_macos
 from .errors import CommandError
 
 __all__ = ["Job", "add", "remove", "jobs", "get", "run_now"]
@@ -175,7 +175,7 @@ def add(
     path = _plist(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(plistlib.dumps(job))
-    run(["launchctl", "bootstrap", _domain(), str(path)])
+    _run(["launchctl", "bootstrap", _domain(), str(path)])
     found = get(name)
     assert found is not None
     return found
@@ -187,7 +187,7 @@ def remove(name: str) -> bool:
     require_macos()
     path = _plist(name)
     try:
-        run(["launchctl", "bootout", "{}/{}{}".format(_domain(), _PREFIX, name)])
+        _run(["launchctl", "bootout", "{}/{}{}".format(_domain(), _PREFIX, name)])
     except CommandError:
         pass  # not loaded
     if path.exists():
@@ -199,7 +199,7 @@ def remove(name: str) -> bool:
 def _state(name: str) -> Tuple[bool, Optional[int]]:
     """Whether the job is running, and its last exit status, from ``launchctl list``."""
     try:
-        output = run(["launchctl", "list", _PREFIX + name])
+        output = _run(["launchctl", "list", _PREFIX + name])
     except CommandError:
         return False, None
     pid = re.search(r'"PID"\s*=\s*(\d+);', output)
@@ -255,4 +255,4 @@ def run_now(name: str) -> None:
     require_macos()
     if not _plist(name).exists():
         raise ValueError("no job named {!r}".format(name))
-    run(["launchctl", "kickstart", "{}/{}{}".format(_domain(), _PREFIX, name)])
+    _run(["launchctl", "kickstart", "{}/{}{}".format(_domain(), _PREFIX, name)])

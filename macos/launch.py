@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 from typing import List, Union
 
-from ._system import run
+from ._system import run as _run
 from .apps import open_with
 
 __all__ = ["open", "open_with"]
@@ -50,4 +50,4 @@ def open(target: Target, *, background: bool = False) -> None:
     ``https://``, Mail for ``mailto:``...). ``background=True`` opens it
     without bringing the app to the front.
     """
-    run(["open", *_flags(background), "--", _target(target)])
+    _run(["open", *_flags(background), "--", _target(target)])
