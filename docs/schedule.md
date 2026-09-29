@@ -7,7 +7,7 @@ in, with launchd: the Mac's cron, without writing its XML by hand.
 import macos
 
 macos.schedule.add("backup", "~/scripts/backup.py", every=3600)       # every hour
-macos.schedule.add("report", "report.py", at="09:00")                  # every day at 9
+macos.schedule.add("report", "report.py", at="09:00")                 # every day at 9
 macos.schedule.add("sync", "sync.py", at="18:30", weekdays=["mon", "fri"])
 macos.schedule.add("hello", "hello.py", at_login=True)
 ```
@@ -47,9 +47,9 @@ for job in macos.schedule.jobs():
     print(job.name, job.every or job.at, job.last_exit_status)
 
 job = macos.schedule.get("backup")
-print(job.log.read_text())       # what the script printed, and its errors
+print(job.log.read_text())         # what the script printed, and its errors
 
-macos.schedule.run_now("backup")  # run it once now, besides its schedule
+macos.schedule.run_now("backup")   # run it once now, besides its schedule
 macos.schedule.remove("backup")
 ```
 

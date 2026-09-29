@@ -37,6 +37,7 @@ def log(event):
 
 for name in ("app_launched", "app_quit"):
     macos.events.on(name, log)
+
 macos.events.run()
 ```
 

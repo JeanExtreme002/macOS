@@ -41,6 +41,7 @@ macos.shortcuts.run("Translate", input="Olá")        # 'Hello'
 macos.music.now_playing()                            # Track(title='Imagine', artist='John Lennon', ...)
 
 macos.browser.current_tab()                          # Tab(title='pymacos', url='https://github.com/...', ...)
+
 macos.events.on("wake", lambda event: macos.say("Welcome back"))
 macos.schedule.add("backup", "backup.py", every=3600)
 ```

@@ -58,7 +58,9 @@ its result as text:
 
 ```python
 macos.browser.run_js("document.title")
-links = json.loads(macos.browser.run_js("JSON.stringify([...document.links].map(a => a.href))"))
+
+js_code = "JSON.stringify([...document.links].map(a => a.href))"
+links = json.loads(macos.browser.run_js(js_code))
 ```
 
 The browser must allow it, once:
