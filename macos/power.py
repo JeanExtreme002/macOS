@@ -24,7 +24,7 @@ from functools import lru_cache
 from typing import Dict, Iterator, Optional, Tuple
 
 from . import _cf, _objc
-from ._system import framework, run
+from ._system import framework, run as _run
 from .errors import MacOSError
 
 __all__ = ["Battery", "battery", "low_power_mode", "keep_awake", "sleep", "sleep_display"]
@@ -197,7 +197,7 @@ def keep_awake(*, display: bool = False, reason: str = "pymacos keep_awake") -> 
 
 def sleep() -> None:
     """Put the Mac to sleep right away, like  › Sleep."""
-    run(["pmset", "sleepnow"])
+    _run(["pmset", "sleepnow"])
 
 
 def sleep_display() -> None:
@@ -207,4 +207,4 @@ def sleep_display() -> None:
     With *Require password after screen saver begins or display is turned off*
     set to *Immediately* (the default), this also locks the screen.
     """
-    run(["pmset", "displaysleepnow"])
+    _run(["pmset", "displaysleepnow"])

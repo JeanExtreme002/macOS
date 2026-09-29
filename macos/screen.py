@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 from . import _cf, _objc
-from ._system import framework, private_framework, run
+from ._system import framework, private_framework, run as _run
 from .errors import MacOSError, NotSupportedError, PermissionDeniedError
 
 __all__ = [
@@ -132,7 +132,7 @@ def screenshot(
     args.append(str(target))
 
     try:
-        run(args)
+        _run(args)
     except BaseException:
         if path is None:
             target.unlink(missing_ok=True)
@@ -331,7 +331,7 @@ def start_screensaver() -> None:
     If *Require password after screen saver begins* is on (System Settings ›
     Lock Screen), this also locks the Mac once the password delay passes.
     """
-    run(["open", "-a", "ScreenSaverEngine"])
+    _run(["open", "-a", "ScreenSaverEngine"])
 
 
 @lru_cache(maxsize=None)
@@ -595,7 +595,7 @@ def record(
     if clicks:
         args.append("-k")
     args.append(str(target))
-    run(args)
+    _run(args)
     if not target.exists():
         raise MacOSError("the screen recording wasn't saved")
     return target

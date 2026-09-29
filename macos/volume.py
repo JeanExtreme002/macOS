@@ -17,7 +17,7 @@ permission. They act on the current output device, like the volume keys.
 
 from typing import Optional
 
-from ._system import run
+from ._system import run as _run
 
 __all__ = ["get", "set", "mute", "unmute", "is_muted"]
 
@@ -25,7 +25,7 @@ __all__ = ["get", "set", "mute", "unmute", "is_muted"]
 def _setting(name: str) -> Optional[str]:
     # "missing value" when the output device has no volume control (e.g. some
     # HDMI and USB audio devices).
-    value = run(["osascript", "-e", "{} of (get volume settings)".format(name)]).strip()
+    value = _run(["osascript", "-e", "{} of (get volume settings)".format(name)]).strip()
     return None if value == "missing value" else value
 
 
@@ -41,17 +41,17 @@ def set(level: int) -> None:
         raise TypeError("the volume must be an int from 0 to 100, not {!r}".format(level))
     if not 0 <= level <= 100:
         raise ValueError("the volume must be from 0 to 100, not {}".format(level))
-    run(["osascript", "-e", "set volume output volume {}".format(level)])
+    _run(["osascript", "-e", "set volume output volume {}".format(level)])
 
 
 def mute() -> None:
     """Mute the output, keeping the volume level for when it's unmuted."""
-    run(["osascript", "-e", "set volume output muted true"])
+    _run(["osascript", "-e", "set volume output muted true"])
 
 
 def unmute() -> None:
     """Unmute the output."""
-    run(["osascript", "-e", "set volume output muted false"])
+    _run(["osascript", "-e", "set volume output muted false"])
 
 
 def is_muted() -> Optional[bool]:

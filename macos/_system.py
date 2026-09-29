@@ -11,7 +11,7 @@ import sys
 from functools import lru_cache
 from typing import Optional, Sequence
 
-from .errors import CommandError, NotSupportedError
+from .errors import CommandError, NotSupportedError, PermissionDeniedError
 
 
 def require_macos() -> None:
@@ -38,6 +38,25 @@ def run(args: Sequence[str], *, input: Optional[str] = None) -> str:
     if result.returncode != 0:
         raise CommandError(args, result.returncode, result.stderr)
     return result.stdout
+
+
+def applescript(app: str, script: str, *args: str) -> str:
+    """
+    Run an AppleScript that controls ``app``, and return its output.
+
+    ``args`` reach the script's ``on run argv`` handler as text, never
+    pasted into the source, even when they start with ``-``. A missing Automation permission raises
+    :class:`PermissionDeniedError`, saying where to allow it.
+    """
+    try:
+        return run(["osascript", "-e", script, *(["--", *args] if args else [])])
+    except CommandError as error:
+        if "-1743" in error.stderr:  # errAEEventNotPermitted
+            raise PermissionDeniedError(
+                "Automation permission is missing: allow the app running Python (your terminal or IDE) to control "
+                "{} in System Settings › Privacy & Security › Automation".format(app)
+            ) from None
+        raise
 
 
 @lru_cache(maxsize=None)

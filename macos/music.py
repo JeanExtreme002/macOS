@@ -20,8 +20,8 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from . import apps
-from ._system import run
-from .errors import CommandError, MacOSError, PermissionDeniedError
+from ._system import applescript
+from .errors import MacOSError
 
 __all__ = ["Track", "now_playing", "play", "pause", "play_pause", "next", "previous", "volume", "set_volume", "seek"]
 
@@ -47,15 +47,7 @@ class Track:
 
 
 def _osascript(app: str, script: str) -> str:
-    try:
-        return run(["osascript", "-e", script])
-    except CommandError as error:
-        if "-1743" in error.stderr:  # errAEEventNotPermitted
-            raise PermissionDeniedError(
-                "Automation permission is missing: allow the app running Python (your terminal or IDE) to control "
-                "{} in System Settings › Privacy & Security › Automation".format(app)
-            ) from None
-        raise
+    return applescript(app, script)
 
 
 def _running() -> List[str]:

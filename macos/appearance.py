@@ -20,7 +20,7 @@ import time
 from typing import Optional
 
 from . import _cf, _objc
-from ._system import framework, run
+from ._system import framework, run as _run
 from .errors import CommandError, PermissionDeniedError
 
 __all__ = ["is_dark", "mode", "set_mode", "is_auto", "accent_color", "wait_for_change"]
@@ -61,7 +61,7 @@ def set_mode(mode: str) -> None:
         "true" if mode == "dark" else "false"
     )
     try:
-        run(["osascript", "-e", script])
+        _run(["osascript", "-e", script])
     except CommandError as error:
         if "-1743" in error.stderr:  # errAEEventNotPermitted
             raise PermissionDeniedError(

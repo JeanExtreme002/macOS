@@ -86,3 +86,37 @@ def test_finder_aliases(tmp_path):
     (folder / "moved.pdf").unlink()
     with pytest.raises(FileNotFoundError, match="original of the alias"):
         macos.finder.resolve_alias(alias)
+
+
+def test_watch_reports_changes_as_they_happen(tmp_path):
+    import threading
+    import time
+
+    folder = tmp_path / "watched"
+    folder.mkdir()
+    (folder / "sub").mkdir()
+
+    def work():
+        time.sleep(0.5)
+        (folder / "new.txt").write_text("x")
+        time.sleep(0.3)
+        (folder / "new.txt").rename(folder / "renamed.txt")
+        time.sleep(0.3)
+        (folder / "sub" / "deep.txt").write_text("x")
+        time.sleep(0.3)
+        (folder / "renamed.txt").unlink()
+
+    threading.Thread(target=work).start()
+    seen = {}
+    for event in macos.finder.watch(folder, timeout=4):
+        seen.setdefault(event.path.name, []).append(event.kind)
+        if "deleted" in seen.get("renamed.txt", []):
+            break
+
+    assert seen["new.txt"][0] == "created" and seen["new.txt"][-1] == "deleted"
+    assert seen["renamed.txt"][0] == "renamed" and seen["renamed.txt"][-1] == "deleted"
+    assert seen["deep.txt"][0] == "created"
+
+    threading.Timer(0.5, lambda: (folder / "sub" / "ignored.txt").write_text("x")).start()
+    assert macos.finder.wait_for_change(folder, recursive=False, timeout=1.5) is None
+    assert macos.finder.wait_for_change(folder, timeout=0.3) is None

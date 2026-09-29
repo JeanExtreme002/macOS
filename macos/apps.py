@@ -25,7 +25,7 @@ from typing import Iterator, List, Optional, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSInteger, NSUInteger
-from ._system import framework, require_macos, run
+from ._system import framework, require_macos, run as _run
 from .errors import AppNotFoundError, CommandError
 
 __all__ = ["App", "running", "frontmost", "get", "open", "open_with", "default_for", "default_browser"]
@@ -141,7 +141,7 @@ class App:
             # returns YES and nothing happens. LaunchServices (`open`) has no
             # such restriction.
             self._handle()  # raise AppNotFoundError if it has quit
-            run(["open", "-a", self.path])
+            _run(["open", "-a", self.path])
         else:
             with _objc.autorelease_pool():
                 _objc.send(
@@ -323,7 +323,7 @@ def open(name: str, *, background: bool = False, timeout: float = 10.0) -> App:
     bundle_id = _bundle_id(path)
 
     try:
-        run(["open", *(["-g"] if background else []), "-a", path])
+        _run(["open", *(["-g"] if background else []), "-a", path])
     except CommandError as error:
         raise AppNotFoundError("unable to launch {!r}: {}".format(name, error.stderr or error)) from error
 
@@ -357,7 +357,7 @@ def open_with(target: Union[str, "os.PathLike[str]"], app: str, *, background: b
 
     resolved = _target(target)
     try:
-        run(["open", *_flags(background), "-a", _locate(app), "--", resolved])
+        _run(["open", *_flags(background), "-a", _locate(app), "--", resolved])
     except CommandError as error:
         raise AppNotFoundError("{!r} could not open {}: {}".format(app, resolved, error.stderr or error)) from error
 

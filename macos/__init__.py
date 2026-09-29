@@ -5,9 +5,9 @@ pymacos (imported as ``macos``) — a Pythonic interface to macOS.
 
 Notifications, clipboard, webcam and microphone, keyboard and mouse, windows,
 hotkeys, appearance, apps, Keychain, speech, screenshots, power, Shortcuts,
-Finder, volume, Spotlight, dialogs, system info, Bluetooth, music, OCR,
-document scanning, images, videos, PDFs and language detection in one import,
-with no dependencies::
+Finder, volume, Spotlight, dialogs, system info, Bluetooth, music, browser
+tabs, system events, scheduled scripts, OCR, document scanning, images,
+videos, PDFs and language detection in one import, with no dependencies::
 
     import macos
 
@@ -40,6 +40,10 @@ with no dependencies::
     macos.hotkeys.wait("ctrl+option+s")
     macos.video.convert("screen.mov", "screen.mp4", quality="medium")
     macos.music.now_playing()
+    macos.browser.current_tab()
+    macos.events.wait("wake")
+    macos.schedule.add("backup", "backup.py", every=3600)
+    macos.finder.watch("~/Downloads")
 
 The package imports on any platform (so it can sit in cross-platform code and
 docs builds), but its functions raise :class:`NotSupportedError` outside macOS.
@@ -52,9 +56,11 @@ from . import (
     apps,
     audio,
     bluetooth,
+    browser,
     camera,
     clipboard,
     dialog,
+    events,
     finder,
     hotkeys,
     image,
@@ -67,6 +73,7 @@ from . import (
     notifications,
     pdf,
     power,
+    schedule,
     screen,
     shortcuts,
     sound,
@@ -97,9 +104,11 @@ __all__ = [
     "apps",
     "audio",
     "bluetooth",
+    "browser",
     "camera",
     "clipboard",
     "dialog",
+    "events",
     "finder",
     "hotkeys",
     "image",
@@ -112,6 +121,7 @@ __all__ = [
     "notifications",
     "pdf",
     "power",
+    "schedule",
     "screen",
     "shortcuts",
     "sound",

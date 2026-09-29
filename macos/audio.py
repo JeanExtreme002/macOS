@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
 from . import _capture, _cf, _media, _objc
-from ._system import framework, run
+from ._system import framework, run as _run
 from .errors import MacOSError, NotSupportedError
 
 __all__ = [
@@ -603,7 +603,7 @@ def _afconvert(source: Path, target: Path, options: List[str]) -> Path:
     handle, name = tempfile.mkstemp(dir=str(target.parent), suffix=target.suffix)
     os.close(handle)
     try:
-        run(["afconvert", *options, str(source), name])
+        _run(["afconvert", *options, str(source), name])
         os.replace(name, str(target))
     finally:
         if os.path.exists(name):
@@ -658,7 +658,7 @@ def _decode(path: Path, rate: Optional[int] = None, channels: Optional[int] = No
         options = ["-f", "WAVE", "-d", "LEI16" + ("@{}".format(rate) if rate else "")]
         if channels:
             options += ["-c", str(channels)]
-        run(["afconvert", *options, str(path), str(decoded)])
+        _run(["afconvert", *options, str(path), str(decoded)])
         count, frequency, data = _read_wav(decoded.read_bytes())
         samples = array.array("h", data)
     if sys.byteorder == "big":

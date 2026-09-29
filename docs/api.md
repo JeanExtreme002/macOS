@@ -130,6 +130,53 @@ explain how to use each part.
 .. autofunction:: macos.hotkeys.request_permission
 ```
 
+## macos.events
+
+```{eval-rst}
+.. module:: macos.events
+
+.. autofunction:: macos.events.on
+.. autofunction:: macos.events.off
+.. autofunction:: macos.events.run
+.. autofunction:: macos.events.stop
+.. autofunction:: macos.events.wait
+.. autoclass:: macos.events.Event
+.. autoclass:: macos.events.Handler
+   :members: remove
+.. autodata:: macos.events.NAMES
+   :no-value:
+```
+
+## macos.schedule
+
+```{eval-rst}
+.. module:: macos.schedule
+
+.. autofunction:: macos.schedule.add
+.. autofunction:: macos.schedule.remove
+.. autofunction:: macos.schedule.jobs
+.. autofunction:: macos.schedule.get
+.. autofunction:: macos.schedule.run_now
+.. autofunction:: macos.schedule.pause
+.. autofunction:: macos.schedule.resume
+.. autoclass:: macos.schedule.Job
+```
+
+## macos.browser
+
+```{eval-rst}
+.. module:: macos.browser
+
+.. autofunction:: macos.browser.tabs
+.. autofunction:: macos.browser.current_tab
+.. autofunction:: macos.browser.open
+.. autofunction:: macos.browser.run_js
+.. autoclass:: macos.browser.Tab
+   :members: activate, close, reload, go
+.. autodata:: macos.browser.BROWSERS
+   :no-value:
+```
+
 ## macos.music
 
 ```{eval-rst}
@@ -204,6 +251,9 @@ explain how to use each part.
 .. autofunction:: macos.finder.is_alias
 .. autofunction:: macos.finder.resolve_alias
 .. autofunction:: macos.finder.make_alias
+.. autofunction:: macos.finder.watch
+.. autofunction:: macos.finder.wait_for_change
+.. autoclass:: macos.finder.Event
 ```
 
 ## macos.volume

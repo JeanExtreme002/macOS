@@ -77,6 +77,30 @@ Path("preview.png").write_bytes(macos.finder.thumbnail("report.pdf", size=512))
 
 `size` is the largest side, in pixels: 256 by default, up to 4096.
 
+## Watching a folder
+
+{func}`~macos.finder.watch` yields an {class}`~macos.finder.Event` each time
+something changes in a folder, as it happens, with no polling:
+
+```python
+for event in macos.finder.watch("~/Downloads"):
+    if event.kind == "created" and event.path.suffix == ".pdf":
+        macos.notify(event.path.name, title="New PDF")
+```
+
+`event.kind` is `'created'`, `'modified'`, `'deleted'` or `'renamed'` (the new
+name of a moved or renamed item), and `event.is_dir` tells folders apart.
+Subfolders are watched too, unless `recursive=False`. It goes on until you
+`break` out of the loop, or `timeout` seconds pass. To wait for one change,
+such as a download finishing:
+
+```python
+event = macos.finder.wait_for_change("~/Downloads", timeout=60)
+```
+
+It uses FSEvents, like Spotlight and Time Machine. Paths come with symbolic
+links resolved (`/private/tmp/...` for `/tmp/...`).
+
 ## Reference
 
 - {func}`macos.finder.reveal`
@@ -89,3 +113,6 @@ Path("preview.png").write_bytes(macos.finder.thumbnail("report.pdf", size=512))
 - {func}`macos.finder.is_alias`
 - {func}`macos.finder.resolve_alias`
 - {func}`macos.finder.make_alias`
+- {func}`macos.finder.watch`
+- {func}`macos.finder.wait_for_change`
+- {class}`macos.finder.Event`
