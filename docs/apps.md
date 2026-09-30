@@ -221,7 +221,10 @@ macos.apps.uninstall("Slack")
 
 The files are found by the app's bundle ID (in Application Support, Caches,
 Containers, Preferences, Saved Application State, Logs, and the like) and,
-in Application Support, Caches and Logs, by its name. Everything goes to the
+in Application Support, Caches and Logs, by its name, unless another installed
+app has that name too: its folder may be that app's. Files named after the ID
+of another installed app are left alone as well, such as Chrome Canary's
+(`com.google.Chrome.canary`) when uninstalling Chrome. Everything goes to the
 Trash, so *Put Back* undoes it. Only your own files are touched: `/Library`'s
 need an administrator.
 

@@ -181,3 +181,21 @@ def test_uninstall_finds_the_leftovers_by_bundle_id_and_name(tmp_path):
     found = _leftovers(library, "com.example.Chat", ["Chat"], others=["com.example.Chat.ShipIt"])
     assert library / "Caches/com.example.Chat.ShipIt" not in found and library / "Caches/com.example.Chat" in found
     assert _leftovers(library, None, ["Nothing"]) == []
+
+
+def test_uninstall_leaves_the_names_and_ids_of_other_apps_alone():
+    from macos.apps import InstalledApp, _claims
+
+    chat = InstalledApp(name="Chat", bundle_id="com.example.Chat", version="1", path=Path("/Applications/Chat.app"))
+    everything = [
+        chat,
+        InstalledApp(name="chat", bundle_id="org.other.chat", version="2", path=Path("/Applications/Other Chat.app")),
+        InstalledApp(name="Chat Helper", bundle_id="com.example.Chat.helper", version="1", path=Path("/Applications/H.app")),
+        InstalledApp(name="Chat", bundle_id="com.example.Chat", version="0.9", path=Path("/Users/me/Downloads/Chat.app")),
+    ]
+
+    names, others = _claims(chat, everything)
+
+    assert names == []  # another app is called "chat": its Application Support folder may be that one's
+    assert others == ["com.example.Chat.helper"]  # an old copy of the same app isn't another app
+    assert _claims(chat, [chat]) == (["Chat"], [])

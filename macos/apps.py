@@ -27,7 +27,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from functools import lru_cache
-from typing import Iterator, List, Optional, Sequence, Union
+from typing import Iterator, List, Optional, Sequence, Tuple, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSInteger, NSUInteger
@@ -873,6 +873,20 @@ def _leftovers(library: Path, bundle_id: Optional[str], names: Sequence[str], ot
     return list(dict.fromkeys(path for path in found if path.name))
 
 
+def _claims(app: InstalledApp, everything: Sequence[InstalledApp]) -> Tuple[List[str], List[str]]:
+    """
+    The names the app's files may go by, and the bundle IDs of the other apps that start with its own.
+
+    A name another installed app also has is left out: its folder may be that app's.
+    """
+    others = [other for other in everything if other.path != app.path and other.bundle_id != app.bundle_id]
+    taken = {name.casefold() for other in others for name in (other.name, other.path.stem)}
+    names = sorted(name for name in {app.name, app.path.stem} if name.casefold() not in taken)
+    prefix = "{}.".format(app.bundle_id)
+    ids = sorted({other.bundle_id for other in others if other.bundle_id and other.bundle_id.startswith(prefix)})
+    return names, ids
+
+
 def uninstall(name: str, *, dry_run: bool = False) -> List[Path]:
     """
     Uninstall an app: move it to the Trash, with the files it left in your
@@ -887,7 +901,7 @@ def uninstall(name: str, *, dry_run: bool = False) -> List[Path]:
     ``name`` is an app name, a bundle ID or a path. ``dry_run=True`` only
     returns what would go, without moving anything. The files are found by
     the app's bundle ID and, in Application Support, Caches and Logs, by its
-    name. Everything goes to the Trash, so *Put Back* undoes it; only this
+    name, unless another installed app has that name too. Everything goes to the Trash, so *Put Back* undoes it; only this
     user's files are touched, not ``/Library``'s, which need an administrator.
 
     Raises :class:`~macos.MacOSError` for an app that's running (quit it
@@ -904,9 +918,7 @@ def uninstall(name: str, *, dry_run: bool = False) -> List[Path]:
         raise AppNotFoundError("{} isn't an app".format(path))
     if path.startswith(("/System/", "/usr/")):
         raise MacOSError("{} comes with macOS and can't be uninstalled".format(app.name))
-    names = sorted({app.name, Path(path).stem})
-    prefix = "{}.".format(app.bundle_id)
-    others = sorted({other.bundle_id for other in installed() if other.bundle_id and other.bundle_id.startswith(prefix)})
+    names, others = _claims(app, installed())
     found = [Path(path), *_leftovers(Path.home() / "Library", app.bundle_id, names, others)]
     if dry_run:
         return found
