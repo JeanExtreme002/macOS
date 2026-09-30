@@ -212,3 +212,16 @@ def test_images_in_calibrated_colors_and_inverted(tmp_path):
     assert [path.name for path in found] == ["page1-1.png", "page1-2.png"]
     assert macos.image.dominant_colors(found[0], 1) == ["#ffffff"]
     assert macos.image.dominant_colors(found[1], 1) == ["#c81e1e"]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads PDFs with CoreGraphics")
+def test_images_come_in_name_order(tmp_path):
+    from tests.helpers import pdf_with_images
+
+    # Twelve pictures, each redder than the last, named Im0 to Im11: the dictionary's own order isn't fixed.
+    document = tmp_path / "twelve.pdf"
+    document.write_bytes(pdf_with_images([("/DeviceRGB", None, 2, 2, bytes([index * 20, 0, 0]) * 4) for index in range(12)]))
+    found = macos.pdf.images(document, tmp_path / "out")
+    assert [path.name for path in found] == ["page1-{}.png".format(number) for number in range(1, 13)]
+    assert [int(macos.image.dominant_colors(path, 1)[0][1:3], 16) for path in found] == [index * 20 for index in range(12)]
+    assert macos.pdf._natural(b"Im10") > macos.pdf._natural(b"Im2")

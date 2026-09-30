@@ -19,6 +19,7 @@ Preview.
 import ctypes
 import math
 import os
+import re
 import shutil
 import tempfile
 from contextlib import contextmanager
@@ -1346,6 +1347,11 @@ def _pdf_objects() -> ctypes.CDLL:
     return graphics
 
 
+def _natural(name: bytes) -> List[Union[int, str]]:
+    """A key sorting names as people do: ``Im2`` before ``Im10``."""
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name.decode("latin-1"))]
+
+
 def _components(graphics: ctypes.CDLL, info: int) -> Optional[int]:
     """How many color components an image has, for the color spaces it can rebuild; ``None`` for the others."""
     name = ctypes.c_char_p()
@@ -1490,16 +1496,18 @@ def images(
                     return
                 if not graphics.CGPDFDictionaryGetDictionary(resources, b"XObject", ctypes.byref(objects)):
                     return
-                streams: List[int] = []
+                named: List[Tuple[bytes, int]] = []
 
                 def visit(key: bytes, value: int, info: int) -> None:
                     stream = ctypes.c_void_p()
                     if graphics.CGPDFObjectGetValue(value, _STREAM, ctypes.byref(stream)) and stream.value:
-                        streams.append(stream.value)
+                        named.append((key, stream.value))
 
                 visitor = _Visitor(visit)
                 graphics.CGPDFDictionaryApplyFunction(objects, visitor, None)
-                for stream in streams:
+                # The dictionary's own order isn't fixed: go by name, naturally (Im2 before Im10), the same on any Mac.
+                named.sort(key=lambda item: _natural(item[0]))
+                for _, stream in named:
                     if stream in seen:
                         continue
                     seen.add(stream)
@@ -1512,10 +1520,12 @@ def images(
                         collect(info)  # a group of drawings, which may hold pictures of its own
 
             collect(graphics.CGPDFPageGetDictionary(graphics.CGPDFDocumentGetPage(document, number)))
-            for index, stream in enumerate(found, start=1):
-                written = _save_image(graphics, stream, target / "page{}-{}".format(number, index))
+            index = 0
+            for stream in found:
+                written = _save_image(graphics, stream, target / "page{}-{}".format(number, index + 1))
                 if written:
                     saved.append(written)
+                    index += 1  # numbered by the pictures saved: no gaps for the ones skipped
     finally:
         graphics.CGPDFDocumentRelease(document)
     return saved
