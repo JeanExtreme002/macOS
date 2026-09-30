@@ -52,6 +52,11 @@ def test_tile_grid():
     assert _grid(2, area, 1, 10) == [(10, 35, 1180, 385), (10, 430, 1180, 385)]  # gaps around and between
     assert _grid(2, area, 5, 0) == _grid(2, area, None, 0)  # no more columns than windows
     assert _grid(0, area, None, 0) == []
+    # Odd sizes: the rounded frames touch and end at the area's edge, never past it.
+    frames = _grid(3, (0, 0, 1003, 801), 3, 0)
+    assert [x + width for x, _, width, _ in frames] == [334, 669, 1003]
+    assert [x for x, _, _, _ in frames] == [0, 334, 669]
+    assert _grid(2, (0, 0, 1003, 801), 1, 0)[-1][1] + _grid(2, (0, 0, 1003, 801), 1, 0)[-1][3] == 801
 
 
 class _FakeWindow:
@@ -89,3 +94,21 @@ def test_tile_keeps_each_display_and_the_order(monkeypatch):
         windows.tile([left], display=3)
     with pytest.raises(ValueError, match="columns must be at least 1"):
         windows.tile([left], columns=0)
+
+
+def test_tile_all_ignores_an_app_that_quits(monkeypatch):
+    from macos import windows
+
+    class Quitting:
+        pid = 1
+
+        @property
+        def is_hidden(self):
+            raise macos.AppNotFoundError("gone")
+
+    monkeypatch.setattr(windows.apps, "running", lambda include_background=False: [Quitting()])
+    monkeypatch.setattr(windows, "list", lambda app=None, title=None: [])
+    tiled = []
+    monkeypatch.setattr(windows, "tile", lambda chosen, **options: tiled.append(chosen))
+
+    assert windows.tile_all() == [] and tiled == [[]]

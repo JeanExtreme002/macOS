@@ -685,7 +685,15 @@ def _grid(
         top = y + gap + row * (height_each + gap)
         for column in range(in_row):
             left = x + gap + column * (width_each + gap)
-            frames.append((round(left), round(top), round(width_each), round(height_each)))
+            # Round the edges, not the sizes: rounding both could push the last window past the area.
+            frames.append(
+                (
+                    round(left),
+                    round(top),
+                    round(left + width_each) - round(left),
+                    round(top + height_each) - round(top),
+                )
+            )
     return frames
 
 
@@ -750,7 +758,13 @@ def tile_all(
     app's, as in :func:`list`; ``display``, ``columns`` and ``gap`` work as
     in :func:`tile`.
     """
-    hidden = {running.pid for running in apps.running(include_background=True) if running.is_hidden}
+    hidden = set()
+    for running in apps.running(include_background=True):
+        try:
+            if running.is_hidden:
+                hidden.add(running.pid)
+        except MacOSError:
+            continue  # quit meanwhile
     chosen = []
     for window in list(app):
         try:
