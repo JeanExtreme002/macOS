@@ -341,3 +341,29 @@ def test_redact_keeps_the_other_annotations_in_the_picture(tmp_path):
 
     seen = macos.vision.text(macos.pdf.render(output, 1, size=1600))
     assert "APPROVED" in seen and "Signed by" in seen and "Souza" not in seen
+
+
+def test_redact_removes_hidden_text_and_counts_every_match(tmp_path, monkeypatch):
+    from macos import pdf
+    from tests.helpers import pdf_with_text
+
+    # Invisible text, as OCR adds: still text to extract, so it must go.
+    source = tmp_path / "hidden.pdf"
+    source.write_bytes(pdf_with_text([("Visible line", 72, 700), ("Ana Souza", 72, 600)], invisible=[1]))
+    assert "Ana Souza" in macos.pdf.text(source)
+    done = macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf")
+    assert done.pages == {1: 1} and b"Souza" not in _raw_text(done.path)
+
+    # A match with no box to draw still has its page redrawn: that's what removes the text.
+    found = pdf._redactions
+    monkeypatch.setattr(pdf, "_redactions", lambda *args: (found(*args)[0], []))
+    done = macos.pdf.redact(source, "Ana Souza", tmp_path / "boxless.pdf")
+    assert done.pages == {1: 1} and b"Souza" not in _raw_text(done.path)
+    monkeypatch.undo()
+
+    # A comment holding a target twice counts twice.
+    plain = tmp_path / "plain.pdf"
+    plain.write_bytes(pdf_with_text([("Signed by Ana Souza", 72, 700)]))
+    noted = macos.pdf.add_text(plain, "Ana Souza, Ana Souza", tmp_path / "noted.pdf", page=1, position=(72, 400))
+    done = macos.pdf.redact(noted, "Ana Souza", tmp_path / "noted-out.pdf")
+    assert done.matches == {"Ana Souza": 3} and done.pages == {1: 3}

@@ -299,7 +299,8 @@ What else in the file holds a match goes too:
 
 When a target isn't found at all, {func}`~macos.pdf.redact` raises
 {class}`ValueError` and writes nothing: a redaction that missed would look
-like it worked.
+like it worked. A match found in the text but that can't be placed on the
+page raises {class}`~macos.MacOSError`, writing nothing too.
 
 ```{warning}
 It finds only what the PDF holds as text. **Look over the result before

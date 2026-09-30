@@ -124,14 +124,18 @@ def pdf_with_images(images):
     return bytes(out)
 
 
-def pdf_with_text(lines, rotate=0, crop=None):
+def pdf_with_text(lines, rotate=0, crop=None, invisible=()):
     """
     A one-page Letter PDF, written by hand, with each ``(text, x, y)`` in 18-point Helvetica.
 
     ``crop`` is a CropBox, ``(left, bottom, right, top)``: the part of the page that shows.
+    The lines whose index is in ``invisible`` are drawn invisibly, as OCR adds its text.
     """
     cropped = " /CropBox [{} {} {} {}]".format(*crop) if crop else ""
-    drawing = " ".join("BT /F1 18 Tf {} {} Td ({}) Tj ET".format(x, y, text) for text, x, y in lines)
+    drawing = " ".join(
+        "BT {}/F1 18 Tf {} {} Td ({}) Tj ET".format("3 Tr " if index in invisible else "", x, y, text)
+        for index, (text, x, y) in enumerate(lines)
+    )
     objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",

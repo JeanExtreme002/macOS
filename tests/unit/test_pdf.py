@@ -296,6 +296,10 @@ def test_redact_targets():
         "Contrato de " + "█" * 9 + ", CPF " + "█" * 14
     )
     assert counts == [1, 1]
+    # Overlapping targets: each is searched in the original, so the longer one is covered whole.
+    counts = [0, 0]
+    both = _patterns(["Ana", "Ana Souza"])
+    assert _scrub("Report on Ana Souza", both, counts) == "Report on " + "█" * 9 and counts == [1, 1]
     assert _patterns("a.b")[0][1].search("a.b") and not _patterns("a.b")[0][1].search("axb")  # literal, not a pattern
     assert _utf16("💡 CPF", 2) == 3  # PDFKit counts an emoji as two
 

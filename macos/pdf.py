@@ -1685,19 +1685,31 @@ def _seen_box(page: int, box: Any) -> Tuple[float, ...]:
     return _seen(own, bounds.size.width, bounds.size.height, rotation)
 
 
-def _redactions(page: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], counts: List[int]) -> List[Tuple[float, ...]]:
-    """The boxes to black out on ``page``, as it's seen: its matching text, and annotations that hold a match."""
+def _redactions(
+    page: int, number: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], counts: List[int]
+) -> Tuple[int, List[Tuple[float, ...]]]:
+    """
+    How many matches ``page`` holds, and the boxes to black out, as it's seen: its matching text, and the
+    annotations that hold a match.
+
+    A match may have no box (text drawn hidden or at zero size): it still counts, so its page is redrawn
+    and the text goes. One whose place PDFKit can't tell raises: it would stay on show.
+    """
     boxes = []
+    found = 0
     content = _objc.pystring(_objc.send(page, "string")) or ""
-    for index, (_, pattern) in enumerate(patterns):
+    for index, (label, pattern) in enumerate(patterns):
         for match in pattern.finditer(content):
             if not match.group():
                 continue
             start, end = _utf16(content, match.start()), _utf16(content, match.end())
             selection = _objc.send(page, "selectionForRange:", _NSRange(start, end - start), argtypes=(_NSRange,))
             if not selection:
-                continue
+                raise MacOSError(
+                    "{!r} is on page {}, but where it's drawn can't be told, so nothing was written".format(label, number)
+                )
             counts[index] += 1
+            found += 1
             # Line by line: a match broken over two lines would otherwise black out the box around both.
             for line in _objc.nsarray(_objc.send(selection, "selectionsByLine")):
                 box = _objc.send(line, "boundsForPage:", page, argtypes=(_objc.id,), restype=_objc.CGRect)
@@ -1707,13 +1719,16 @@ def _redactions(page: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], co
         held = " ".join(
             _objc.pystring(_objc.send(annotation, getter)) or "" for getter in ("contents", "widgetStringValue")
         )
-        hits = [index for index, (_, pattern) in enumerate(patterns) if pattern.search(held)]
-        for index in hits:
-            counts[index] += 1
+        hits = 0
+        for index, (_, pattern) in enumerate(patterns):
+            times = sum(1 for match in pattern.finditer(held) if match.group())
+            counts[index] += times
+            hits += times
         if hits:
+            found += hits
             box = _objc.send(annotation, "bounds", restype=_objc.CGRect)
-            boxes.append(_seen_box(page, box))
-    return boxes
+            boxes.append(_seen_box(page, box))  # the whole annotation: it goes, as part of the picture
+    return found, boxes
 
 
 def _flatten(document: int, number: int, boxes: Sequence[Tuple[float, ...]]) -> None:
@@ -1796,10 +1811,14 @@ def _flatten(document: int, number: int, boxes: Sequence[Tuple[float, ...]]) -> 
 
 
 def _scrub(text: str, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], counts: List[int]) -> str:
+    """``text`` with every match blocked out, each target searched in the original: overlaps are covered whole."""
+    hidden = [False] * len(text)
     for index, (_, pattern) in enumerate(patterns):
-        text, found = pattern.subn(lambda match: _BLOCK * len(match.group()), text)
-        counts[index] += found
-    return text
+        for match in pattern.finditer(text):
+            if match.group():
+                counts[index] += 1
+                hidden[match.start():match.end()] = [True] * (match.end() - match.start())
+    return "".join(_BLOCK if hide else character for character, hide in zip(text, hidden))
 
 
 def _scrub_metadata(document: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], counts: List[int]) -> None:
@@ -1884,7 +1903,8 @@ def redact(
     It returns a :class:`Redaction`: how many times each target was found,
     and on which pages. Raises :class:`ValueError`, writing nothing, when
     a target isn't found at all: a redaction that missed would look like
-    it worked.
+    it worked; and :class:`~macos.MacOSError`, also writing nothing, for a
+    match PDFKit finds in the text but can't place on the page.
 
     It finds only the text a PDF holds as text, so **look over the result
     before sharing it**: text in pictures (a scan, a screenshot, a logo),
@@ -1901,11 +1921,10 @@ def redact(
         flatten = {}
         per_page = {}
         for number in range(1, _count(document) + 1):
-            already = sum(counts)
-            boxes = _redactions(_page(document, number), patterns, counts)
-            if boxes:
+            found, boxes = _redactions(_page(document, number), number, patterns, counts)
+            if found:  # even without a box to draw: redrawing the page is what removes the text
                 flatten[number] = boxes
-                per_page[number] = sum(counts) - already
+                per_page[number] = found
         # In the document, not saved until every target is found: a miss writes nothing.
         _scrub_metadata(document, patterns, counts)
         root = _objc.send(document, "outlineRoot")
