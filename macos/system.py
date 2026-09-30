@@ -1398,9 +1398,15 @@ def _sockets(lib: ctypes.CDLL, pid: int) -> List[int]:
     size = lib.proc_pidinfo(pid, _PROC_PIDLISTFDS, 0, None, 0)
     if size <= 0:
         return []
-    entries = (_FDInfo * (size // ctypes.sizeof(_FDInfo) + 16))()
-    size = lib.proc_pidinfo(pid, _PROC_PIDLISTFDS, 0, entries, ctypes.sizeof(entries))
-    return [entry.fd for entry in entries[: max(size, 0) // ctypes.sizeof(_FDInfo)] if entry.type == _PROX_FDTYPE_SOCKET]
+    # Files can open between the sizing call and the real one: leave room, and retry when it came back full.
+    capacity = size // ctypes.sizeof(_FDInfo) + 16
+    while True:
+        entries = (_FDInfo * capacity)()
+        size = lib.proc_pidinfo(pid, _PROC_PIDLISTFDS, 0, entries, ctypes.sizeof(entries))
+        count = max(size, 0) // ctypes.sizeof(_FDInfo)
+        if count < capacity:
+            return [entry.fd for entry in entries[:count] if entry.type == _PROX_FDTYPE_SOCKET]
+        capacity *= 2
 
 
 def _address(raw: bytes, family: int) -> str:

@@ -17,6 +17,7 @@ requests an app makes in a short time: space out large batches.
 import ctypes
 import threading
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import quote, urlencode
 
@@ -60,8 +61,10 @@ class Place:
     """Such as ``'America/Sao_Paulo'``."""
 
 
-# One geocoding request at a time, as CLGeocoder allows.
+# One geocoding request at a time, as CLGeocoder allows; its answer lands in _answers.
 _lock = threading.Lock()
+_CANCELED = 10  # kCLErrorGeocodeCanceled: only a request that was canceled answers so
+_DRAIN = 5.0  # seconds to wait for a canceled request's answer, to discard it
 
 
 def _text(placemark: int, key: str) -> Optional[str]:
@@ -90,10 +93,19 @@ def _place(placemark: int) -> Place:
 
 
 Answer = Tuple[List[Place], Optional[Tuple[int, str]]]
+_answers: List[Answer] = []
 
 
-def _handler(answers: List[Answer]) -> int:
-    """A completion block, ``void (^)(NSArray<CLPlacemark *> *, NSError *)``, that files the answer in ``answers``."""
+def _answer(found: List[Place], failure: Optional[Tuple[int, str]]) -> None:
+    """File an answer for the request waiting, unless it's a canceled request's, which nobody waits for."""
+    if failure and failure[0] == _CANCELED:
+        return
+    _answers.append((found, failure))
+
+
+@lru_cache(maxsize=None)
+def _handler() -> int:
+    """The completion block, ``void (^)(NSArray<CLPlacemark *> *, NSError *)``, made once: blocks live for good."""
 
     def done(placemarks: Optional[int], error: Optional[int]) -> None:
         # Read everything now: the placemarks go away with the block's call.
@@ -102,7 +114,7 @@ def _handler(answers: List[Answer]) -> int:
         if error:
             code = int(_objc.send(error, "code", restype=ctypes.c_long))
             failure = (code, _objc.pystring(_objc.send(error, "localizedDescription")) or "")
-        answers.append((found, failure))
+        _answer(found, failure)
 
     return _objc.block(done, b"v@?@@", ctypes.c_void_p, ctypes.c_void_p)
 
@@ -115,19 +127,21 @@ def _frameworks() -> None:
 def _ask(selector: str, argument: int, timeout: float) -> List[Place]:
     if threading.current_thread() is not threading.main_thread():
         raise MacOSError("geocoding answers on the main thread: call it from there")
-    # Each request has its own block and answers: a canceled one's late answer lands in its
-    # own list, which nobody reads, and can't pass for the next request's.
-    answers: List[Answer] = []
     with _lock:
+        del _answers[:]
         geocoder = _objc.send(_objc.send(_objc.cls("CLGeocoder"), "alloc"), "init")
         try:
-            _objc.send(geocoder, selector, argument, _handler(answers), argtypes=(_objc.id, ctypes.c_void_p), restype=None)
-            if not _objc.run_until(lambda: bool(answers), timeout):
+            _objc.send(geocoder, selector, argument, _handler(), argtypes=(_objc.id, ctypes.c_void_p), restype=None)
+            if not _objc.run_until(lambda: bool(_answers), timeout):
+                # A request answers once, even canceled: wait for that answer here, so it can't
+                # pass for the next request's. A "canceled" one is dropped by _answer anyway.
                 _objc.send(geocoder, "cancelGeocode", restype=None)
+                _objc.run_until(lambda: bool(_answers), _DRAIN)
+                del _answers[:]
                 raise TimeoutError("Apple's geocoding service didn't answer within {} seconds".format(timeout))
         finally:
             _objc.send(geocoder, "release", restype=None)
-    found, failure = answers[0]
+        found, failure = _answers.pop()
     return _result(found, failure)
 
 

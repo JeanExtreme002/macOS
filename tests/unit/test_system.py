@@ -286,3 +286,26 @@ def test_port_checks():
         macos.system.port_owner(0)
     with pytest.raises(ValueError, match="protocol must be"):
         macos.system.port_owner(80, "sctp")
+
+
+def test_socket_list_retries_when_files_open_meanwhile():
+    system = macos.system
+    size = system.ctypes.sizeof(system._FDInfo)
+
+    class Lib:
+        """Has 40 descriptors, every other one a socket, though it said 1 when asked how many."""
+
+        calls = 0
+
+        def proc_pidinfo(self, pid, flavor, argument, buffer, buffer_size):
+            self.calls += 1
+            if buffer is None:
+                return size
+            capacity = buffer_size // size
+            for index in range(min(capacity, 40)):
+                buffer[index] = system._FDInfo(index, system._PROX_FDTYPE_SOCKET if index % 2 else 1)
+            return min(capacity, 40) * size
+
+    lib = Lib()
+    assert system._sockets(lib, 1) == list(range(1, 40, 2))
+    assert lib.calls > 2  # it came back full, and was asked again with more room

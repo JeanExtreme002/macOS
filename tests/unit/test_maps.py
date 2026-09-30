@@ -58,3 +58,11 @@ def test_open_and_directions(fake_run):
         maps.directions("Congonhas", by="bike")
     with pytest.raises(ValueError, match="must not be empty"):
         maps.open(" ")
+
+
+def test_a_canceled_requests_answer_is_dropped(monkeypatch):
+    monkeypatch.setattr(maps, "_answers", [])
+    maps._answer([], (10, "Canceled"))  # only a canceled request answers so: nobody waits for it
+    assert maps._answers == []
+    maps._answer([PLACE], None)
+    assert maps._answers == [([PLACE], None)]
