@@ -104,6 +104,19 @@ def test_screen_record_command(fake_run, monkeypatch, tmp_path):
     assert fake_run.args == ["screencapture", "-x", "-v", "-V2", "-R0,0,800,600", "-D2", "-g", "-k", str(target)]
 
 
+def test_screen_record_gives_up_on_a_stuck_screencapture(fake_run, monkeypatch, tmp_path):
+    import subprocess
+
+    def stuck(args, **kwargs):
+        assert kwargs["timeout"] == 62  # the recording's seconds, and a minute to save it
+        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
+    monkeypatch.setattr(_system.subprocess, "run", stuck)
+    monkeypatch.setattr(macos.screen, "has_permission", lambda: True)
+    with pytest.raises(macos.MacOSError, match="didn't finish recording"):
+        macos.screen.record(tmp_path / "clip.mov", 2)
+
+
 def test_screen_record_needs_the_permission(fake_run, monkeypatch, tmp_path):
     monkeypatch.setattr(macos.screen, "has_permission", lambda: False)
 

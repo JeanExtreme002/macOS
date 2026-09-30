@@ -60,7 +60,8 @@ upload speed, and its latency, against Apple's servers:
 result = macos.network.speed_test()
 result.download, result.upload   # (43.61, 39.42): megabits per second
 result.latency                   # 54.6 ms, idle
-result.loaded_latency            # 53.3 ms, while busy: how laggy calls get
+result.loaded_latency            # 1126.6 ms, while busy: how laggy calls get
+result.responsiveness            # 53.3: the same as a score, in round trips per minute (RPM)
 ```
 
 It takes 15 to 60 seconds and moves a few hundred megabytes: mind a

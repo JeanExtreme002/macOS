@@ -16,7 +16,13 @@ def test_speed_test(fake_run):
     result = network.speed_test(sequential=True)
     assert fake_run.args == ["networkQuality", "-c", "-s"]
     assert result == network.SpeedTest(
-        download=43.61, upload=39.42, latency=54.6, loaded_latency=53.3, interface="en0", server="brsao4-edge-bx-022.aaplimg.com"
+        download=43.61,  # bits per second, as networkQuality's own summary shows in Mbps
+        upload=39.42,
+        latency=54.6,
+        loaded_latency=1126.6,  # 60,000 ms / 53.3 RPM
+        responsiveness=53.3,
+        interface="en0",
+        server="brsao4-edge-bx-022.aaplimg.com",
     )
     fake_run.stdout = "not json"
     with pytest.raises(macos.MacOSError, match="isn't JSON"):
@@ -98,3 +104,29 @@ def test_gpu_and_disks():
     disks = system.disk_health()
     assert disks and all(disk.device.startswith("disk") and disk.size > 0 for disk in disks)
     assert all(disk.smart in ("verified", "failing", None) for disk in disks)
+
+
+def test_energy_usage_skips_a_pid_taken_by_a_new_process(monkeypatch):
+    from datetime import timedelta
+
+    readings = {  # pid: (before, after) as (nanojoules, bytes read, bytes written, start)
+        10: ((1_000_000_000, 0, 0, 5), (3_000_000_000, 4096, 0, 5)),  # the same process: 2 J over the second
+        11: ((1_000_000_000, 0, 0, 5), (9_000_000_000, 0, 0, 7)),  # quit, and a new one took pid 11
+    }
+    calls = {}
+
+    def rusage(lib, pid):
+        calls[pid] = calls.get(pid, -1) + 1
+        return readings[pid][calls[pid]]
+
+    clock = {"now": 0.0}
+    monkeypatch.setattr(system, "require_macos", lambda: None)
+    monkeypatch.setattr(system, "_libproc", lambda: (None, 1.0))
+    monkeypatch.setattr(system, "_rusage", rusage)
+    monkeypatch.setattr(macos.apps, "_pids", lambda: [10, 11])
+    monkeypatch.setattr(system.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(system.time, "sleep", lambda seconds: clock.update(now=clock["now"] + seconds))
+    monkeypatch.setattr(
+        system, "_read_process", lambda pid: system.Process(pid, "p{}".format(pid), None, "me", 1, None, 1, timedelta(0))
+    )
+    assert system.energy_usage(1.0) == [system.EnergyUsage(10, "p10", 2.0, 4096, 0)]

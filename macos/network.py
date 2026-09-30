@@ -136,6 +136,8 @@ class SpeedTest:
     """Round trip to the test server when idle, in milliseconds."""
     loaded_latency: Optional[float]
     """Round trip while the connection is busy, in milliseconds: how laggy calls and games get under load."""
+    responsiveness: Optional[float]
+    """The same under load as a score, in round trips per minute (RPM): the higher, the better."""
     interface: Optional[str]
     """The network interface measured, such as ``'en0'``."""
     server: Optional[str]
@@ -146,14 +148,15 @@ def _speed(result: Dict[str, Any]) -> SpeedTest:
     def megabits(key: str) -> float:
         return round(float(result.get(key) or 0) / 1e6, 2)
 
-    def milliseconds(key: str) -> Optional[float]:
-        return round(float(result[key]), 1) if result.get(key) is not None else None
-
+    idle = result.get("base_rtt")
+    # "responsiveness" is a score in round trips per minute, not a time: 60,000 ms / RPM.
+    rpm = float(result["responsiveness"]) if result.get("responsiveness") else None
     return SpeedTest(
-        download=megabits("dl_throughput"),
+        download=megabits("dl_throughput"),  # bits per second, as its text summary's Mbps show
         upload=megabits("ul_throughput"),
-        latency=milliseconds("base_rtt"),
-        loaded_latency=milliseconds("responsiveness"),
+        latency=round(float(idle), 1) if idle is not None else None,
+        loaded_latency=round(60000 / rpm, 1) if rpm else None,
+        responsiveness=round(rpm, 1) if rpm else None,
         interface=result.get("interface_name"),
         server=result.get("test_endpoint"),
     )
@@ -167,7 +170,8 @@ def speed_test(*, sequential: bool = False) -> SpeedTest:
 
         result = macos.network.speed_test()
         result.download, result.upload   # (43.61, 39.42): megabits per second
-        result.latency                   # 54.6 ms
+        result.latency                   # 54.6 ms, idle
+        result.loaded_latency            # 1126.6 ms while busy: calls lag
 
     It takes 15 to 60 seconds and moves a few hundred megabytes: mind a
     metered connection. ``sequential=True`` measures download and upload

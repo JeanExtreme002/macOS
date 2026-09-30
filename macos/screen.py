@@ -18,6 +18,7 @@ module checks the permission first and raises
 
 import ctypes
 import os
+import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
@@ -878,7 +879,10 @@ def record(
     if clicks:
         args.append("-k")
     args.append(str(target))
-    _run(args)
+    try:
+        _run(args, timeout=max(1, round(seconds)) + 60)  # screencapture has hung on some Macs, VMs among them
+    except subprocess.TimeoutExpired:
+        raise MacOSError("screencapture didn't finish recording; the recording wasn't saved") from None
     if not target.exists():
         raise MacOSError("the screen recording wasn't saved")
     return target

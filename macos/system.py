@@ -1761,6 +1761,7 @@ def network_usage(interval: Optional[float] = None) -> List[NetworkUsage]:
 _RUSAGE_INFO_V6 = 6
 _RUSAGE_INFO_SIZE = 16 + 56 * 8  # rusage_info_v6: a 16-byte UUID, then 56 64-bit numbers
 _ENERGY_NJ = 16 + 40 * 8  # ri_energy_nj: energy used since the process started, in nanojoules
+_STARTED = 16 + 8 * 8  # ri_proc_start_abstime: when it started, which tells a new process with the same pid
 _DISK_READ, _DISK_WRITTEN = 16 + 16 * 8, 16 + 17 * 8  # ri_diskio_bytesread, ri_diskio_byteswritten
 
 
@@ -1779,8 +1780,8 @@ class EnergyUsage:
     """Bytes it wrote to disk in the interval."""
 
 
-def _rusage(lib: ctypes.CDLL, pid: int) -> Optional[Tuple[int, int, int]]:
-    """``(energy in nanojoules, bytes read, bytes written)`` since ``pid`` started; ``None`` when it can't be read."""
+def _rusage(lib: ctypes.CDLL, pid: int) -> Optional[Tuple[int, int, int, int]]:
+    """``(energy in nanojoules, bytes read, bytes written, start)`` since ``pid`` started; ``None`` when it can't be read."""
     info = ctypes.create_string_buffer(_RUSAGE_INFO_SIZE)
     if lib.proc_pid_rusage(pid, _RUSAGE_INFO_V6, ctypes.byref(info)) != 0:
         return None  # another user's, or gone
@@ -1788,7 +1789,7 @@ def _rusage(lib: ctypes.CDLL, pid: int) -> Optional[Tuple[int, int, int]]:
     def number(offset: int) -> int:
         return int(ctypes.c_uint64.from_buffer(info, offset).value)
 
-    return number(_ENERGY_NJ), number(_DISK_READ), number(_DISK_WRITTEN)
+    return number(_ENERGY_NJ), number(_DISK_READ), number(_DISK_WRITTEN), number(_STARTED)
 
 
 def energy_usage(interval: float = 1.0) -> List[EnergyUsage]:
@@ -1815,9 +1816,9 @@ def energy_usage(interval: float = 1.0) -> List[EnergyUsage]:
     time.sleep(interval)
     elapsed = time.monotonic() - started
     usage = []
-    for pid, (energy, read, written) in before.items():
+    for pid, (energy, read, written, started_at) in before.items():
         now = _rusage(lib, pid)
-        if now is None or now[0] < energy:
+        if now is None or now[3] != started_at:
             continue  # gone, or another process took its pid
         process = _read_process(pid)
         if process is None:

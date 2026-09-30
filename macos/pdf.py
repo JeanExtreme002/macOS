@@ -935,6 +935,8 @@ def fill_form(
             raise ValueError("the form has no field named {!r}; see macos.pdf.form_fields()".format(name))
         if field.kind == "checkbox" and not isinstance(value, bool):
             raise ValueError("{!r} is a checkbox: pass True or False, not {!r}".format(name, value))
+        if field.kind in ("text", "choice", "radio") and not isinstance(value, str):
+            raise ValueError("{!r} takes text, not {!r}".format(name, value))
         if field.kind in ("radio", "choice") and field.options and value not in field.options:
             raise ValueError("{!r} offers {}, not {!r}".format(name, ", ".join(field.options), value))
         if field.kind in ("button", "signature"):

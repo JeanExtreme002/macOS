@@ -21,18 +21,22 @@ def require_macos() -> None:
         raise NotSupportedError("pymacos only works on macOS (running on {!r})".format(sys.platform))
 
 
-def run(args: Sequence[str], *, input: Optional[str] = None) -> str:
+def run(args: Sequence[str], *, input: Optional[str] = None, timeout: Optional[float] = None) -> str:
     """
     Run a system command and return its standard output.
 
     Arguments are passed as a list (never through a shell), so user-provided
     text can't be interpreted as shell syntax. A non-zero exit status raises
-    :class:`CommandError` carrying the command's stderr.
+    :class:`CommandError` carrying the command's stderr. With ``timeout``,
+    a command still running after that many seconds is killed, and
+    :class:`subprocess.TimeoutExpired` raised.
     """
     require_macos()
 
     try:
-        result = subprocess.run(list(args), input=input, capture_output=True, text=True, encoding="utf-8")
+        result = subprocess.run(
+            list(args), input=input, capture_output=True, text=True, encoding="utf-8", timeout=timeout
+        )
     except FileNotFoundError:
         raise NotSupportedError("the {!r} command was not found on this system".format(args[0])) from None
 
