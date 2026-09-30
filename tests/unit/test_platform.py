@@ -254,6 +254,7 @@ def test_other_platforms_raise_not_supported(monkeypatch):
         lambda: macos.time_machine.is_excluded(__file__),
         lambda: macos.power.sleep_blockers(),
         lambda: macos.network.vpns(),
+        lambda: macos.network.bandwidth(0.01),
         lambda: macos.network.connect_vpn("Office"),
         lambda: macos.network.disconnect_vpn("Office"),
         lambda: macos.apps.uninstall("Slack", dry_run=True),

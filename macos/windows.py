@@ -13,6 +13,8 @@ List the windows of running apps, and move, resize, focus, minimize and close th
     window.resize(1280, 800)
     window.minimize()
 
+    macos.windows.tile_all()                   # every window side by side, in a grid
+
 Uses the Accessibility API, like window managers such as Rectangle, so it
 needs the *Accessibility* permission for the app running Python (your
 terminal or IDE), the same one :mod:`macos.keyboard` and :mod:`macos.mouse`
@@ -21,11 +23,12 @@ need.
 
 import builtins
 import ctypes
+import math
 import os
 import time
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Sequence, Tuple, Union
 
 from . import _cf, _objc, apps
 from ._objc import CGPoint, CGSize
@@ -48,6 +51,8 @@ __all__ = [
     "set_click_wallpaper_to_show_desktop",
     "animations",
     "set_animations",
+    "tile",
+    "tile_all",
 ]
 
 _SUCCESS = 0
@@ -359,6 +364,13 @@ class Window:
             round(tall * area_height),
         )
 
+    @property
+    def _standard(self) -> bool:
+        """Whether it's a regular document window, not a panel, a dialog or a popover."""
+        value = self._read("AXSubrole")
+        with _cf.owned(value):
+            return _cf.to_str(value) == "AXStandardWindow"
+
     def _set_flag(self, attribute: str, on: bool, what: str) -> None:
         flag = _cf.constant(_cf.lib(), "kCFBooleanTrue" if on else "kCFBooleanFalse")
         _set(self._element, attribute, flag, what)
@@ -651,3 +663,100 @@ def set_animations(on: bool = True) -> None:
     from . import defaults
 
     defaults.write(defaults.GLOBAL, "NSAutomaticWindowAnimationsEnabled", bool(on))
+
+
+# --- Tiling -----------------------------------------------------------------------
+
+
+def _grid(
+    count: int, area: Tuple[float, float, float, float], columns: Optional[int], gap: float
+) -> "builtins.list[Tuple[int, int, int, int]]":
+    """``count`` frames filling ``area`` in rows, ``gap`` points apart; the last row's windows widen to fill it."""
+    if not count:
+        return []
+    across = min(columns or math.ceil(math.sqrt(count)), count)
+    rows = math.ceil(count / across)
+    x, y, width, height = area
+    height_each = (height - gap * (rows + 1)) / rows
+    frames = []
+    for row in range(rows):
+        in_row = min(across, count - row * across)
+        width_each = (width - gap * (in_row + 1)) / in_row
+        top = y + gap + row * (height_each + gap)
+        for column in range(in_row):
+            left = x + gap + column * (width_each + gap)
+            frames.append((round(left), round(top), round(width_each), round(height_each)))
+    return frames
+
+
+def _display_of(window: Window, areas: Sequence[Tuple[float, float, float, float]]) -> int:
+    x, y, width, height = window.frame
+    middle_x, middle_y = x + width / 2, y + height / 2
+    for index, (left, top, wide, tall) in enumerate(areas):
+        if left <= middle_x < left + wide and top <= middle_y < top + tall:
+            return index
+    return 0  # off every display: the main one
+
+
+def tile(
+    windows: Sequence[Window], *, display: Optional[int] = None, columns: Optional[int] = None, gap: int = 0
+) -> None:
+    """
+    Arrange ``windows`` side by side in a grid, filling the display they're on.
+
+    ::
+
+        macos.windows.tile(macos.windows.list("Terminal"))
+        macos.windows.tile(macos.windows.list("Safari"), columns=2, gap=8)
+
+    Each display tiles the windows on it, keeping the order they're in now
+    (top to bottom, then left to right), so tiling again changes nothing; ``display`` (``1`` is the main one)
+    gathers them all on one. The grid is as square as it can be, or
+    ``columns`` wide, and the last row's windows widen to fill it. ``gap``
+    leaves that many points between windows and around them. The menu bar
+    and the Dock stay clear, and apps with a minimum size may stay larger.
+    """
+    if columns is not None and columns < 1:
+        raise ValueError("columns must be at least 1, not {}".format(columns))
+    if gap < 0:
+        raise ValueError("gap can't be negative, not {}".format(gap))
+    areas = _usable_areas()
+    if display is not None and not 1 <= display <= len(areas):
+        raise ValueError("there's no display {}: there are {}".format(display, len(areas)))
+    groups: "dict[int, builtins.list[Tuple[Tuple[int, int], Window]]]" = {}
+    for window in windows:
+        x, y = window.position
+        target = display - 1 if display is not None else _display_of(window, areas)
+        groups.setdefault(target, []).append(((y, x), window))
+    for index, members in groups.items():
+        members.sort(key=lambda member: member[0])  # as they're arranged now, so tiling again keeps them in place
+        for (_, window), frame in zip(members, _grid(len(members), areas[index], columns, gap)):
+            window.set_frame(*frame)
+
+
+def tile_all(
+    app: Union[str, apps.App, None] = None, *, display: Optional[int] = None, columns: Optional[int] = None, gap: int = 0
+) -> "builtins.list[Window]":
+    """
+    Arrange every window on screen side by side, in a grid, and return them.
+
+    ::
+
+        macos.windows.tile_all()                    # all the apps' windows
+        macos.windows.tile_all("Terminal", gap=8)   # only Terminal's
+
+    Takes the regular windows that show: not minimized ones, full-screen
+    ones, those of hidden apps, nor panels and dialogs. ``app`` keeps one
+    app's, as in :func:`list`; ``display``, ``columns`` and ``gap`` work as
+    in :func:`tile`.
+    """
+    hidden = {running.pid for running in apps.running(include_background=True) if running.is_hidden}
+    chosen = []
+    for window in list(app):
+        try:
+            if window.pid not in hidden and window._standard and not window.minimized and not window.fullscreen:
+                chosen.append(window)
+        except MacOSError:
+            continue  # closed meanwhile
+    tile(chosen, display=display, columns=columns, gap=gap)
+    return chosen

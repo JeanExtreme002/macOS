@@ -84,6 +84,30 @@ for keys, layout in {"ctrl+option+left": "left", "ctrl+option+right": "right"}.i
 macos.hotkeys.run()
 ```
 
+## Tiling windows
+
+{func}`~macos.windows.tile_all` arranges every window on screen side by side, in a
+grid that fills the display, and returns them:
+
+```python
+macos.windows.tile_all()                     # every app's windows
+macos.windows.tile_all("Terminal", gap=8)    # only Terminal's, 8 points apart
+macos.windows.tile_all(columns=3)            # three per row
+```
+
+It takes the regular windows that show: not minimized or full-screen ones,
+nor those of hidden apps, panels or dialogs. Each display tiles its own
+windows; `display=1` gathers them all on the main one. The grid is as square
+as it can be (two windows side by side, four in a 2×2 grid), and the last
+row's windows widen to fill it. Tiling keeps the order the windows are in,
+top to bottom then left to right, so tiling again changes nothing.
+
+{func}`~macos.windows.tile` does the same with the windows you pick:
+
+```python
+macos.windows.tile(macos.windows.list("Safari") + macos.windows.list("Notes"), columns=2)
+```
+
 ## Focusing, minimizing and closing
 
 ```python
@@ -156,6 +180,8 @@ macos.windows.set_double_click_title_bar("minimize")
 - {func}`macos.windows.request_permission`
 - {func}`macos.windows.wait_for`
 - {data}`macos.windows.LAYOUTS`
+- {func}`macos.windows.tile`
+- {func}`macos.windows.tile_all`
 - {func}`macos.windows.double_click_title_bar`
 - {func}`macos.windows.set_double_click_title_bar`
 - {func}`macos.windows.tiling`
