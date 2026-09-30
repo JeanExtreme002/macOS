@@ -51,6 +51,7 @@ Out at sea, it's the ocean's name, without an address.
 ```python
 macos.maps.open("Avenida Paulista, 1578, São Paulo")
 macos.maps.open(macos.maps.geocode("Eiffel Tower")[0])
+
 macos.maps.directions("Aeroporto de Congonhas", by="transit")   # from where the Mac is
 macos.maps.directions((48.8584, 2.2945), start="Gare du Nord, Paris", by="walk")
 ```
