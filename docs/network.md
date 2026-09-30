@@ -51,6 +51,23 @@ Both raise {class}`~macos.NotSupportedError` on a Mac without Wi-Fi. The Wi-Fi
 network's name isn't available: since macOS 14, reading it needs the Location
 permission.
 
+## Speed test
+
+{func}`~macos.network.speed_test` measures the connection's download and
+upload speed, and its latency, against Apple's servers:
+
+```python
+result = macos.network.speed_test()
+result.download, result.upload   # (43.61, 39.42): megabits per second
+result.latency                   # 54.6 ms, idle
+result.loaded_latency            # 53.3 ms, while busy: how laggy calls get
+```
+
+It takes 15 to 60 seconds and moves a few hundred megabytes: mind a
+metered connection. `sequential=True` measures download and upload one
+after the other, which reads each more exactly. It goes through
+`networkQuality`, which comes with macOS.
+
 ## Reference
 
 - {func}`macos.network.is_online`
@@ -58,3 +75,5 @@ permission.
 - {func}`macos.network.interface`
 - {func}`macos.network.wifi_power`
 - {func}`macos.network.set_wifi_power`
+- {func}`macos.network.speed_test`
+- {class}`macos.network.SpeedTest`

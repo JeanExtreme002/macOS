@@ -1,0 +1,10 @@
+{
+  "base_rtt": 54.582000732421875,
+  "dl_throughput": 43612296,
+  "ul_throughput": 39415116,
+  "responsiveness": 53.25839614868164,
+  "interface_name": "en0",
+  "test_endpoint": "brsao4-edge-bx-022.aaplimg.com",
+  "dl_flows": 16,
+  "ul_flows": 16
+}

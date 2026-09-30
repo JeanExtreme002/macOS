@@ -623,6 +623,10 @@ explain how to use each part.
 .. autofunction:: macos.pdf.render
 .. autofunction:: macos.pdf.from_images
 .. autoclass:: macos.pdf.Metadata
+.. autoclass:: macos.pdf.FormField
+.. autofunction:: macos.pdf.form_fields
+.. autofunction:: macos.pdf.fill_form
+.. autofunction:: macos.pdf.sign
 ```
 
 ## macos.video
@@ -749,6 +753,8 @@ explain how to use each part.
 .. autofunction:: macos.network.interface
 .. autofunction:: macos.network.wifi_power
 .. autofunction:: macos.network.set_wifi_power
+.. autoclass:: macos.network.SpeedTest
+.. autofunction:: macos.network.speed_test
 ```
 
 ## macos.screen
@@ -890,6 +896,14 @@ explain how to use each part.
 .. autofunction:: macos.system.connections
 .. autofunction:: macos.system.open_files
 .. autofunction:: macos.system.who_uses
+.. autoclass:: macos.system.NetworkUsage
+.. autofunction:: macos.system.network_usage
+.. autoclass:: macos.system.EnergyUsage
+.. autofunction:: macos.system.energy_usage
+.. autoclass:: macos.system.GPUUsage
+.. autofunction:: macos.system.gpu_usage
+.. autoclass:: macos.system.DiskHealth
+.. autofunction:: macos.system.disk_health
 ```
 
 ## Exceptions

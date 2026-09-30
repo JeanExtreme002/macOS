@@ -284,6 +284,43 @@ for process in macos.system.who_uses("/Volumes/Backup"):
 {func}`~macos.system.open_files` lists what one process has open. Both see
 only this user's processes, like `lsof` without `sudo`.
 
+## Network, energy and disk use
+
+{func}`~macos.system.network_usage` tells how much each process received and
+sent over the network, the busiest first, and
+{func}`~macos.system.energy_usage` how much power each drew and how much it
+read and wrote on disk:
+
+```python
+for use in macos.system.network_usage(interval=2)[:5]:
+    print(use.process, use.received, use.sent)            # bytes in those 2 seconds
+
+for use in macos.system.energy_usage()[:5]:
+    print(use.process, "{:.2f} W".format(use.watts))      # Google Chrome Helper 1.84 W
+```
+
+Without `interval`, {func}`~macos.system.network_usage` gives the totals since
+each process started, for every user's processes, the system's included.
+{func}`~macos.system.energy_usage` measures over one second by default; only
+Apple silicon Macs measure power (Intel Macs read 0), and it sees only this
+user's processes.
+
+## The GPU and the disks
+
+```python
+macos.system.gpu_usage()     # [GPUUsage(name='AGXAcceleratorG14X', percent=37, memory=406667264)]
+
+for disk in macos.system.disk_health():
+    if disk.smart == "failing":
+        print("Back up", disk.name, "now")
+```
+
+{func}`~macos.system.gpu_usage` tells how busy each graphics processor is,
+as Activity Monitor's GPU History does. {func}`~macos.system.disk_health`
+gives each physical disk's SMART status, which warns when a disk is about
+to fail: `"verified"`, `"failing"`, or `None` for disks that don't report
+one, as most USB disks.
+
 ## Reference
 
 - {func}`macos.system.version`
@@ -350,3 +387,11 @@ only this user's processes, like `lsof` without `sudo`.
 - {func}`macos.system.connections`
 - {func}`macos.system.open_files`
 - {func}`macos.system.who_uses`
+- {class}`macos.system.NetworkUsage`
+- {func}`macos.system.network_usage`
+- {class}`macos.system.EnergyUsage`
+- {func}`macos.system.energy_usage`
+- {class}`macos.system.GPUUsage`
+- {func}`macos.system.gpu_usage`
+- {class}`macos.system.DiskHealth`
+- {func}`macos.system.disk_health`

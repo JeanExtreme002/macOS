@@ -95,6 +95,14 @@ __all__ = [
     "connections",
     "open_files",
     "who_uses",
+    "NetworkUsage",
+    "network_usage",
+    "EnergyUsage",
+    "energy_usage",
+    "GPUUsage",
+    "gpu_usage",
+    "DiskHealth",
+    "disk_health",
 ]
 
 
@@ -188,6 +196,12 @@ def _iokit() -> ctypes.CDLL:
     io.IORegistryEntryCreateCFProperty.restype = _cf.CFTypeRef
     io.IOObjectRelease.argtypes = (ctypes.c_uint32,)
     io.IOObjectRelease.restype = ctypes.c_int
+    io.IOServiceGetMatchingServices.argtypes = (ctypes.c_uint32, _cf.CFTypeRef, ctypes.POINTER(ctypes.c_uint32))
+    io.IOServiceGetMatchingServices.restype = ctypes.c_int
+    io.IOIteratorNext.argtypes = (ctypes.c_uint32,)
+    io.IOIteratorNext.restype = ctypes.c_uint32
+    io.IOObjectGetClass.argtypes = (ctypes.c_uint32, ctypes.c_char_p)
+    io.IOObjectGetClass.restype = ctypes.c_int
     return io
 
 
@@ -1201,6 +1215,8 @@ def _libproc() -> Tuple[ctypes.CDLL, float]:
     lib.proc_pidpath.restype = ctypes.c_int
     lib.proc_pidfdinfo.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_int)
     lib.proc_pidfdinfo.restype = ctypes.c_int
+    lib.proc_pid_rusage.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_void_p)
+    lib.proc_pid_rusage.restype = ctypes.c_int
     timebase = _Timebase()
     lib.mach_timebase_info(ctypes.byref(timebase))
     return lib, timebase.numer / timebase.denom
@@ -1672,3 +1688,262 @@ def who_uses(path: Union[str, "os.PathLike[str]"]) -> List[Process]:
             if found:
                 users.append(found)
     return users
+
+
+# --- Network use by process ----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class NetworkUsage:
+    """How much a process sent and received over the network."""
+
+    pid: int
+    process: str
+    """The process's name."""
+    received: int
+    """In bytes: since it started, or in the interval asked for."""
+    sent: int
+
+
+def _nettop_samples(interval: Optional[float]) -> List[Tuple[int, str, int, int]]:
+    """``(pid, name, received, sent)`` rows: the totals, or the deltas over ``interval`` seconds."""
+    args = ["nettop", "-P", "-x", "-J", "bytes_in,bytes_out"]
+    if interval is None:
+        args += ["-L", "1"]
+    else:
+        args += ["-L", "2", "-d", "-s", str(max(1, round(interval)))]
+    return _nettop_rows(_run(args))
+
+
+def _nettop_rows(output: str) -> List[Tuple[int, str, int, int]]:
+    """The rows of nettop's last sample: each sample starts with a header naming the columns."""
+    lines = output.splitlines()
+    headers = [index for index, line in enumerate(lines) if "bytes_in,bytes_out" in line]
+    rows = []
+    for line in lines[headers[-1] + 1:] if headers else []:  # the last sample: the deltas, with -d
+        # Without a terminal, nettop adds the time as a first column: the last three are always ours.
+        parts = line.strip().rstrip(",").split(",")
+        if len(parts) < 3:
+            continue
+        name, _, pid = parts[-3].rpartition(".")
+        if name and pid.isdigit() and parts[-2].isdigit() and parts[-1].isdigit():
+            rows.append((int(pid), name, int(parts[-2]), int(parts[-1])))
+    return rows
+
+
+def network_usage(interval: Optional[float] = None) -> List[NetworkUsage]:
+    """
+    How much each process received and sent over the network, the busiest first: who's using the internet?
+
+    ::
+
+        for use in macos.system.network_usage(interval=2)[:5]:
+            print(use.process, use.received, use.sent)   # bytes in those 2 seconds
+
+    Without ``interval``, the totals since each process started; with it,
+    what they moved in that many seconds (at least 1). Unlike the other
+    process functions, it sees every user's processes, the system's
+    included. Goes through ``nettop``.
+    """
+    if interval is not None and interval <= 0:
+        raise ValueError("interval must be positive, not {}".format(interval))
+    require_macos()
+    found = []
+    for pid, name, received, sent in _nettop_samples(interval):
+        process = _read_process(pid)
+        full = process.name if process and len(name) >= 15 else name  # nettop cuts names at 15 characters
+        found.append(NetworkUsage(pid=pid, process=full, received=received, sent=sent))
+    return sorted(found, key=lambda use: (use.received + use.sent, -use.pid), reverse=True)
+
+
+# --- Energy use by process ------------------------------------------------------
+
+_RUSAGE_INFO_V6 = 6
+_RUSAGE_INFO_SIZE = 16 + 56 * 8  # rusage_info_v6: a 16-byte UUID, then 56 64-bit numbers
+_ENERGY_NJ = 16 + 40 * 8  # ri_energy_nj: energy used since the process started, in nanojoules
+_DISK_READ, _DISK_WRITTEN = 16 + 16 * 8, 16 + 17 * 8  # ri_diskio_bytesread, ri_diskio_byteswritten
+
+
+@dataclass(frozen=True)
+class EnergyUsage:
+    """How much power a process drew, and how much it read and wrote on disk, over an interval."""
+
+    pid: int
+    process: str
+    """The process's name."""
+    watts: float
+    """Average power it drew, in watts: what drains the battery."""
+    disk_read: int
+    """Bytes it read from disk in the interval."""
+    disk_written: int
+    """Bytes it wrote to disk in the interval."""
+
+
+def _rusage(lib: ctypes.CDLL, pid: int) -> Optional[Tuple[int, int, int]]:
+    """``(energy in nanojoules, bytes read, bytes written)`` since ``pid`` started; ``None`` when it can't be read."""
+    info = ctypes.create_string_buffer(_RUSAGE_INFO_SIZE)
+    if lib.proc_pid_rusage(pid, _RUSAGE_INFO_V6, ctypes.byref(info)) != 0:
+        return None  # another user's, or gone
+
+    def number(offset: int) -> int:
+        return int(ctypes.c_uint64.from_buffer(info, offset).value)
+
+    return number(_ENERGY_NJ), number(_DISK_READ), number(_DISK_WRITTEN)
+
+
+def energy_usage(interval: float = 1.0) -> List[EnergyUsage]:
+    """
+    How much power each process drew over ``interval`` seconds, the hungriest first: what drains the battery?
+
+    ::
+
+        for use in macos.system.energy_usage()[:5]:
+            print(use.process, "{:.2f} W".format(use.watts))   # Google Chrome Helper 1.84 W
+
+    It also tells the bytes each read and wrote on disk. Power is measured
+    by Apple silicon Macs; on Intel Macs it reads 0. Only this user's
+    processes are seen, as with :func:`processes`.
+    """
+    from .apps import _pids
+
+    if interval <= 0:
+        raise ValueError("interval must be positive, not {}".format(interval))
+    require_macos()
+    lib, _ = _libproc()
+    started = time.monotonic()
+    before = {pid: found for pid in _pids() for found in [_rusage(lib, pid)] if found}
+    time.sleep(interval)
+    elapsed = time.monotonic() - started
+    usage = []
+    for pid, (energy, read, written) in before.items():
+        now = _rusage(lib, pid)
+        if now is None or now[0] < energy:
+            continue  # gone, or another process took its pid
+        process = _read_process(pid)
+        if process is None:
+            continue
+        usage.append(
+            EnergyUsage(
+                pid=pid,
+                process=process.name,
+                watts=round((now[0] - energy) / 1e9 / elapsed, 3),
+                disk_read=max(now[1] - read, 0),
+                disk_written=max(now[2] - written, 0),
+            )
+        )
+    return sorted(usage, key=lambda use: (use.watts, use.disk_read + use.disk_written), reverse=True)
+
+
+# --- The GPU --------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class GPUUsage:
+    """How busy a graphics processor is."""
+
+    name: str
+    """Such as ``'AGXAcceleratorG14X'``: the driver's name for it."""
+    percent: int
+    """How busy it is, from 0 to 100, as Activity Monitor's GPU History shows."""
+    memory: Optional[int]
+    """Memory it uses, in bytes; ``None`` when its driver doesn't say."""
+
+
+def gpu_usage() -> List[GPUUsage]:
+    """
+    How busy each graphics processor is, as Activity Monitor's GPU History shows.
+
+    ::
+
+        macos.system.gpu_usage()   # [GPUUsage(name='AGXAcceleratorG14X', percent=37, memory=406667264)]
+
+    Handy to watch a local AI model or a game. No permission is needed.
+    """
+    require_macos()
+    io = _iokit()
+    iterator = ctypes.c_uint32()
+    # The graphics drivers register as IOAccelerator; 0 is kIOMainPortDefault.
+    if io.IOServiceGetMatchingServices(0, io.IOServiceMatching(b"IOAccelerator"), ctypes.byref(iterator)) != 0:
+        return []
+    found = []
+    try:
+        while True:
+            service = io.IOIteratorNext(iterator.value)
+            if not service:
+                break
+            try:
+                with _cf.owned(_cf.string("PerformanceStatistics")) as key, _cf.owned(
+                    io.IORegistryEntryCreateCFProperty(service, key, None, 0)
+                ) as statistics:
+                    values = _cf.to_python(statistics) if statistics else None
+                if not isinstance(values, dict) or "Device Utilization %" not in values:
+                    continue
+                name = ctypes.create_string_buffer(128)  # io_name_t
+                io.IOObjectGetClass(service, name)
+                memory = values.get("In use system memory", values.get("vramUsedBytes"))
+                found.append(
+                    GPUUsage(
+                        name=name.value.decode("utf-8", "replace"),
+                        percent=int(values["Device Utilization %"]),
+                        memory=int(memory) if memory is not None else None,
+                    )
+                )
+            finally:
+                io.IOObjectRelease(service)
+    finally:
+        io.IOObjectRelease(iterator.value)
+    return found
+
+
+# --- Disk health --------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DiskHealth:
+    """A physical disk, and whether it reports it's failing."""
+
+    device: str
+    """Such as ``'disk0'``."""
+    name: str
+    """Its model, such as ``'APPLE SSD AP0512Z'``."""
+    size: int
+    """In bytes."""
+    internal: bool
+    solid_state: Optional[bool]
+    smart: Optional[str]
+    """Its SMART status: ``'verified'`` (healthy), ``'failing'``, or ``None`` when the disk doesn't report one.
+
+    Most USB disks don't."""
+
+
+def disk_health() -> List[DiskHealth]:
+    """
+    The Mac's physical disks and their SMART status, which warns when a disk is about to fail.
+
+    ::
+
+        for disk in macos.system.disk_health():
+            if disk.smart == "failing":
+                print("Back up", disk.name, "now")
+
+    Goes through ``diskutil``. Many USB disks don't report a status.
+    """
+    import plistlib
+
+    require_macos()
+    listed = plistlib.loads(_run(["diskutil", "list", "-plist", "physical"]).encode())
+    disks = []
+    for device in listed.get("WholeDisks", []):
+        info = plistlib.loads(_run(["diskutil", "info", "-plist", device]).encode())
+        status = str(info.get("SMARTStatus") or "").lower()
+        disks.append(
+            DiskHealth(
+                device=device,
+                name=str(info.get("MediaName") or info.get("IORegistryEntryName") or device).strip(),
+                size=int(info.get("Size") or info.get("TotalSize") or 0),
+                internal=bool(info.get("Internal")),
+                solid_state=info.get("SolidState"),
+                smart=status if status in ("verified", "failing") else None,
+            )
+        )
+    return disks
