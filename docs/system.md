@@ -260,6 +260,30 @@ if owner:
 Like `lsof -i` without `sudo`, other users' processes, the system's
 included, are left out.
 
+{func}`~macos.system.connections` lists the connections in progress: which
+address and port each process is talking to. Servers waiting for
+connections are in {func}`~macos.system.ports`:
+
+```python
+for connection in macos.system.connections():
+    print(connection.process, connection.remote_address, connection.remote_port, connection.state)
+    # Google Chrome 142.250.79.46 443 established
+```
+
+## Open files
+
+{func}`~macos.system.who_uses` finds the processes using a file, a folder or
+a disk: with it open, or something inside it, working in it, or run from
+it. It answers "the disk can't be ejected because it's in use":
+
+```python
+for process in macos.system.who_uses("/Volumes/Backup"):
+    print(process.name, process.pid)   # Preview 4123
+```
+
+{func}`~macos.system.open_files` lists what one process has open. Both see
+only this user's processes, like `lsof` without `sudo`.
+
 ## Reference
 
 - {func}`macos.system.version`
@@ -322,3 +346,7 @@ included, are left out.
 - {class}`macos.system.Port`
 - {func}`macos.system.ports`
 - {func}`macos.system.port_owner`
+- {class}`macos.system.Connection`
+- {func}`macos.system.connections`
+- {func}`macos.system.open_files`
+- {func}`macos.system.who_uses`

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework, require_macos, run as _run
@@ -91,6 +91,10 @@ __all__ = [
     "Port",
     "ports",
     "port_owner",
+    "Connection",
+    "connections",
+    "open_files",
+    "who_uses",
 ]
 
 
@@ -1367,16 +1371,39 @@ _PROC_PIDLISTFDS, _PROC_PIDFDSOCKETINFO, _PROX_FDTYPE_SOCKET = 1, 3, 2
 _SOCKET = 24
 _SOCKET_TYPE, _SOCKET_FAMILY, _SOCKET_KIND = _SOCKET + 152, _SOCKET + 160, _SOCKET + 232
 _PROTO = _SOCKET + 240  # the in_sockinfo (or tcp_sockinfo, which starts with one)
-_REMOTE_PORT, _LOCAL_PORT, _LOCAL_ADDRESS, _TCP_STATE = _PROTO, _PROTO + 4, _PROTO + 48, _PROTO + 80
+_REMOTE_PORT, _LOCAL_PORT, _TCP_STATE = _PROTO, _PROTO + 4, _PROTO + 80
+_REMOTE_ADDRESS, _LOCAL_ADDRESS = _PROTO + 32, _PROTO + 48
 _SOCKINFO_IN, _SOCKINFO_TCP = 1, 2
 _AF_INET, _AF_INET6 = 2, 30
 _SOCK_STREAM, _SOCK_DGRAM = 1, 2
-_TCP_LISTEN = 1
 _SOCKET_INFO_SIZE = 1024  # more than socket_fdinfo needs, whatever its protocol's part
 
 
 class _FDInfo(ctypes.Structure):
     _fields_ = [("fd", ctypes.c_int32), ("type", ctypes.c_uint32)]
+
+
+_PROX_FDTYPE_VNODE = 1  # a file or a folder
+_PROC_PIDFDVNODEPATHINFO, _PROC_PIDVNODEPATHINFO = 2, 9
+_MAXPATHLEN = 1024
+# A vnode_info_path is a vnode_info (152 bytes), then the path; a file descriptor's comes after a proc_fileinfo.
+_VNODE_INFO = 152
+_FILE_PATH = _SOCKET + _VNODE_INFO
+_FILE_INFO_SIZE = _FILE_PATH + _MAXPATHLEN
+_FOLDERS_INFO_SIZE = 2 * (_VNODE_INFO + _MAXPATHLEN)  # the working folder's, then the root's
+_TCP_STATES = {
+    0: "closed",
+    1: "listen",
+    2: "syn_sent",
+    3: "syn_received",
+    4: "established",
+    5: "close_wait",
+    6: "fin_wait_1",
+    7: "closing",
+    8: "last_ack",
+    9: "fin_wait_2",
+    10: "time_wait",
+}
 
 
 @dataclass(frozen=True)
@@ -1393,8 +1420,34 @@ class Port:
     """The process's name."""
 
 
-def _sockets(lib: ctypes.CDLL, pid: int) -> List[int]:
-    """The file descriptors of ``pid``'s sockets; ``[]`` when it can't be read (another user's)."""
+@dataclass(frozen=True)
+class Connection:
+    """A network connection a process has open: its end, and the other one."""
+
+    protocol: str
+    """``'tcp'`` or ``'udp'``."""
+    local_address: str
+    local_port: int
+    remote_address: str
+    remote_port: int
+    state: Optional[str]
+    """TCP's state: ``'established'``, ``'syn_sent'``, ``'close_wait'``, ``'time_wait'``...; ``None`` for UDP."""
+    pid: int
+    process: str
+    """The process's name."""
+
+
+class _Socket(NamedTuple):
+    protocol: str
+    local_address: str
+    local_port: int
+    remote_address: str
+    remote_port: int
+    state: Optional[str]
+
+
+def _descriptors(lib: ctypes.CDLL, pid: int, kind: int) -> List[int]:
+    """The file descriptors of one kind that ``pid`` has open; ``[]`` when it can't be read (another user's)."""
     size = lib.proc_pidinfo(pid, _PROC_PIDLISTFDS, 0, None, 0)
     if size <= 0:
         return []
@@ -1405,8 +1458,12 @@ def _sockets(lib: ctypes.CDLL, pid: int) -> List[int]:
         size = lib.proc_pidinfo(pid, _PROC_PIDLISTFDS, 0, entries, ctypes.sizeof(entries))
         count = max(size, 0) // ctypes.sizeof(_FDInfo)
         if count < capacity:
-            return [entry.fd for entry in entries[:count] if entry.type == _PROX_FDTYPE_SOCKET]
+            return [entry.fd for entry in entries[:count] if entry.type == kind]
         capacity *= 2
+
+
+def _sockets(lib: ctypes.CDLL, pid: int) -> List[int]:
+    return _descriptors(lib, pid, _PROX_FDTYPE_SOCKET)
 
 
 def _address(raw: bytes, family: int) -> str:
@@ -1417,7 +1474,8 @@ def _address(raw: bytes, family: int) -> str:
     return socket.inet_ntop(socket.AF_INET6, raw)
 
 
-def _port(lib: ctypes.CDLL, pid: int, fd: int, name: str) -> Optional[Port]:
+def _socket(lib: ctypes.CDLL, pid: int, fd: int) -> Optional[_Socket]:
+    """An internet socket's two ends, or ``None`` for any other kind (Unix sockets...)."""
     import socket
 
     info = ctypes.create_string_buffer(_SOCKET_INFO_SIZE)
@@ -1430,21 +1488,38 @@ def _port(lib: ctypes.CDLL, pid: int, fd: int, name: str) -> Optional[Port]:
     family, kind, socket_type = number(_SOCKET_FAMILY), number(_SOCKET_KIND), number(_SOCKET_TYPE)
     if family not in (_AF_INET, _AF_INET6) or kind not in (_SOCKINFO_IN, _SOCKINFO_TCP):
         return None
-    port = socket.ntohs(number(_LOCAL_PORT) & 0xFFFF)
-    if not port:
-        return None
-    if socket_type == _SOCK_STREAM:
-        if kind != _SOCKINFO_TCP or number(_TCP_STATE) != _TCP_LISTEN:
-            return None  # a connection, not a server
-        protocol = "tcp"
+    if socket_type == _SOCK_STREAM and kind == _SOCKINFO_TCP:
+        protocol, state = "tcp", _TCP_STATES.get(number(_TCP_STATE))
     elif socket_type == _SOCK_DGRAM:
-        if number(_REMOTE_PORT) & 0xFFFF:
-            return None  # connected to another address: a client, not a listener
-        protocol = "udp"
+        protocol, state = "udp", None
     else:
         return None
-    address = _address(info.raw[_LOCAL_ADDRESS:_LOCAL_ADDRESS + 16], family)
-    return Port(port=port, protocol=protocol, address=address, pid=pid, process=name)
+    return _Socket(
+        protocol=protocol,
+        local_address=_address(info.raw[_LOCAL_ADDRESS:_LOCAL_ADDRESS + 16], family),
+        local_port=socket.ntohs(number(_LOCAL_PORT) & 0xFFFF),
+        remote_address=_address(info.raw[_REMOTE_ADDRESS:_REMOTE_ADDRESS + 16], family),
+        remote_port=socket.ntohs(number(_REMOTE_PORT) & 0xFFFF),
+        state=state,
+    )
+
+
+def _each_socket() -> Iterator[Tuple[int, str, _Socket]]:
+    """``(pid, process name, socket)`` for every internet socket this user's processes have."""
+    from .apps import _pids
+
+    require_macos()
+    lib, _ = _libproc()
+    for pid in _pids():
+        fds = _sockets(lib, pid)
+        if not fds:
+            continue
+        process = _read_process(pid)
+        name = process.name if process else str(pid)
+        for fd in fds:
+            found = _socket(lib, pid, fd)
+            if found:
+                yield pid, name, found
 
 
 def ports() -> List[Port]:
@@ -1458,21 +1533,13 @@ def ports() -> List[Port]:
 
     Like ``lsof -i`` without ``sudo``: other users' processes, the
     system's included, are left out, since macOS keeps them from this user.
+    For the connections in progress, see :func:`connections`.
     """
-    from .apps import _pids
-
-    require_macos()
-    lib, _ = _libproc()
     found = set()
-    for pid in _pids():
-        fds = _sockets(lib, pid)
-        if not fds:
-            continue
-        process = _read_process(pid)
-        for fd in fds:
-            port = _port(lib, pid, fd, process.name if process else str(pid))
-            if port:
-                found.add(port)
+    for pid, name, entry in _each_socket():
+        listening = entry.state == "listen" if entry.protocol == "tcp" else not entry.remote_port  # UDP: not connected
+        if listening and entry.local_port:
+            found.add(Port(port=entry.local_port, protocol=entry.protocol, address=entry.local_address, pid=pid, process=name))
     return sorted(found, key=lambda port: (port.port, port.protocol, port.address, port.pid))
 
 
@@ -1497,3 +1564,88 @@ def port_owner(port: int, protocol: str = "tcp") -> Optional[Process]:
         if found.port == port and found.protocol == protocol:
             return _read_process(found.pid)
     return None
+
+
+def connections() -> List[Connection]:
+    """
+    The network connections processes have open: which address and port each is talking to.
+
+    ::
+
+        for connection in macos.system.connections():
+            print(connection.process, connection.remote_address, connection.remote_port, connection.state)
+            # Google Chrome 142.250.79.46 443 established
+
+    TCP connections in any state but listening (servers are in :func:`ports`),
+    and UDP sockets connected to an address. Like ``lsof -i`` without
+    ``sudo``: only this user's processes are seen.
+    """
+    found = set()
+    for pid, name, entry in _each_socket():
+        if entry.remote_port and entry.state != "listen":
+            found.add(Connection(**entry._asdict(), pid=pid, process=name))
+    return sorted(found, key=lambda connection: (connection.process.lower(), connection.pid, connection.remote_address))
+
+
+# --- Open files -------------------------------------------------------------------
+
+
+def _files(lib: ctypes.CDLL, pid: int) -> List[str]:
+    """The paths ``pid`` has open, its working folder and its executable; ``[]`` for another user's process."""
+    paths = []
+    for fd in _descriptors(lib, pid, _PROX_FDTYPE_VNODE):
+        info = ctypes.create_string_buffer(_FILE_INFO_SIZE)
+        if lib.proc_pidfdinfo(pid, fd, _PROC_PIDFDVNODEPATHINFO, info, _FILE_INFO_SIZE) > _FILE_PATH:
+            paths.append(info.raw[_FILE_PATH:].split(b"\x00", 1)[0])
+    folders = ctypes.create_string_buffer(_FOLDERS_INFO_SIZE)
+    if lib.proc_pidinfo(pid, _PROC_PIDVNODEPATHINFO, 0, folders, _FOLDERS_INFO_SIZE) > _VNODE_INFO:
+        paths.append(folders.raw[_VNODE_INFO:_VNODE_INFO + _MAXPATHLEN].split(b"\x00", 1)[0])  # the working folder
+    executable = ctypes.create_string_buffer(_PATH_MAX)
+    if lib.proc_pidpath(pid, executable, _PATH_MAX) > 0 and paths:  # only for processes it can look into
+        paths.append(executable.value)
+    return [path.decode("utf-8", "replace") for path in paths if path]
+
+
+def open_files(process: Union[int, Process]) -> List[Path]:
+    """
+    The files and folders a process (a :class:`Process` or its pid) has open, with its working folder and executable.
+
+    ``[]`` for another user's process, which macOS keeps from this user.
+    """
+    require_macos()
+    pid = process.pid if isinstance(process, Process) else int(process)
+    lib, _ = _libproc()
+    return sorted({Path(path) for path in _files(lib, pid)})
+
+
+def _is_in(path: str, target: str) -> bool:
+    """Whether ``path`` is ``target`` or inside it."""
+    folder = target.rstrip("/") or "/"
+    return path.rstrip("/") == folder or path.startswith(folder if folder == "/" else folder + "/")
+
+
+def who_uses(path: Union[str, "os.PathLike[str]"]) -> List[Process]:
+    """
+    The processes using ``path``: with it open, or a file in it, working in it, or run from it.
+
+    ::
+
+        macos.system.who_uses("/Volumes/Backup")   # [Process(name='Preview', ...)]: why the disk won't eject
+
+    For a folder or a disk, anything inside counts. Like ``lsof`` without
+    ``sudo``: only this user's processes are seen.
+    """
+    from .apps import _pids
+
+    target = os.path.realpath(os.path.expanduser(os.fspath(path)))
+    if not os.path.exists(target):
+        raise FileNotFoundError(target)
+    require_macos()
+    lib, _ = _libproc()
+    users = []
+    for pid in _pids():
+        if any(_is_in(os.path.realpath(opened), target) for opened in _files(lib, pid)):
+            found = _read_process(pid)
+            if found:
+                users.append(found)
+    return users
