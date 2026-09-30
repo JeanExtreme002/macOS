@@ -17,13 +17,20 @@ requests an app makes in a short time: space out large batches.
 import ctypes
 import threading
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
+from urllib.parse import quote, urlencode
 
 from . import _objc
-from ._system import framework
+from ._system import framework, require_macos, run as _run
 from .errors import MacOSError
 
-__all__ = ["Place", "geocode", "reverse_geocode"]
+__all__ = [
+    "Place",
+    "geocode",
+    "reverse_geocode",
+    "open",
+    "directions",
+]
 
 # kCLErrorDomain's codes.
 _NETWORK, _NOT_FOUND = 2, 8
@@ -180,3 +187,64 @@ def reverse_geocode(latitude: float, longitude: float, *, timeout: float = 15) -
         finally:
             _objc.send(location, "release", restype=None)
     return found[0] if found else None
+
+
+# --- The Maps app ---------------------------------------------------------------
+
+Where = Union[str, Place, Tuple[float, float]]
+_MODES = {"car": "d", "walk": "w", "transit": "r"}  # Maps' dirflg
+
+
+def _where(place: Where) -> str:
+    """An address, a :class:`Place` or ``(latitude, longitude)``, as Maps' URLs write a place."""
+    if isinstance(place, Place):
+        return "{},{}".format(place.latitude, place.longitude)
+    if isinstance(place, tuple):
+        latitude, longitude = place
+        return "{},{}".format(float(latitude), float(longitude))
+    if not place.strip():
+        raise ValueError("the place must not be empty")
+    return place
+
+
+def _show(query: Dict[str, str]) -> None:
+    require_macos()
+    _run(["open", "maps://?" + urlencode(query, quote_via=quote)])
+
+
+def open(place: Where) -> None:
+    """
+    Show ``place`` in the Maps app: an address, a :class:`Place`, or ``(latitude, longitude)``.
+
+    ::
+
+        macos.maps.open("Avenida Paulista, 1578, São Paulo")
+        macos.maps.open(macos.maps.geocode("Eiffel Tower")[0])
+    """
+    if isinstance(place, (Place, tuple)):
+        query = {"ll": _where(place)}
+        name = place.name if isinstance(place, Place) else None
+        query["q"] = name or query["ll"]
+    else:
+        query = {"q": _where(place)}
+    _show(query)
+
+
+def directions(to: Where, start: Optional[Where] = None, *, by: str = "car") -> None:
+    """
+    Open the Maps app with the route to ``to``, from ``start`` (where the Mac is, by default).
+
+    ::
+
+        macos.maps.directions("Aeroporto de Congonhas", by="transit")
+        macos.maps.directions((48.8584, 2.2945), start="Gare du Nord, Paris", by="walk")
+
+    ``by`` is ``"car"``, ``"walk"`` or ``"transit"``. Places are written as
+    for :func:`open`. Without ``start``, Maps asks for the Mac's location.
+    """
+    if by not in _MODES:
+        raise ValueError("by must be 'car', 'walk' or 'transit', not {!r}".format(by))
+    query = {"daddr": _where(to), "dirflg": _MODES[by]}
+    if start is not None:
+        query["saddr"] = _where(start)
+    _show(query)

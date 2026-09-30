@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework, require_macos, run as _run
@@ -88,6 +88,9 @@ __all__ = [
     "processes",
     "process",
     "kill",
+    "Port",
+    "ports",
+    "port_owner",
 ]
 
 
@@ -1192,6 +1195,8 @@ def _libproc() -> Tuple[ctypes.CDLL, float]:
     lib.proc_pidinfo.restype = ctypes.c_int
     lib.proc_pidpath.argtypes = (ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32)
     lib.proc_pidpath.restype = ctypes.c_int
+    lib.proc_pidfdinfo.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_int)
+    lib.proc_pidfdinfo.restype = ctypes.c_int
     timebase = _Timebase()
     lib.mach_timebase_info(ctypes.byref(timebase))
     return lib, timebase.numer / timebase.denom
@@ -1213,6 +1218,9 @@ class Process:
     """Memory it uses (resident), in bytes; ``None`` for other users' processes."""
     cpu_time: Optional[timedelta]
     """Processor time used since it started; ``None`` for other users' processes."""
+    cpu_percent: Optional[float] = None
+    """Share of a processor core it used lately, like Activity Monitor's % CPU (over 100 on several cores).
+    Only with ``cpu=True``; ``None`` otherwise, and for other users' processes."""
 
     def kill(self, *, force: bool = False) -> None:
         """Ask the process to quit, or end it at once (``force=True``). See :func:`kill`."""
@@ -1263,7 +1271,28 @@ def _read_process(pid: int) -> Optional[Process]:
     )
 
 
-def processes() -> List[Process]:
+_CPU_INTERVAL = 0.5  # seconds between the two readings that give the % CPU
+
+
+def _with_cpu(found: List[Process], again: Callable[[], Dict[int, Process]], started: float) -> List[Process]:
+    """``found`` with each process's % CPU, from how much processor time it used since ``started``."""
+    import dataclasses
+
+    time.sleep(max(0.0, started + _CPU_INTERVAL - time.monotonic()))
+    later = again()
+    elapsed = time.monotonic() - started
+    measured = []
+    for process in found:
+        now = later.get(process.pid)
+        if now is None or now.cpu_time is None or process.cpu_time is None or now.started != process.started:
+            measured.append(process)  # gone, unreadable, or another process with the same pid
+            continue
+        used = (now.cpu_time - process.cpu_time).total_seconds()
+        measured.append(dataclasses.replace(now, cpu_percent=round(max(used, 0.0) / elapsed * 100, 1)))
+    return measured
+
+
+def processes(*, cpu: bool = False) -> List[Process]:
     """
     The running processes, by pid, like Activity Monitor's list.
 
@@ -1272,6 +1301,12 @@ def processes() -> List[Process]:
         biggest = sorted(macos.system.processes(), key=lambda p: p.memory or 0, reverse=True)[:5]
         [(p.name, p.memory // 2**20) for p in biggest]   # [('Safari', 1840), ('Code Helper', 950), ...]
 
+        busiest = sorted(macos.system.processes(cpu=True), key=lambda p: p.cpu_percent or 0)[-1]
+        busiest.name, busiest.cpu_percent                  # ('Xcode', 187.5)
+
+    ``cpu=True`` also measures each process's :attr:`~Process.cpu_percent`,
+    over half a second.
+
     Other users' processes, the system's included, come without their
     memory, processor time and start, which macOS keeps from this user; an
     administrator's script run with ``sudo`` sees them all. No permission
@@ -1279,16 +1314,32 @@ def processes() -> List[Process]:
     """
     from .apps import _pids  # retries when processes start while it lists them
 
+    def read_all() -> List[Process]:
+        found = [_read_process(pid) for pid in sorted(set(_pids()))]
+        return [process for process in found if process is not None]
+
     require_macos()
-    found = [_read_process(pid) for pid in sorted(set(_pids()))]
-    return [process for process in found if process is not None]
+    started = time.monotonic()
+    found = read_all()
+    if not cpu:
+        return found
+    return _with_cpu(found, lambda: {process.pid: process for process in read_all()}, started)
 
 
-def process(pid: int) -> Optional[Process]:
-    """The process with ``pid``, or ``None`` when there's none (it may have quit)."""
+def process(pid: int, *, cpu: bool = False) -> Optional[Process]:
+    """The process with ``pid``, or ``None`` when there's none (it may have quit). ``cpu`` works as for :func:`processes`."""
     if pid <= 0:
         raise ValueError("pid must be positive, not {}".format(pid))
-    return _read_process(pid)
+    started = time.monotonic()
+    found = _read_process(pid)
+    if found is None or not cpu:
+        return found
+
+    def again() -> Dict[int, Process]:
+        later = _read_process(pid)
+        return {pid: later} if later else {}
+
+    return _with_cpu([found], again, started)[0]
 
 
 def kill(process: Union[int, Process], *, force: bool = False) -> None:
@@ -1307,3 +1358,136 @@ def kill(process: Union[int, Process], *, force: bool = False) -> None:
     if pid <= 1:
         raise ValueError("pid must be a process's, not {}".format(pid))
     os.kill(pid, signal.SIGKILL if force else signal.SIGTERM)
+
+
+# --- Ports ------------------------------------------------------------------------
+
+_PROC_PIDLISTFDS, _PROC_PIDFDSOCKETINFO, _PROX_FDTYPE_SOCKET = 1, 3, 2
+# Offsets in <sys/proc_info.h>'s socket_fdinfo: a proc_fileinfo (24 bytes), then a socket_info.
+_SOCKET = 24
+_SOCKET_TYPE, _SOCKET_FAMILY, _SOCKET_KIND = _SOCKET + 152, _SOCKET + 160, _SOCKET + 232
+_PROTO = _SOCKET + 240  # the in_sockinfo (or tcp_sockinfo, which starts with one)
+_REMOTE_PORT, _LOCAL_PORT, _LOCAL_ADDRESS, _TCP_STATE = _PROTO, _PROTO + 4, _PROTO + 48, _PROTO + 80
+_SOCKINFO_IN, _SOCKINFO_TCP = 1, 2
+_AF_INET, _AF_INET6 = 2, 30
+_SOCK_STREAM, _SOCK_DGRAM = 1, 2
+_TCP_LISTEN = 1
+_SOCKET_INFO_SIZE = 1024  # more than socket_fdinfo needs, whatever its protocol's part
+
+
+class _FDInfo(ctypes.Structure):
+    _fields_ = [("fd", ctypes.c_int32), ("type", ctypes.c_uint32)]
+
+
+@dataclass(frozen=True)
+class Port:
+    """A port a process listens on: a TCP server, or a bound UDP socket."""
+
+    port: int
+    protocol: str
+    """``'tcp'`` or ``'udp'``."""
+    address: str
+    """The address it listens on: ``'0.0.0.0'`` or ``'::'`` for every one, ``'127.0.0.1'`` for this Mac only..."""
+    pid: int
+    process: str
+    """The process's name."""
+
+
+def _sockets(lib: ctypes.CDLL, pid: int) -> List[int]:
+    """The file descriptors of ``pid``'s sockets; ``[]`` when it can't be read (another user's)."""
+    size = lib.proc_pidinfo(pid, _PROC_PIDLISTFDS, 0, None, 0)
+    if size <= 0:
+        return []
+    entries = (_FDInfo * (size // ctypes.sizeof(_FDInfo) + 16))()
+    size = lib.proc_pidinfo(pid, _PROC_PIDLISTFDS, 0, entries, ctypes.sizeof(entries))
+    return [entry.fd for entry in entries[: max(size, 0) // ctypes.sizeof(_FDInfo)] if entry.type == _PROX_FDTYPE_SOCKET]
+
+
+def _address(raw: bytes, family: int) -> str:
+    import socket
+
+    if family == _AF_INET:
+        return socket.inet_ntop(socket.AF_INET, raw[12:16])  # an IPv4 address sits at the end of the 16 bytes
+    return socket.inet_ntop(socket.AF_INET6, raw)
+
+
+def _port(lib: ctypes.CDLL, pid: int, fd: int, name: str) -> Optional[Port]:
+    import socket
+
+    info = ctypes.create_string_buffer(_SOCKET_INFO_SIZE)
+    if lib.proc_pidfdinfo(pid, fd, _PROC_PIDFDSOCKETINFO, info, _SOCKET_INFO_SIZE) <= _TCP_STATE:
+        return None
+
+    def number(offset: int) -> int:
+        return int(ctypes.c_int32.from_buffer(info, offset).value)
+
+    family, kind, socket_type = number(_SOCKET_FAMILY), number(_SOCKET_KIND), number(_SOCKET_TYPE)
+    if family not in (_AF_INET, _AF_INET6) or kind not in (_SOCKINFO_IN, _SOCKINFO_TCP):
+        return None
+    port = socket.ntohs(number(_LOCAL_PORT) & 0xFFFF)
+    if not port:
+        return None
+    if socket_type == _SOCK_STREAM:
+        if kind != _SOCKINFO_TCP or number(_TCP_STATE) != _TCP_LISTEN:
+            return None  # a connection, not a server
+        protocol = "tcp"
+    elif socket_type == _SOCK_DGRAM:
+        if number(_REMOTE_PORT) & 0xFFFF:
+            return None  # connected to another address: a client, not a listener
+        protocol = "udp"
+    else:
+        return None
+    address = _address(info.raw[_LOCAL_ADDRESS:_LOCAL_ADDRESS + 16], family)
+    return Port(port=port, protocol=protocol, address=address, pid=pid, process=name)
+
+
+def ports() -> List[Port]:
+    """
+    The ports processes listen on: TCP servers and bound UDP sockets, by port.
+
+    ::
+
+        for port in macos.system.ports():
+            print(port.port, port.protocol, port.process)   # 5432 tcp postgres, 8000 tcp Python, ...
+
+    Like ``lsof -i`` without ``sudo``: other users' processes, the
+    system's included, are left out, since macOS keeps them from this user.
+    """
+    from .apps import _pids
+
+    require_macos()
+    lib, _ = _libproc()
+    found = set()
+    for pid in _pids():
+        fds = _sockets(lib, pid)
+        if not fds:
+            continue
+        process = _read_process(pid)
+        for fd in fds:
+            port = _port(lib, pid, fd, process.name if process else str(pid))
+            if port:
+                found.add(port)
+    return sorted(found, key=lambda port: (port.port, port.protocol, port.address, port.pid))
+
+
+def port_owner(port: int, protocol: str = "tcp") -> Optional[Process]:
+    """
+    The process listening on ``port``, or ``None``: what's using port 8000?
+
+    ::
+
+        owner = macos.system.port_owner(8000)
+        if owner:
+            print(owner.name, owner.pid)   # Python 4123
+            owner.kill()
+
+    Only this user's processes are seen, as with :func:`ports`.
+    """
+    if not 0 < port < 65536:
+        raise ValueError("port must be from 1 to 65535, not {}".format(port))
+    if protocol not in ("tcp", "udp"):
+        raise ValueError("protocol must be 'tcp' or 'udp', not {!r}".format(protocol))
+    for found in ports():
+        if found.port == port and found.protocol == protocol:
+            return _read_process(found.pid)
+    return None

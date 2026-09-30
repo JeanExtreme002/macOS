@@ -41,3 +41,20 @@ def test_only_the_main_thread_gets_answers():
     thread.start()
     thread.join()
     assert failures == ["geocoding answers on the main thread: call it from there"]
+
+
+def test_open_and_directions(fake_run):
+    maps.open("Avenida Paulista, 1578, São Paulo")
+    assert fake_run.args == ["open", "maps://?q=Avenida%20Paulista%2C%201578%2C%20S%C3%A3o%20Paulo"]
+    maps.open(PLACE)
+    assert fake_run.args[-1] == "maps://?ll=48.8584%2C2.2945&q=Eiffel%20Tower"
+    maps.open((-22.95, -43.21))
+    assert fake_run.args[-1] == "maps://?ll=-22.95%2C-43.21&q=-22.95%2C-43.21"
+    maps.directions((48.8584, 2.2945), start="Gare du Nord", by="walk")
+    assert fake_run.args[-1] == "maps://?daddr=48.8584%2C2.2945&dirflg=w&saddr=Gare%20du%20Nord"
+    maps.directions("Congonhas")
+    assert fake_run.args[-1] == "maps://?daddr=Congonhas&dirflg=d"
+    with pytest.raises(ValueError, match="by must be"):
+        maps.directions("Congonhas", by="bike")
+    with pytest.raises(ValueError, match="must not be empty"):
+        maps.open(" ")

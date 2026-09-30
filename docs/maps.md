@@ -43,6 +43,21 @@ place.city, place.time_zone   # ('Rio de Janeiro', 'America/Sao_Paulo')
 
 Out at sea, it's the ocean's name, without an address.
 
+## The Maps app
+
+{func}`~macos.maps.open` shows a place in the Maps app, and
+{func}`~macos.maps.directions` opens it with the route:
+
+```python
+macos.maps.open("Avenida Paulista, 1578, São Paulo")
+macos.maps.open(macos.maps.geocode("Eiffel Tower")[0])
+macos.maps.directions("Aeroporto de Congonhas", by="transit")   # from where the Mac is
+macos.maps.directions((48.8584, 2.2945), start="Gare du Nord, Paris", by="walk")
+```
+
+A place is an address, a {class}`~macos.maps.Place` or `(latitude, longitude)`;
+`by` is `"car"`, `"walk"` or `"transit"`.
+
 ## Limits
 
 Apple limits how many requests an app makes in a short time: space out
@@ -54,3 +69,5 @@ functions from the main thread, where the answers arrive.
 - {func}`macos.maps.geocode`
 - {func}`macos.maps.reverse_geocode`
 - {class}`macos.maps.Place`
+- {func}`macos.maps.open`
+- {func}`macos.maps.directions`

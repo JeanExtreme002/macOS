@@ -217,6 +217,7 @@ def test_processes():
     child = subprocess.Popen(["sleep", "30"])
     try:
         assert macos.system.process(child.pid).name == "sleep"
+        assert macos.system.process(child.pid, cpu=True).cpu_percent is not None
         macos.system.process(child.pid).kill()
         assert child.wait(timeout=5) == -15
     finally:
@@ -243,3 +244,45 @@ def test_process_names_cut_by_the_kernel():
     assert name(b"", b"Google Chrome H", long_path) == "Google Chrome Helper (Renderer)"  # only the short name
     assert name(b"", b"launchd", Path("/sbin/launchd")) == "launchd"
     assert name(b"", b"kernel_task", None) == "kernel_task"
+
+
+def test_cpu_percent_from_two_readings(monkeypatch):
+    from datetime import timedelta
+
+    clock = {"now": 100.0}
+    monkeypatch.setattr(macos.system.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(macos.system.time, "sleep", lambda seconds: clock.update(now=clock["now"] + seconds))
+
+    def process(pid, cpu_seconds, started="then"):
+        return macos.system.Process(pid, "p", None, "me", 1, started, 1, timedelta(seconds=cpu_seconds))
+
+    before = [process(1, 10), process(2, 5), process(3, 1), process(4, 2)]
+    later = {1: process(1, 10.25), 2: process(2, 5.8), 4: process(4, 0, started="another")}  # 3 quit; 4 is a new one
+    measured = macos.system._with_cpu(before, lambda: later, started=100.0)
+    assert [found.cpu_percent for found in measured] == [50.0, 160.0, None, None]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real sockets")
+def test_ports_and_their_owners():
+    import os
+    import socket
+
+    with socket.socket() as server, socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as udp:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        udp.bind(("::1", 0))
+        tcp_port, udp_port = server.getsockname()[1], udp.getsockname()[1]
+        found = macos.system.ports()
+        assert macos.system.Port(tcp_port, "tcp", "127.0.0.1", os.getpid(), macos.system.process(os.getpid()).name) in found
+        assert any(port.port == udp_port and port.protocol == "udp" and port.address == "::1" for port in found)
+        assert macos.system.port_owner(tcp_port).pid == os.getpid()
+        assert macos.system.port_owner(udp_port, "udp").pid == os.getpid()
+        assert macos.system.port_owner(tcp_port, "udp") is None
+    assert macos.system.port_owner(tcp_port) is None  # closed
+
+
+def test_port_checks():
+    with pytest.raises(ValueError, match="port must be from 1 to 65535"):
+        macos.system.port_owner(0)
+    with pytest.raises(ValueError, match="protocol must be"):
+        macos.system.port_owner(80, "sctp")

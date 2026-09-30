@@ -259,6 +259,8 @@ explain how to use each part.
 .. autofunction:: macos.maps.geocode
 .. autofunction:: macos.maps.reverse_geocode
 .. autoclass:: macos.maps.Place
+.. autofunction:: macos.maps.open
+.. autofunction:: macos.maps.directions
 ```
 
 ## macos.music
@@ -881,6 +883,9 @@ explain how to use each part.
 .. autofunction:: macos.system.processes
 .. autofunction:: macos.system.process
 .. autofunction:: macos.system.kill
+.. autoclass:: macos.system.Port
+.. autofunction:: macos.system.ports
+.. autofunction:: macos.system.port_owner
 ```
 
 ## Exceptions

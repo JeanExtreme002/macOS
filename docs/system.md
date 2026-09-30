@@ -227,12 +227,38 @@ biggest = sorted(macos.system.processes(), key=lambda p: p.memory or 0, reverse=
 macos.system.process(1234).kill()                # asks it to quit, as `kill` does
 ```
 
+`cpu=True` also measures each process's `cpu_percent` over half a second,
+like Activity Monitor's % CPU (over 100 when it uses several cores):
+
+```python
+busiest = sorted(macos.system.processes(cpu=True), key=lambda p: p.cpu_percent or 0)[-1]
+busiest.name, busiest.cpu_percent   # ('Xcode', 187.5)
+```
+
 Each {class}`~macos.system.Process` has its `pid`, `name`, `path`, `user`,
 `parent_pid`, `started`, `memory` (in bytes) and `cpu_time`. Other users'
 processes, the system's included, come without their memory, processor
 time and start, which macOS keeps from this user. `kill(force=True)` ends a
 process at once, without letting it save; to quit an app, prefer
 {meth}`App.quit() <macos.apps.App.quit>`.
+
+## Ports
+
+{func}`~macos.system.ports` lists the ports processes listen on, TCP servers
+and bound UDP sockets, and {func}`~macos.system.port_owner` answers "what's
+using port 8000?":
+
+```python
+for port in macos.system.ports():
+    print(port.port, port.protocol, port.address, port.process)   # 5432 tcp 127.0.0.1 postgres
+
+owner = macos.system.port_owner(8000)
+if owner:
+    owner.kill()   # free the port
+```
+
+Like `lsof -i` without `sudo`, other users' processes, the system's
+included, are left out.
 
 ## Reference
 
@@ -293,3 +319,6 @@ process at once, without letting it save; to quit an app, prefer
 - {func}`macos.system.processes`
 - {func}`macos.system.process`
 - {func}`macos.system.kill`
+- {class}`macos.system.Port`
+- {func}`macos.system.ports`
+- {func}`macos.system.port_owner`
