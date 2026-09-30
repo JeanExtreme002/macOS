@@ -886,6 +886,10 @@ explain how to use each part.
 .. autoclass:: macos.system.Port
 .. autofunction:: macos.system.ports
 .. autofunction:: macos.system.port_owner
+.. autoclass:: macos.system.Connection
+.. autofunction:: macos.system.connections
+.. autofunction:: macos.system.open_files
+.. autofunction:: macos.system.who_uses
 ```
 
 ## Exceptions

@@ -309,3 +309,79 @@ def test_socket_list_retries_when_files_open_meanwhile():
     lib = Lib()
     assert system._sockets(lib, 1) == list(range(1, 40, 2))
     assert lib.calls > 2  # it came back full, and was asked again with more room
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real sockets")
+def test_connections():
+    import os
+    import socket
+
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+        with socket.create_connection(("127.0.0.1", port)) as client, server.accept()[0]:
+            local = client.getsockname()[1]
+            mine = [found for found in macos.system.connections() if found.pid == os.getpid()]
+            assert macos.system.Connection(
+                "tcp", "127.0.0.1", local, "127.0.0.1", port, "established", os.getpid(), mine[0].process
+            ) in mine
+            assert any(found.local_port == port and found.remote_port == local for found in mine)  # the server's end
+            assert not any(found.state == "listen" for found in mine)  # servers are in ports()
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real open files")
+def test_open_files_and_who_uses(tmp_path):
+    import os
+
+    held = tmp_path / "held.txt"
+    with open(held, "w"):
+        assert any(user.pid == os.getpid() for user in macos.system.who_uses(held))
+        assert any(user.pid == os.getpid() for user in macos.system.who_uses(tmp_path))  # a file inside counts
+        assert Path(os.path.realpath(held)) in macos.system.open_files(os.getpid())
+    assert not any(user.pid == os.getpid() for user in macos.system.who_uses(held))
+    assert Path(os.path.realpath(os.getcwd())) in macos.system.open_files(os.getpid())
+    with pytest.raises(FileNotFoundError):
+        macos.system.who_uses(tmp_path / "missing")
+
+
+def test_paths_inside_a_folder():
+    inside = macos.system._is_in
+    assert inside("/Volumes/Backup/photos/a.jpg", "/Volumes/Backup") and inside("/Volumes/Backup", "/Volumes/Backup/")
+    assert not inside("/Volumes/Backup 2/a.jpg", "/Volumes/Backup")
+    assert inside("/Users/alice/notes.txt", "/")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real open files")
+def test_who_uses_a_file_by_any_of_its_names(tmp_path):
+    import os
+
+    first, second = tmp_path / "first.txt", tmp_path / "second.txt"
+    first.write_text("same file")
+    os.link(first, second)  # two names for one file
+    with open(first):
+        assert any(user.pid == os.getpid() for user in macos.system.who_uses(second))
+    assert not any(user.pid == os.getpid() for user in macos.system.who_uses(second))
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real sockets")
+def test_a_connected_udp_socket_over_ipv6():
+    import os
+    import socket
+
+    if not socket.has_ipv6:
+        pytest.skip("no IPv6 here")
+    udp = (socket.AF_INET6, socket.SOCK_DGRAM)
+    with socket.socket(*udp) as receiver, socket.socket(*udp) as sender:
+        try:
+            receiver.bind(("::1", 0))
+            sender.connect(("::1", receiver.getsockname()[1]))
+        except OSError:
+            pytest.skip("no IPv6 loopback here")
+        local, remote = sender.getsockname()[1], receiver.getsockname()[1]
+        found = [c for c in macos.system.connections() if c.pid == os.getpid() and c.protocol == "udp"]
+        assert any(
+            c.local_port == local and c.remote_address == "::1" and c.remote_port == remote and c.state is None for c in found
+        )
+        listening = [p.port for p in macos.system.ports() if p.pid == os.getpid() and p.protocol == "udp"]
+        assert remote in listening and local not in listening  # connected: a client, not a listener
