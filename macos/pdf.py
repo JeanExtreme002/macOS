@@ -969,6 +969,23 @@ def _check_position(position: Position) -> None:
         raise ValueError("position must be one of {} or (x, y), not {!r}".format(", ".join(_CORNERS), position))
 
 
+def _unrotated(box: Tuple[float, float, float, float], width: float, height: float, rotation: int) -> Tuple[float, ...]:
+    """
+    A box ``(x, y, w, h)`` on the page as it's seen, turned by ``rotation``, in the page's own (unrotated) coordinates.
+
+    ``width`` and ``height`` are the unrotated page's; the result's w and h swap at 90 and 270 degrees.
+    """
+    x, y, w, h = box
+    turn = rotation % 360
+    if turn == 90:
+        return width - y - h, x, h, w
+    if turn == 180:
+        return width - x - w, height - y - h, w, h
+    if turn == 270:
+        return y, height - x - w, h, w
+    return x, y, w, h
+
+
 def _origin(
     position: Position, width: float, height: float, page_width: float, page_height: float, margin: float
 ) -> Tuple[float, float]:
@@ -1144,8 +1161,13 @@ def add_text(
         extent = _objc.send(measured, "size", restype=_objc.CGSize)
         width, height = extent.width + 8, extent.height + 4  # a little room: FreeText boxes pad their text
         bounds = _objc.send(target, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
-        x, y = _origin(position, width, height, bounds.size.width, bounds.size.height, margin)
-        box = _objc.CGRect(_objc.CGPoint(bounds.origin.x + x, bounds.origin.y + y), _objc.CGSize(width, height))
+        # Place it on the page as it's seen: a rotated page's corners aren't its unrotated ones.
+        rotation = int(_objc.send(target, "rotation", restype=ctypes.c_long))
+        seen = (bounds.size.height, bounds.size.width) if rotation % 180 else (bounds.size.width, bounds.size.height)
+        x, y = _origin(position, width, height, seen[0], seen[1], margin)
+        # PDFKit keeps a text box's text upright as the page is seen: give it the box in page coordinates.
+        left, bottom, across, up = _unrotated((x, y, width, height), bounds.size.width, bounds.size.height, rotation)
+        box = _objc.CGRect(_objc.CGPoint(bounds.origin.x + left, bounds.origin.y + bottom), _objc.CGSize(across, up))
         note = _objc.send(
             _objc.send(_objc.cls("PDFAnnotation"), "alloc"),
             "initWithBounds:forType:withProperties:",
