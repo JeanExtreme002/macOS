@@ -42,6 +42,7 @@ def test_sleep_blockers_keep_the_ones_that_block_sleep():
             "AssertLevel": 255,
         },
         {"AssertType": "PreventUserIdleSystemSleep", "AssertPID": 7, "AssertLevel": 0},  # released
+        {"AssertType": "ExternalMedia", "AssertPID": 8, "AssertStartWhen": started},  # only delays standby
         "not an assertion",
     ]
 

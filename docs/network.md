@@ -106,7 +106,7 @@ System Settings, by the network or by a VPN or a profile.
 ## VPN
 
 ```python
-macos.network.vpns()                  # [VPN(name='Office', kind='IKEv2', status='disconnected', ...)]
+macos.network.vpns()                  # [VPN(name='Office', kind='L2TP', status='disconnected', ...)]
 macos.network.connect_vpn("Office")
 macos.network.disconnect_vpn("Office")
 ```
@@ -129,7 +129,10 @@ finally:
     macos.network.disconnect_vpn("Office")
 ```
 
-VPN apps that don't add theirs to System Settings aren't listed.
+Each VPN's `kind` is its protocol, such as `'L2TP'` or `'IPSec'`, or for a VPN
+app, the app's bundle ID. VPN apps that don't add theirs to System Settings
+aren't listed, and IKEv2 VPNs may not be either: macOS has long left them out
+of what the command line sees.
 
 ## Reference
 

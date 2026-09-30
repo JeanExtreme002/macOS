@@ -510,24 +510,43 @@ class VPN:
 
     name: str
     kind: str
-    """Such as ``'IKEv2'``, ``'L2TP'``, ``'IPSec'``, or the app that made it (``'WireGuard'``)."""
+    """
+    Such as ``'L2TP'`` or ``'IPSec'``, or the bundle ID of the app that made it,
+    such as ``'com.paloaltonetworks.GlobalProtect.client'``.
+    """
     status: str
     """``'connected'``, ``'connecting'``, ``'disconnecting'`` or ``'disconnected'``."""
     id: str
     """Its identifier, which stays the same when it's renamed."""
 
 
-# scutil --nc list: * (Connected)   <id> IPSec   "Office"   [IPSec]
-_VPN_LINE = re.compile(r'^\s*\*?\s*\(([^)]*)\)\s+([0-9A-Fa-f-]{36})\s+.*?"(.*)"\s*\[([^\]]*)\]\s*$')
+# scutil --nc list, one service a line; apps' VPNs have no [kind] at the end:
+#   * (Disconnected)   <id> PPP --> L2TP   "Office"   [PPP:L2TP]
+#   * (Connected)      <id> VPN (com.paloaltonetworks.GlobalProtect.client) "GlobalProtect"
+_VPN_LINE = re.compile(r'^\s*\*?\s*\(([^)]*)\)\s+([0-9A-Fa-f-]{36})\s+(.*?)\s*"(.*)"(?:\s*\[([^\]]*)\])?\s*$')
+_APP_VPN = re.compile(r"^VPN\s*\((.+)\)$")
+
+
+def _vpn_kind(service: str, label: Optional[str]) -> str:
+    if label:
+        return re.split(r"[:/]", label)[-1].strip()  # "PPP:L2TP" -> "L2TP"
+    app = _APP_VPN.match(service)
+    if app:
+        return app.group(1)
+    return service.split("-->")[-1].strip()
 
 
 def _vpns(output: str) -> List[VPN]:
     found = []
     for line in output.splitlines():
         match = _VPN_LINE.match(line)
-        if match:
-            status, identifier, name, kind = match.groups()
-            found.append(VPN(name=name, kind=kind.split("/")[-1], status=status.strip().lower(), id=identifier))
+        if not match:
+            continue
+        status, identifier, service, name, label = match.groups()
+        kind = _vpn_kind(service, label)
+        if kind == "Modem":
+            continue  # a dial-up modem, the other kind of service scutil lists
+        found.append(VPN(name=name, kind=kind, status=status.strip().lower(), id=identifier))
     return found
 
 
@@ -537,9 +556,11 @@ def vpns() -> List[VPN]:
 
     ::
 
-        macos.network.vpns()   # [VPN(name='Office', kind='IKEv2', status='disconnected', ...)]
+        macos.network.vpns()   # [VPN(name='Office', kind='L2TP', status='disconnected', ...)]
 
-    VPN apps that don't add theirs to System Settings aren't here.
+    VPN apps that don't add theirs to System Settings aren't here, and IKEv2
+    VPNs may not be either: macOS has long left them out of what the command
+    line sees.
     """
     require_macos()
     return _vpns(_run(["scutil", "--nc", "list"]))

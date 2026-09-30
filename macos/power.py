@@ -275,13 +275,20 @@ def _adapter(found: Any) -> Optional[Adapter]:
     )
 
 
-# The assertions that keep the Mac awake; the others (UserIsActive, BackgroundTask...) come and go on their own.
+# The assertions that keep the Mac awake, and whether they keep the display on too, as powerd applies them
+# (PMAssertions.c). Not UserIsActive, which is someone using the Mac, nor ExternalMedia, which only
+# delays the deeper standby sleep.
 _KEEPS_AWAKE = {
     "PreventUserIdleSystemSleep": False,
-    "PreventSystemSleep": False,
     "NoIdleSleepAssertion": False,
+    "SystemIsActive": False,
+    "PreventSystemSleep": False,
+    "DenySystemSleep": False,
+    "InternalPreventSleep": False,
+    "MaintenanceActivity": False,
     "PreventUserIdleDisplaySleep": True,
     "NoDisplaySleepAssertion": True,
+    "InternalPreventDisplaySleep": True,
 }
 
 

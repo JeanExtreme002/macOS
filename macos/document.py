@@ -65,8 +65,8 @@ def _existing(path: PathLike) -> Path:
 
 def _options(source: Path) -> Optional[int]:
     """Read text and HTML as UTF-8, unless it isn't or an HTML page names its own encoding."""
-    if source.is_dir():
-        return None
+    if source.suffix.lower() not in (".txt", ".text", ".html", ".htm"):
+        return None  # the other formats say their encoding themselves
     raw = source.read_bytes()
     try:
         raw.decode("utf-8")

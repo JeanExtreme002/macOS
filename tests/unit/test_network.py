@@ -42,8 +42,10 @@ def test_no_wifi(commands):
 
 
 _VPN_LIST = """Available network connection services in the current set (*=enabled):
-* ({office})   5E3C8DF5-5B2D-4F5E-9F1A-3A2B1C4D5E6F PPP --> L2TP       "Office"     [PPP/L2TP]
-* (Connected)      4E3C8DF5-5B2D-4F5E-9F1A-3A2B1C4D5E6F VPN (com.wireguard.macos) "Home lab"   [VPN/WireGuard]
+* ({office})   5E3C8DF5-5B2D-4F5E-9F1A-3A2B1C4D5E6F PPP --> L2TP       "Office"     [PPP:L2TP]
+* (Connected)      4E3C8DF5-5B2D-4F5E-9F1A-3A2B1C4D5E6F VPN (com.paloaltonetworks.GlobalProtect.client) "Home lab"
+* (Disconnected)   9E918907-9C9E-4100-87C9-70A755670C57 PPP --> J-Link "J-Link 2" [PPP:Modem]
+  (Disconnected)   3E3C8DF5-5B2D-4F5E-9F1A-3A2B1C4D5E6F IPSec              "Branch"     [IPSec]
 """
 
 
@@ -69,9 +71,10 @@ def _scutil(monkeypatch, statuses):
 
 def test_vpns(fake_run, monkeypatch):
     _scutil(monkeypatch, ["Disconnected"])
-    office, home = macos.network.vpns()
+    office, home, branch = macos.network.vpns()  # the modem isn't a VPN
     assert (office.name, office.kind, office.status) == ("Office", "L2TP", "disconnected")
-    assert (home.name, home.kind, home.status) == ("Home lab", "WireGuard", "connected")
+    assert (home.name, home.kind, home.status) == ("Home lab", "com.paloaltonetworks.GlobalProtect.client", "connected")
+    assert (branch.name, branch.kind, branch.id) == ("Branch", "IPSec", "3E3C8DF5-5B2D-4F5E-9F1A-3A2B1C4D5E6F")
     with pytest.raises(macos.MacOSError, match="no VPN named 'Work'.*'Office'"):
         macos.network.connect_vpn("Work")
 
