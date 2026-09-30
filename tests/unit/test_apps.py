@@ -144,3 +144,40 @@ def test_unquarantine_keeps_the_error_and_stops_at_unreadable_folders(tmp_path, 
             macos.apps.unquarantine(app)
     finally:
         locked.chmod(0o755)
+
+
+def test_uninstall_finds_the_leftovers_by_bundle_id_and_name(tmp_path):
+    from macos.apps import _leftovers
+
+    library = tmp_path / "Library"
+    mine = [
+        "Application Support/com.example.Chat",
+        "Application Support/Chat",
+        "Caches/com.example.Chat",
+        "Caches/com.example.Chat.ShipIt",
+        "Containers/com.example.Chat.helper",
+        "Group Containers/ABCDE12345.com.example.Chat",
+        "HTTPStorages/com.example.Chat.binarycookies",
+        "Logs/Chat",
+        "Preferences/com.example.Chat.plist",
+        "Preferences/ByHost/com.example.Chat.0F1E2D3C.plist",
+        "Saved Application State/com.example.Chat.savedState",
+    ]
+    others = [
+        "Application Support/com.example.ChatPro",  # another app whose ID starts the same
+        "Application Support/Chatter",
+        "Preferences/com.example.Chat2.plist",
+        "Preferences/Chat.plist",  # the name only counts in Application Support, Caches and Logs
+        "Group Containers/group.com.example.Chatbot",
+        "Documents/Chat",
+    ]
+    for entry in mine + others:
+        (library / entry).mkdir(parents=True)
+
+    found = _leftovers(library, "com.example.Chat", ["Chat"])
+
+    assert sorted(found) == sorted(library / entry for entry in mine)
+    # Another installed app whose ID starts with this one's keeps its files.
+    found = _leftovers(library, "com.example.Chat", ["Chat"], others=["com.example.Chat.ShipIt"])
+    assert library / "Caches/com.example.Chat.ShipIt" not in found and library / "Caches/com.example.Chat" in found
+    assert _leftovers(library, None, ["Nothing"]) == []

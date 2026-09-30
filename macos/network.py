@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Basic network information and Wi-Fi power.
+Network information, Wi-Fi power and VPNs.
 
 ::
 
@@ -9,6 +9,7 @@ Basic network information and Wi-Fi power.
     macos.network.ip()                  # '192.168.0.8'
     macos.network.wifi_power()          # True
     macos.network.set_wifi_power(False)
+    macos.network.connect_vpn("Office")
 
 The Wi-Fi network's name (SSID) isn't here: since macOS 14 reading it needs
 the Location permission.
@@ -18,6 +19,7 @@ import ctypes
 import json
 import re
 import socket
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
@@ -41,6 +43,10 @@ __all__ = [
     "dns_servers",
     "Proxies",
     "proxies",
+    "VPN",
+    "vpns",
+    "connect_vpn",
+    "disconnect_vpn",
 ]
 
 _REACHABLE = 1 << 1  # kSCNetworkReachabilityFlagsReachable
@@ -496,3 +502,97 @@ def _proxies(found: Dict[str, Any]) -> Proxies:
         auto_config_url=str(auto) if auto else None,
         exceptions=tuple(str(host) for host in found.get("ExceptionsList") or ()),
     )
+
+
+@dataclass(frozen=True)
+class VPN:
+    """A VPN set up in System Settings › VPN."""
+
+    name: str
+    kind: str
+    """Such as ``'IKEv2'``, ``'L2TP'``, ``'IPSec'``, or the app that made it (``'WireGuard'``)."""
+    status: str
+    """``'connected'``, ``'connecting'``, ``'disconnecting'`` or ``'disconnected'``."""
+    id: str
+    """Its identifier, which stays the same when it's renamed."""
+
+
+# scutil --nc list: * (Connected)   <id> IPSec   "Office"   [IPSec]
+_VPN_LINE = re.compile(r'^\s*\*?\s*\(([^)]*)\)\s+([0-9A-Fa-f-]{36})\s+.*?"(.*)"\s*\[([^\]]*)\]\s*$')
+
+
+def _vpns(output: str) -> List[VPN]:
+    found = []
+    for line in output.splitlines():
+        match = _VPN_LINE.match(line)
+        if match:
+            status, identifier, name, kind = match.groups()
+            found.append(VPN(name=name, kind=kind.split("/")[-1], status=status.strip().lower(), id=identifier))
+    return found
+
+
+def vpns() -> List[VPN]:
+    """
+    The VPNs set up in System Settings, with whether each is connected.
+
+    ::
+
+        macos.network.vpns()   # [VPN(name='Office', kind='IKEv2', status='disconnected', ...)]
+
+    VPN apps that don't add theirs to System Settings aren't here.
+    """
+    require_macos()
+    return _vpns(_run(["scutil", "--nc", "list"]))
+
+
+def _vpn(name: str) -> VPN:
+    found = vpns()
+    for vpn in found:
+        if name in (vpn.name, vpn.id):
+            return vpn
+    known = ", ".join(repr(vpn.name) for vpn in found) or "none is set up"
+    raise MacOSError("no VPN named {!r} (System Settings › VPN: {})".format(name, known))
+
+
+def _wait_vpn(vpn: VPN, wanted: str, timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    moved = False
+    while True:
+        status = _vpn(vpn.id).status
+        if status == wanted:
+            return
+        if status in ("connected", "disconnected"):
+            if moved:
+                raise MacOSError("the VPN {!r} didn't get {}: it's {}".format(vpn.name, wanted, status))
+        else:
+            moved = True
+        if time.monotonic() >= deadline:
+            raise MacOSError("the VPN {!r} isn't {} after {} seconds: it's {}".format(vpn.name, wanted, timeout, status))
+        time.sleep(0.25)
+
+
+def connect_vpn(name: str, *, wait: bool = True, timeout: float = 30.0) -> None:
+    """
+    Connect the VPN ``name``, as set up in System Settings › VPN.
+
+    Waits until it's connected (up to ``timeout`` seconds), and raises
+    :class:`~macos.MacOSError` if it fails, unless ``wait=False``. It uses the
+    password saved with it: a VPN that asks each time may show its prompt.
+    Nothing to do when it's already connected.
+    """
+    vpn = _vpn(name)
+    if vpn.status == "connected":
+        return
+    _run(["scutil", "--nc", "start", vpn.id])
+    if wait:
+        _wait_vpn(vpn, "connected", timeout)
+
+
+def disconnect_vpn(name: str, *, wait: bool = True, timeout: float = 30.0) -> None:
+    """Disconnect the VPN ``name``, waiting until it's done unless ``wait=False``. Nothing to do when it isn't connected."""
+    vpn = _vpn(name)
+    if vpn.status == "disconnected":
+        return
+    _run(["scutil", "--nc", "stop", vpn.id])
+    if wait:
+        _wait_vpn(vpn, "disconnected", timeout)

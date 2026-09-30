@@ -1,7 +1,7 @@
 # Power
 
-{mod}`macos.power` reads the battery and keeps the Mac awake while your code
-runs.
+{mod}`macos.power` reads the battery, keeps the Mac awake while your code
+runs, and tells what else keeps it awake.
 
 ## Battery
 
@@ -65,6 +65,26 @@ with macos.power.keep_awake(display=True):
 The `reason` argument names the request in `pmset -g assertions` and in
 Activity Monitor. Closing a laptop's lid still puts it to sleep.
 
+## What keeps the Mac awake
+
+{func}`~macos.power.sleep_blockers` answers "why doesn't my Mac sleep?": the
+processes holding it awake, oldest first, as `pmset -g assertions` lists them.
+
+```python
+for blocker in macos.power.sleep_blockers():
+    print(blocker.process, blocker.reason, blocker.display)
+# powerd          Powerd - Prevent sleep while display is on   False
+# Google Chrome   Video Wake Lock                               True
+# caffeinate      caffeinate command-line tool                  False
+```
+
+Each {class}`~macos.power.SleepBlocker` has the process (`pid`, `process`),
+what it says it's doing (`reason`), whether it keeps the display on too
+(`display`), since when (`since`) and, when it gives up by itself, until when
+(`until`). macOS itself shows up as `powerd` while the display is on; apps
+playing sound or video, {func}`~macos.power.keep_awake` and `caffeinate` are
+the usual others.
+
 ## Sleeping
 
 ```python
@@ -93,6 +113,8 @@ it's busy.
 - {func}`macos.power.low_power_mode`
 - {class}`macos.power.Battery`
 - {func}`macos.power.keep_awake`
+- {func}`macos.power.sleep_blockers`
+- {class}`macos.power.SleepBlocker`
 - {func}`macos.power.sleep`
 - {func}`macos.power.sleep_display`
 - {class}`macos.power.Adapter`

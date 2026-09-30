@@ -141,3 +141,37 @@ def test_set_default_for():
     finally:
         macos.apps.set_default_for("txt", original)
     assert macos.apps.default_for("txt") == original
+
+
+def test_uninstall_moves_the_app_and_its_leftovers_to_the_trash(tmp_path):
+    import plistlib
+
+    bundle_id = "com.pymacos.test.uninstall{}".format(uuid.uuid4().hex)
+    name = "Pymacos Test {}".format(uuid.uuid4().hex[:8])
+    app = tmp_path / "{}.app".format(name)
+    (app / "Contents").mkdir(parents=True)
+    (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": bundle_id, "CFBundleName": name}))
+    library = Path.home() / "Library"
+    leftovers = [library / "Caches" / bundle_id, library / "Application Support" / name]
+    for leftover in leftovers:
+        leftover.mkdir(parents=True)
+    (library / "Caches" / bundle_id / "cache.db").write_text("x")
+    trash = Path.home() / ".Trash"
+    try:
+        planned = macos.apps.uninstall(str(app), dry_run=True)
+        assert planned[0] == app.resolve() and sorted(planned[1:]) == sorted(leftovers)
+        assert app.exists() and all(leftover.exists() for leftover in leftovers)  # a dry run moves nothing
+
+        assert macos.apps.uninstall(str(app)) == planned
+        assert not app.exists() and not any(leftover.exists() for leftover in leftovers)
+        assert (trash / app.name).exists() and (trash / bundle_id / "cache.db").exists()
+    finally:
+        import shutil
+
+        for item in [*leftovers, trash / app.name, trash / bundle_id, trash / name]:
+            shutil.rmtree(item, ignore_errors=True)
+
+
+def test_uninstall_refuses_the_apps_of_macos():
+    with pytest.raises(macos.MacOSError, match="comes with macOS"):
+        macos.apps.uninstall("Calculator", dry_run=True)

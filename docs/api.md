@@ -85,6 +85,7 @@ explain how to use each part.
 .. autofunction:: macos.apps.unquarantine
 .. autoclass:: macos.apps.InstalledApp
 .. autofunction:: macos.apps.installed
+.. autofunction:: macos.apps.uninstall
 ```
 
 ## macos.keyboard
@@ -419,6 +420,9 @@ explain how to use each part.
 .. autofunction:: macos.time_machine.is_backing_up
 .. autofunction:: macos.time_machine.progress
 .. autofunction:: macos.time_machine.last_backup
+.. autofunction:: macos.time_machine.exclude
+.. autofunction:: macos.time_machine.include
+.. autofunction:: macos.time_machine.is_excluded
 ```
 
 ## macos.keychain
@@ -450,6 +454,8 @@ explain how to use each part.
 .. autofunction:: macos.power.low_power_mode
 .. autoclass:: macos.power.Battery
 .. autofunction:: macos.power.keep_awake
+.. autofunction:: macos.power.sleep_blockers
+.. autoclass:: macos.power.SleepBlocker
 .. autofunction:: macos.power.sleep
 .. autofunction:: macos.power.sleep_display
 .. autoclass:: macos.power.Adapter
@@ -639,6 +645,15 @@ explain how to use each part.
 .. autofunction:: macos.pdf.images
 ```
 
+## macos.document
+
+```{eval-rst}
+.. module:: macos.document
+
+.. autofunction:: macos.document.convert
+.. autofunction:: macos.document.text
+```
+
 ## macos.video
 
 ```{eval-rst}
@@ -772,6 +787,10 @@ explain how to use each part.
 .. autofunction:: macos.network.dns_servers
 .. autoclass:: macos.network.Proxies
 .. autofunction:: macos.network.proxies
+.. autoclass:: macos.network.VPN
+.. autofunction:: macos.network.vpns
+.. autofunction:: macos.network.connect_vpn
+.. autofunction:: macos.network.disconnect_vpn
 ```
 
 ## macos.screen

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Start Time Machine backups and follow them.
+Start Time Machine backups, follow them, and choose what they leave out.
 
 ::
 
@@ -11,19 +11,36 @@ Start Time Machine backups and follow them.
     macos.time_machine.progress()         # 0.42
     macos.time_machine.last_backup()      # datetime.datetime(2026, 9, 28, 23, 10, 4)
 
+    macos.time_machine.exclude("~/code/app/node_modules")
+    macos.time_machine.is_excluded("~/code/app/node_modules")   # True
+
 Goes through the ``tmutil`` command that ships with macOS. Reading the last
 backup needs its disk to be connected, and may need Full Disk Access for the
 app running Python.
 """
 
+import os
 import re
 from datetime import datetime
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Union
 
 from ._system import require_macos, run as _run
 from .errors import CommandError, MacOSError
 
-__all__ = ["destinations", "backup_now", "stop_backup", "is_backing_up", "progress", "last_backup"]
+__all__ = [
+    "destinations",
+    "backup_now",
+    "stop_backup",
+    "is_backing_up",
+    "progress",
+    "last_backup",
+    "exclude",
+    "include",
+    "is_excluded",
+]
+
+PathLike = Union[str, "os.PathLike[str]"]
 
 _BACKUP_NAME = re.compile(r"(\d{4}-\d{2}-\d{2}-\d{6})")
 
@@ -88,3 +105,44 @@ def last_backup() -> Optional[datetime]:
     # tmutil prints the backup's path, named after its date; its errors come with a success status.
     found = _BACKUP_NAME.findall(output)
     return datetime.strptime(found[-1], "%Y-%m-%d-%H%M%S") if found else None
+
+
+def _existing(path: PathLike) -> str:
+    require_macos()
+    found = Path(path).expanduser().absolute()
+    if not found.exists():
+        raise FileNotFoundError(str(found))
+    return str(found)
+
+
+def exclude(path: PathLike) -> None:
+    """
+    Leave a file or folder out of the Time Machine backups, from the next one on.
+
+    Handy for what can be downloaded or rebuilt again (``node_modules``,
+    virtual environments, caches, virtual machines), which makes backups
+    big and slow. The choice travels with the file: it stays when the file
+    is moved or renamed. It doesn't need an administrator password, but it
+    isn't listed in System Settings' *Exclude from Backups* list either.
+    Copies made before stay on the backup disk.
+    """
+    _run(["tmutil", "addexclusion", _existing(path)])
+
+
+def include(path: PathLike) -> None:
+    """
+    Back a file or folder up again, after :func:`exclude`.
+
+    Nothing to do when it isn't excluded. Doesn't undo an exclusion made in
+    System Settings or by macOS itself: see :func:`is_excluded`.
+    """
+    _run(["tmutil", "removeexclusion", _existing(path)])
+
+
+def is_excluded(path: PathLike) -> bool:
+    """
+    Whether Time Machine leaves this file or folder out, for any reason:
+    :func:`exclude`, the list in System Settings, or macOS itself (caches and
+    temporary files). A file inside an excluded folder counts as excluded.
+    """
+    return _run(["tmutil", "isexcluded", _existing(path)]).lstrip().startswith("[Excluded]")

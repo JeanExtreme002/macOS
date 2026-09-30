@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-List, open, activate and quit applications.
+List, open, activate, quit and uninstall applications.
 
 ::
 
@@ -11,6 +11,8 @@ List, open, activate and quit applications.
     safari = macos.apps.open("Safari")
     macos.apps.frontmost()                  # App(name='Safari', ...)
     safari.quit()
+
+    macos.apps.uninstall("Slack", dry_run=True)   # the app and its leftovers, to the Trash
 
 Running applications come from ``NSWorkspace`` (the same list the Dock and the
 Force Quit window use), queried natively through the Objective-C runtime.
@@ -25,7 +27,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from functools import lru_cache
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional, Sequence, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSInteger, NSUInteger
@@ -51,6 +53,7 @@ __all__ = [
     "unquarantine",
     "InstalledApp",
     "installed",
+    "uninstall",
 ]
 
 # NSApplicationActivationPolicy
@@ -809,3 +812,115 @@ def installed() -> List[InstalledApp]:
         pass
     apps = [app for app in (_installed_app(path) for path in paths) if app]
     return sorted(apps, key=lambda app: (app.name.lower(), str(app.path)))
+
+
+# Where apps leave their files in ~/Library, named after their bundle ID.
+_BY_BUNDLE_ID = (
+    "Application Scripts",
+    "Application Support",
+    "Caches",
+    "Containers",
+    "Cookies",
+    "HTTPStorages",
+    "LaunchAgents",
+    "Logs",
+    "Preferences",
+    "Preferences/ByHost",
+    "Saved Application State",
+    "WebKit",
+)
+# And where many name them after the app instead ("Application Support/Slack").
+_BY_NAME = ("Application Support", "Caches", "Logs")
+_SUFFIXES = (".plist", ".savedState", ".binarycookies")
+
+
+def _owned_by(entry: str, bundle_id: str) -> bool:
+    """Whether a file named ``entry`` belongs to the app ``bundle_id``: its own, or a helper's (``<id>.helper``)."""
+    for suffix in _SUFFIXES:
+        if entry.endswith(suffix):
+            entry = entry[: -len(suffix)]
+            break
+    return entry == bundle_id or entry.startswith(bundle_id + ".")
+
+
+def _leftovers(library: Path, bundle_id: Optional[str], names: Sequence[str], others: Sequence[str] = ()) -> List[Path]:
+    """
+    The files the app left in ``library`` (a ``~/Library``), by its bundle ID and its names.
+
+    ``others`` are the bundle IDs of the other apps installed: ``com.google.Chrome.canary``'s
+    files aren't Chrome's, although they start with its ID.
+    """
+    found = []
+
+    def entries(folder: str) -> List[str]:
+        try:
+            return sorted(os.listdir(library / folder))
+        except OSError:
+            return []
+
+    if bundle_id:
+        for folder in _BY_BUNDLE_ID:
+            found += [
+                library / folder / entry
+                for entry in entries(folder)
+                if _owned_by(entry, bundle_id) and not any(_owned_by(entry, other) for other in others)
+            ]
+        # Group Containers are named after a team or group ("group.<id>", "<team>.<id>").
+        groups = entries("Group Containers")
+        found += [library / "Group Containers" / entry for entry in groups if entry.endswith("." + bundle_id)]
+    for folder in _BY_NAME:
+        found += [library / folder / entry for entry in entries(folder) if entry in names]
+    return list(dict.fromkeys(path for path in found if path.name))
+
+
+def uninstall(name: str, *, dry_run: bool = False) -> List[Path]:
+    """
+    Uninstall an app: move it to the Trash, with the files it left in your
+    Library (settings, caches, logs, saved state, support files), and return
+    what was moved, the app first.
+
+    ::
+
+        macos.apps.uninstall("Slack", dry_run=True)   # [PosixPath('/Applications/Slack.app'), ...]
+        macos.apps.uninstall("Slack")
+
+    ``name`` is an app name, a bundle ID or a path. ``dry_run=True`` only
+    returns what would go, without moving anything. The files are found by
+    the app's bundle ID and, in Application Support, Caches and Logs, by its
+    name. Everything goes to the Trash, so *Put Back* undoes it; only this
+    user's files are touched, not ``/Library``'s, which need an administrator.
+
+    Raises :class:`~macos.MacOSError` for an app that's running (quit it
+    first; ``dry_run`` works all the same) or that comes with macOS, and :class:`~macos.AppNotFoundError` for
+    one that isn't found. An app installed for every user may need an
+    administrator to be moved: then nothing is moved, and the error says so.
+    """
+    from . import finder
+
+    require_macos()
+    path = _locate(name)
+    app = _installed_app(path)
+    if app is None:
+        raise AppNotFoundError("{} isn't an app".format(path))
+    if path.startswith(("/System/", "/usr/")):
+        raise MacOSError("{} comes with macOS and can't be uninstalled".format(app.name))
+    names = sorted({app.name, Path(path).stem})
+    prefix = "{}.".format(app.bundle_id)
+    others = sorted({other.bundle_id for other in installed() if other.bundle_id and other.bundle_id.startswith(prefix)})
+    found = [Path(path), *_leftovers(Path.home() / "Library", app.bundle_id, names, others)]
+    if dry_run:
+        return found
+    if get(path) is not None:
+        raise MacOSError("{} is running: quit it first".format(app.name))
+    finder.trash(path)  # the app first: when it can't be moved, its files stay too
+    failed = []
+    for leftover in found[1:]:
+        try:
+            finder.trash(leftover)
+        except (OSError, MacOSError):
+            failed.append(leftover)
+    if failed:
+        raise MacOSError(
+            "{} went to the Trash, but not these files of it: {}".format(app.name, ", ".join(str(item) for item in failed))
+        )
+    return found

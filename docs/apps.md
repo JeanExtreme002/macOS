@@ -1,6 +1,6 @@
 # Apps
 
-{mod}`macos.apps` lists, opens, activates and quits applications.
+{mod}`macos.apps` lists, opens, activates, quits and uninstalls applications.
 
 ## Listing running apps
 
@@ -202,6 +202,34 @@ version and bundle ID:
 It looks in the Applications folders (yours, the Mac's and the system's),
 and at the apps Spotlight knows elsewhere.
 
+## Uninstalling an app
+
+Dragging an app to the Trash leaves its settings, caches and support files
+behind, sometimes gigabytes of them. {func}`~macos.apps.uninstall` moves the
+app to the Trash with the files it left in your Library, and returns what it
+moved, the app first. `dry_run=True` only returns what would go:
+
+```python
+macos.apps.uninstall("Slack", dry_run=True)
+# [PosixPath('/Applications/Slack.app'),
+#  PosixPath('/Users/me/Library/Application Support/Slack'),
+#  PosixPath('/Users/me/Library/Caches/com.tinyspeck.slackmacgap'),
+#  PosixPath('/Users/me/Library/Preferences/com.tinyspeck.slackmacgap.plist'), ...]
+
+macos.apps.uninstall("Slack")
+```
+
+The files are found by the app's bundle ID (in Application Support, Caches,
+Containers, Preferences, Saved Application State, Logs, and the like) and,
+in Application Support, Caches and Logs, by its name. Everything goes to the
+Trash, so *Put Back* undoes it. Only your own files are touched: `/Library`'s
+need an administrator.
+
+It raises {class}`~macos.MacOSError` for an app that's running (quit it first;
+a dry run works all the same) or that comes with macOS, like Safari. An app
+installed for every user may need an administrator to be moved: then nothing
+is moved, and the error says so.
+
 ## Reference
 
 - {func}`macos.apps.running`
@@ -223,3 +251,4 @@ and at the apps Spotlight knows elsewhere.
 - {func}`macos.apps.unquarantine`
 - {class}`macos.apps.InstalledApp`
 - {func}`macos.apps.installed`
+- {func}`macos.apps.uninstall`

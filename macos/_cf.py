@@ -80,6 +80,10 @@ def lib() -> ctypes.CDLL:
     cf.CFArrayGetValueAtIndex.restype = CFTypeRef
     cf.CFDictionaryGetValue.argtypes = (CFTypeRef, CFTypeRef)
     cf.CFDictionaryGetValue.restype = CFTypeRef
+    cf.CFDictionaryGetCount.argtypes = (CFTypeRef,)
+    cf.CFDictionaryGetCount.restype = CFIndex
+    cf.CFDictionaryGetKeysAndValues.argtypes = (CFTypeRef, ctypes.POINTER(CFTypeRef), ctypes.POINTER(CFTypeRef))
+    cf.CFDictionaryGetKeysAndValues.restype = None
     cf.CFNumberGetTypeID.argtypes = ()
     cf.CFNumberGetTypeID.restype = ctypes.c_ulong
     cf.CFNumberGetValue.argtypes = (CFTypeRef, ctypes.c_long, ctypes.c_void_p)
@@ -198,6 +202,17 @@ def items(ref: Optional[int]) -> List[int]:
         return []
     cf = lib()
     return [cf.CFArrayGetValueAtIndex(ref, index) for index in range(cf.CFArrayGetCount(ref))]
+
+
+def values(ref: Optional[int]) -> List[int]:
+    """The values of a ``CFDictionary``, whatever its keys (borrowed references: don't release them)."""
+    if not ref:
+        return []
+    cf = lib()
+    count = cf.CFDictionaryGetCount(ref)
+    found = (CFTypeRef * count)()
+    cf.CFDictionaryGetKeysAndValues(ref, None, found)
+    return [value for value in found if value]
 
 
 def lookup(ref: Optional[int], key: str) -> Optional[int]:

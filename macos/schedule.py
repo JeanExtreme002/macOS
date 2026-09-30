@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-Run Python scripts on a schedule, or at login, with launchd: the Mac's cron.
+Run Python scripts on a schedule, at login, when a folder changes or when a disk
+is plugged in, with launchd: the Mac's cron.
 
 ::
 
@@ -9,6 +10,8 @@ Run Python scripts on a schedule, or at login, with launchd: the Mac's cron.
     macos.schedule.add("report", "report.py", at="09:00")                  # every day at 9
     macos.schedule.add("sync", "sync.py", at="18:30", weekdays=["mon", "fri"])
     macos.schedule.add("hello", "hello.py", at_login=True)
+    macos.schedule.add("tidy", "tidy.py", when_changed="~/Downloads")      # a file arrives
+    macos.schedule.add("copy", "copy.py", at_mount=True)                   # a disk is plugged in
 
     macos.schedule.jobs()          # [Job(name='backup', every=3600, ...), ...]
     macos.schedule.run_now("backup")
@@ -56,6 +59,10 @@ class Job:
     weekdays: Tuple[str, ...]
     """The days ``at`` applies to (``'mon'``...); empty for every day."""
     at_login: bool
+    when_changed: Tuple[Path, ...]
+    """The files or folders whose changes run it, for jobs added with ``when_changed``."""
+    at_mount: bool
+    """Whether mounting a disk runs it."""
     paused: bool
     """Whether :func:`pause` stopped it."""
     log: Path
@@ -108,6 +115,15 @@ def _times(at: Union[Moment, Sequence[Moment], None]) -> List[Tuple[int, int]]:
     return found
 
 
+def _watched(when_changed: Union[PathLike, Sequence[PathLike], None]) -> List[str]:
+    if when_changed is None:
+        return []
+    paths = [when_changed] if isinstance(when_changed, (str, os.PathLike)) else list(when_changed)
+    if not paths:
+        raise ValueError("when_changed needs at least one path")
+    return [str(Path(path).expanduser().absolute()) for path in paths]
+
+
 def _days(weekdays: Optional[Sequence[str]]) -> List[int]:
     if not weekdays:
         return []
@@ -128,6 +144,8 @@ def add(
     at: Union[Moment, Sequence[Moment], None] = None,
     weekdays: Optional[Sequence[str]] = None,
     at_login: bool = False,
+    when_changed: Union[PathLike, Sequence[PathLike], None] = None,
+    at_mount: bool = False,
     args: Sequence[str] = (),
     python: Optional[PathLike] = None,
 ) -> Job:
@@ -139,6 +157,17 @@ def add(
       several, ``["09:00", "18:00"]``; with ``weekdays`` (``["mon", "fri"]``),
       only on those days. Seconds are ignored: launchd counts minutes.
     - ``at_login``: run it each time you log in, and once right away.
+    - ``when_changed``: a file or folder, or several, to watch: the script
+      runs when one changes, and in a folder, when a file is added, removed
+      or renamed there (not deeper). Changes made while it runs, or a few
+      seconds apart, lead to one more run, not one each; the script isn't
+      told what changed, so it looks at the folder itself. A path that
+      doesn't exist yet counts once it's created. launchd may also run it
+      once as the job is added.
+    - ``at_mount``: run it each time a disk is mounted: an external drive, a
+      USB stick, a disk image, a network share.
+
+    These combine: ``every=3600, when_changed="~/Inbox"`` runs hourly and on changes.
 
     It runs with this Python (``python=`` picks another, such as a virtual
     environment's), in the script's folder, with ``args`` as its
@@ -161,8 +190,9 @@ def add(
     if weekdays and at is None:
         raise ValueError("weekdays only apply with at")
     times, days = _times(at), _days(weekdays)
-    if every is None and not times and not at_login:
-        raise ValueError("say when to run it: every=, at= or at_login=True")
+    watched = _watched(when_changed)
+    if every is None and not times and not at_login and not watched and not at_mount:
+        raise ValueError("say when to run it: every=, at=, at_login=True, when_changed= or at_mount=True")
     require_macos()
     source = Path(script).expanduser().absolute()
     if not source.is_file():
@@ -185,6 +215,10 @@ def add(
     if times:
         moments = [{"Hour": hour, "Minute": minute} for hour, minute in times]
         job["StartCalendarInterval"] = [dict(moment, Weekday=day) for moment in moments for day in days] if days else moments
+    if watched:
+        job["WatchPaths"] = watched
+    if at_mount:
+        job["StartOnMount"] = True
     remove(name)  # replacing a job: unload the old one first (and forget it was paused)
     path = _plist(name)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -266,6 +300,8 @@ def _job(path: Path, paused: Sequence[str]) -> Optional[Job]:
         at=times,
         weekdays=days,
         at_login=bool(data.get("RunAtLoad")),
+        when_changed=tuple(Path(path) for path in data.get("WatchPaths") or [] if isinstance(path, str)),
+        at_mount=bool(data.get("StartOnMount")),
         paused=name in paused,
         log=Path(data.get("StandardOutPath", str(_log(name)))),
         running=running,
