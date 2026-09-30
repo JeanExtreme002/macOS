@@ -86,6 +86,9 @@ __all__ = [
     "set_quit_menu",
     "desktop_view",
     "set_desktop_view",
+    "set_icon",
+    "remove_icon",
+    "has_custom_icon",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -1098,3 +1101,74 @@ def set_desktop_view(
     view["IconViewSettings"] = icons
     defaults.write(_FINDER, "DesktopViewSettings", view)
     restart()
+
+
+# --- Custom icons ---------------------------------------------------------------
+
+_HAS_CUSTOM_ICON = 0x0400  # kHasCustomIcon, in the Finder flags of com.apple.FinderInfo
+
+
+def _set_icon(target: Path, image: Optional[int]) -> None:
+    framework("AppKit")
+    workspace = _objc.send(_objc.cls("NSWorkspace"), "sharedWorkspace")
+    ok = _objc.send(
+        workspace,
+        "setIcon:forFile:options:",
+        image,
+        _objc.nsstring(str(target)),
+        0,
+        argtypes=(_objc.id, _objc.id, NSUInteger),
+        restype=BOOL,
+    )
+    if not ok:
+        raise MacOSError("macOS refused to change the icon of {} (is it yours to change?)".format(target))
+
+
+def set_icon(path: PathLike, image: PathLike) -> None:
+    """
+    Give ``path`` (a folder, a file or an app) a custom icon, like pasting one in Finder's Get Info.
+
+    ::
+
+        macos.finder.set_icon("~/Projects", "logo.png")                        # an image
+        macos.finder.set_icon("~/Projects/app", "/Applications/Xcode.app")      # another item's icon
+
+    ``image`` is an image file (PNG, JPEG, ICNS...), or any file, folder or
+    app whose icon to copy. Finder and the Dock may take a moment to show it.
+    An app in ``/Applications`` may need an administrator's rights.
+    """
+    target = _existing(path)
+    source = _existing(image)
+    with _objc.autorelease_pool():
+        framework("AppKit")
+        blank = _objc.send(_objc.cls("NSImage"), "alloc")
+        picture = _objc.send(blank, "initWithContentsOfFile:", _objc.nsstring(str(source)), argtypes=(_objc.id,))
+        if picture:
+            _objc.send(picture, "autorelease")
+        else:
+            # Not an image: take the icon Finder shows for it.
+            workspace = _objc.send(_objc.cls("NSWorkspace"), "sharedWorkspace")
+            picture = _objc.send(workspace, "iconForFile:", _objc.nsstring(str(source)), argtypes=(_objc.id,))
+        _set_icon(target, picture)
+
+
+def remove_icon(path: PathLike) -> None:
+    """Take away ``path``'s custom icon, so it shows its usual one again. Nothing happens if it had none."""
+    target = _existing(path)
+    with _objc.autorelease_pool():
+        _set_icon(target, None)  # nil: the usual icon
+
+
+def has_custom_icon(path: PathLike) -> bool:
+    """Whether ``path`` has a custom icon, set with :func:`set_icon` or in Finder's Get Info."""
+    from .apps import _ENOATTR, _libc
+
+    target = _existing(path)
+    info = ctypes.create_string_buffer(32)  # FinderInfo's size
+    size = _libc().getxattr(os.fsencode(target), b"com.apple.FinderInfo", info, 32, 0, 0)
+    if size < 0:
+        error = ctypes.get_errno()
+        if error == _ENOATTR:
+            return False  # no Finder flags at all
+        raise OSError(error, "can't read the Finder flags of {}: {}".format(target, os.strerror(error)))
+    return size >= 10 and bool(int.from_bytes(info.raw[8:10], "big") & _HAS_CUSTOM_ICON)

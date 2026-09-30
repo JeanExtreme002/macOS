@@ -1,5 +1,6 @@
 """Unit tests for :mod:`macos.system`. They run on any platform."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -200,3 +201,111 @@ def test_cpu_usage_survives_a_counter_wrapping_around(monkeypatch):
     monkeypatch.setattr(system.time, "sleep", lambda seconds: None)
 
     assert system.cpu_usage() == 0.6  # (200 user + 100 system) busy of 500 ticks
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real processes")
+def test_processes():
+    import os
+    import subprocess
+
+    found = macos.system.processes()
+    own = next(process for process in found if process.pid == os.getpid())
+    assert own.memory and own.cpu_time is not None and own.started and own.path and own.path.exists()
+    assert any(process.pid == 1 and process.name == "launchd" and process.user == "root" for process in found)
+    assert macos.system.process(os.getpid()).parent_pid == os.getppid()
+
+    child = subprocess.Popen(["sleep", "30"])
+    try:
+        assert macos.system.process(child.pid).name == "sleep"
+        assert macos.system.process(child.pid, cpu=True).cpu_percent is not None
+        macos.system.process(child.pid).kill()
+        assert child.wait(timeout=5) == -15
+    finally:
+        child.kill()
+    assert macos.system.process(child.pid) is None
+    with pytest.raises(ProcessLookupError):
+        macos.system.kill(child.pid)
+
+
+def test_process_checks():
+    with pytest.raises(ValueError, match="pid must be positive"):
+        macos.system.process(0)
+
+
+def test_process_names_cut_by_the_kernel():
+    from pathlib import Path
+
+    long_path = Path("/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper (Renderer)")
+    name = macos.system._process_name
+    assert name(b"Code Helper (Plugin)", b"Code Helper (Pl", Path("/x/Code Helper (Plugin)")) == "Code Helper (Plugin)"
+    assert name(b"Google Chrome Helper (Rendere", b"Google Chrome H", long_path) == "Google Chrome Helper (Rendere"
+    beta = long_path.with_name("Google Chrome Helper (Renderer) Beta")  # 36 characters: cut to 31
+    assert name(b"Google Chrome Helper (Renderer)", b"Google Chrome H", beta) == "Google Chrome Helper (Renderer) Beta"
+    assert name(b"", b"Google Chrome H", long_path) == "Google Chrome Helper (Renderer)"  # only the short name
+    assert name(b"", b"launchd", Path("/sbin/launchd")) == "launchd"
+    assert name(b"", b"kernel_task", None) == "kernel_task"
+
+
+def test_cpu_percent_from_two_readings(monkeypatch):
+    from datetime import timedelta
+
+    clock = {"now": 100.0}
+    monkeypatch.setattr(macos.system.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(macos.system.time, "sleep", lambda seconds: clock.update(now=clock["now"] + seconds))
+
+    def process(pid, cpu_seconds, started="then"):
+        return macos.system.Process(pid, "p", None, "me", 1, started, 1, timedelta(seconds=cpu_seconds))
+
+    before = [process(1, 10), process(2, 5), process(3, 1), process(4, 2)]
+    later = {1: process(1, 10.25), 2: process(2, 5.8), 4: process(4, 0, started="another")}  # 3 quit; 4 is a new one
+    measured = macos.system._with_cpu(before, lambda: later, started=100.0)
+    assert [found.cpu_percent for found in measured] == [50.0, 160.0, None, None]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real sockets")
+def test_ports_and_their_owners():
+    import os
+    import socket
+
+    with socket.socket() as server, socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as udp:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        udp.bind(("::1", 0))
+        tcp_port, udp_port = server.getsockname()[1], udp.getsockname()[1]
+        found = macos.system.ports()
+        assert macos.system.Port(tcp_port, "tcp", "127.0.0.1", os.getpid(), macos.system.process(os.getpid()).name) in found
+        assert any(port.port == udp_port and port.protocol == "udp" and port.address == "::1" for port in found)
+        assert macos.system.port_owner(tcp_port).pid == os.getpid()
+        assert macos.system.port_owner(udp_port, "udp").pid == os.getpid()
+        assert macos.system.port_owner(tcp_port, "udp") is None
+    assert macos.system.port_owner(tcp_port) is None  # closed
+
+
+def test_port_checks():
+    with pytest.raises(ValueError, match="port must be from 1 to 65535"):
+        macos.system.port_owner(0)
+    with pytest.raises(ValueError, match="protocol must be"):
+        macos.system.port_owner(80, "sctp")
+
+
+def test_socket_list_retries_when_files_open_meanwhile():
+    system = macos.system
+    size = system.ctypes.sizeof(system._FDInfo)
+
+    class Lib:
+        """Has 40 descriptors, every other one a socket, though it said 1 when asked how many."""
+
+        calls = 0
+
+        def proc_pidinfo(self, pid, flavor, argument, buffer, buffer_size):
+            self.calls += 1
+            if buffer is None:
+                return size
+            capacity = buffer_size // size
+            for index in range(min(capacity, 40)):
+                buffer[index] = system._FDInfo(index, system._PROX_FDTYPE_SOCKET if index % 2 else 1)
+            return min(capacity, 40) * size
+
+    lib = Lib()
+    assert system._sockets(lib, 1) == list(range(1, 40, 2))
+    assert lib.calls > 2  # it came back full, and was asked again with more room
