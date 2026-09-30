@@ -136,3 +136,19 @@ def test_startup_item_with_broken_arguments(tmp_path, monkeypatch):
     monkeypatch.setattr(system, "_launchd_state", lambda domain, label: None)
     found = {item.label: (item.program, item.arguments) for item in system.startup_items()}
     assert found == {"com.example.number": (None, ()), "com.example.text": (None, ())}  # listed, not split into letters
+
+
+def test_launchctl_switches_win_over_the_plist(tmp_path, monkeypatch):
+    import plistlib
+
+    for label, disabled in (("com.example.overridden", True), ("com.example.turned_off", False), ("com.example.plain", True)):
+        described = {"Label": label, "Program": "/bin/true", "Disabled": disabled}
+        (tmp_path / (label + ".plist")).write_bytes(plistlib.dumps(described))
+    switches = {"com.example.overridden": False, "com.example.turned_off": True}  # launchctl enable / disable
+    monkeypatch.setattr(system, "_STARTUP_FOLDERS", ((str(tmp_path), "agent", False),))
+    monkeypatch.setattr(system, "require_macos", lambda: None)
+    monkeypatch.setattr(system.os, "getuid", lambda: 501, raising=False)
+    monkeypatch.setattr(system, "_disabled", lambda domain: switches)
+    monkeypatch.setattr(system, "_launchd_state", lambda domain, label: None)
+    found = {item.label: item.enabled for item in system.startup_items()}
+    assert found == {"com.example.overridden": True, "com.example.turned_off": False, "com.example.plain": False}

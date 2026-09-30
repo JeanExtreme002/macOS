@@ -2358,7 +2358,11 @@ def startup_items() -> List[StartupItem]:
             arguments = tuple(str(argument) for argument in listed) if isinstance(listed, list) else ()
             program = info.get("Program") or (arguments[0] if arguments else None)
             keep_alive = info.get("KeepAlive")
-            enabled = not info.get("Disabled", False) and not switches[kind].get(label, False)
+            # launchctl's own switch, when it has one, wins over the file's Disabled key, either way.
+            if label in switches[kind]:
+                enabled = not switches[kind][label]
+            else:
+                enabled = not info.get("Disabled", False)
             found.append(
                 StartupItem(
                     label=label,
