@@ -1226,7 +1226,8 @@ def bookmarks(path: PathLike, *, password: Optional[str] = None) -> List[Bookmar
             target = _objc.send(destination, "page") if destination else None
             number = 0
             if target:
-                number = int(_objc.send(document, "indexForPage:", target, argtypes=(_objc.id,), restype=NSUInteger)) + 1
+                index = int(_objc.send(document, "indexForPage:", target, argtypes=(_objc.id,), restype=NSUInteger))
+                number = index + 1 if index < _count(document) else 0  # NSNotFound: a page of another document
             found.append(Bookmark(_objc.pystring(_objc.send(child, "label")) or "", number, level))
             walk(child, level + 1, document)
 
@@ -1302,7 +1303,8 @@ def set_bookmarks(
 
 _STREAM = 9  # kCGPDFObjectTypeStream
 _RAW, _JPEG, _JPEG2000 = 0, 1, 2  # CGPDFDataFormat
-_COMPONENTS = {b"DeviceRGB": 3, b"DeviceGray": 1, b"DeviceCMYK": 4, b"CalRGB": 3, b"CalGray": 1}
+_COMPONENTS = {b"DeviceRGB": 3, b"DeviceGray": 1, b"DeviceCMYK": 4}
+_CALIBRATED = {b"CalRGB": 3, b"CalGray": 1}  # written as arrays: [/CalRGB << ... >>], drawn here as device colors
 _Visitor = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p)
 
 
@@ -1318,6 +1320,8 @@ def _pdf_objects() -> ctypes.CDLL:
         "CGPDFDictionaryGetArray": ((pointer, ctypes.c_char_p, ctypes.POINTER(pointer)), ctypes.c_bool),
         "CGPDFArrayGetName": ((pointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_char_p)), ctypes.c_bool),
         "CGPDFArrayGetStream": ((pointer, ctypes.c_size_t, ctypes.POINTER(pointer)), ctypes.c_bool),
+        "CGPDFArrayGetCount": ((pointer,), ctypes.c_size_t),
+        "CGPDFArrayGetNumber": ((pointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_double)), ctypes.c_bool),
         "CGPDFDictionaryApplyFunction": ((pointer, _Visitor, pointer), None),
         "CGPDFObjectGetValue": ((pointer, ctypes.c_int, pointer), ctypes.c_bool),
         "CGPDFStreamGetDictionary": ((pointer,), pointer),
@@ -1351,14 +1355,37 @@ def _components(graphics: ctypes.CDLL, info: int) -> Optional[int]:
     if graphics.CGPDFDictionaryGetArray(info, b"ColorSpace", ctypes.byref(array)):
         kind = ctypes.c_char_p()
         profile = ctypes.c_void_p()
+        if graphics.CGPDFArrayGetName(array, 0, ctypes.byref(kind)) and kind.value in _CALIBRATED:
+            return _CALIBRATED[kind.value]
         if (
-            graphics.CGPDFArrayGetName(array, 0, ctypes.byref(kind))
-            and kind.value == b"ICCBased"
+            kind.value == b"ICCBased"
             and graphics.CGPDFArrayGetStream(array, 1, ctypes.byref(profile))
         ):
             count = ctypes.c_long()
             if graphics.CGPDFDictionaryGetInteger(graphics.CGPDFStreamGetDictionary(profile), b"N", ctypes.byref(count)):
                 return int(count.value) if count.value in (1, 3, 4) else None
+    return None
+
+
+def _decode(graphics: ctypes.CDLL, info: int, components: int) -> Optional[str]:
+    """
+    How an image's /Decode maps its samples: ``"default"``, ``"inverted"``, or ``None`` for another mapping.
+
+    [1 0] per component (common for masks and scans) is an inversion; anything else isn't rebuilt.
+    """
+    array = ctypes.c_void_p()
+    if not graphics.CGPDFDictionaryGetArray(info, b"Decode", ctypes.byref(array)):
+        return "default"
+    values = []
+    for index in range(graphics.CGPDFArrayGetCount(array)):
+        value = ctypes.c_double()
+        if not graphics.CGPDFArrayGetNumber(array, index, ctypes.byref(value)):
+            return None
+        values.append(value.value)
+    if values == [0.0, 1.0] * components:
+        return "default"
+    if values == [1.0, 0.0] * components:
+        return "inverted"
     return None
 
 
@@ -1388,9 +1415,18 @@ def _save_image(graphics: ctypes.CDLL, stream: int, target: Path) -> Optional[Pa
             return None  # an indexed palette, a mask...: kinds it doesn't rebuild
         if _cf.lib().CFDataGetLength(data) < width * height * components:
             return None
+        mapping = _decode(graphics, info, components)
+        if mapping is None:
+            return None  # a sample mapping these images can't be drawn with
+        pixels = data
+        if mapping == "inverted":
+            # A new buffer with the samples flipped; the original stays with its owner above.
+            pixels = _cf.data(bytes(255 - value for value in _cf.to_bytes(data)[: width * height * components]))
         create = {1: "CGColorSpaceCreateDeviceGray", 3: "CGColorSpaceCreateDeviceRGB", 4: "CGColorSpaceCreateDeviceCMYK"}
         space = getattr(graphics, create[components])()
-        provider = graphics.CGDataProviderCreateWithCFData(data)
+        provider = graphics.CGDataProviderCreateWithCFData(pixels)
+        if pixels != data:
+            _cf.release(pixels)  # the provider holds it now
         try:
             picture = graphics.CGImageCreate(
                 width, height, 8, 8 * components, width * components, space, 0, provider, None, False, 0

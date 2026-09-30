@@ -24,11 +24,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework, require_macos, run as _run
-from .errors import MacOSError, NotSupportedError
+from .errors import CommandError, MacOSError, NotSupportedError
 
 __all__ = [
     "version",
@@ -1977,7 +1977,7 @@ def _crash_report(path: Path) -> Optional[CrashReport]:
     try:
         with open(path, encoding="utf-8", errors="replace") as file:
             header = json.loads(file.readline())
-            if str(header.get("bug_type")) not in _CRASHES:
+            if not isinstance(header, dict) or str(header.get("bug_type")) not in _CRASHES:
                 return None
             try:
                 body = json.loads(file.read())
@@ -1985,12 +1985,17 @@ def _crash_report(path: Path) -> Optional[CrashReport]:
                 body = {}
     except (OSError, ValueError):
         return None
-    exception = body.get("exception") or {}
+
+    def part(value: object) -> Dict[str, Any]:
+        return value if isinstance(value, dict) else {}  # a corrupt report must not break the listing
+
+    body = part(body)
+    exception = part(body.get("exception"))
     reason = exception.get("type")
     if reason and exception.get("signal"):
         reason = "{} ({})".format(reason, exception["signal"])
     elif not reason:
-        reason = (body.get("termination") or {}).get("indicator")
+        reason = part(body.get("termination")).get("indicator")
     date = None
     try:
         date = datetime.strptime(str(header.get("timestamp")), "%Y-%m-%d %H:%M:%S.%f %z")
@@ -2005,6 +2010,13 @@ def _crash_report(path: Path) -> Optional[CrashReport]:
     )
 
 
+def _before(date: datetime, cutoff: datetime) -> bool:
+    """Whether ``date`` (with its offset) is before ``cutoff``, which is taken as this Mac's local time when it has none."""
+    if cutoff.tzinfo is None:
+        return date.astimezone().replace(tzinfo=None) < cutoff  # the report's instant, on the local clock
+    return date < cutoff
+
+
 def crash_reports(app: Optional[str] = None, *, since: Optional[datetime] = None) -> List[CrashReport]:
     """
     The crashes macOS recorded, the latest first: which app, when, and why.
@@ -2014,7 +2026,8 @@ def crash_reports(app: Optional[str] = None, *, since: Optional[datetime] = None
         for crash in macos.system.crash_reports(since=datetime.now() - timedelta(days=7)):
             print(crash.date, crash.app, crash.reason)   # 2026-09-29 13:55 Safari EXC_BAD_ACCESS (SIGSEGV)
 
-    ``app`` keeps one app's, by name (case doesn't matter). It reads the
+    ``app`` keeps one app's, by name (case doesn't matter); ``since`` is
+    this Mac's local time unless it carries a time zone. It reads the
     reports in ``~/Library/Logs/DiagnosticReports``, and the system's that
     this user may read. macOS deletes them after a while.
     """
@@ -2030,7 +2043,7 @@ def crash_reports(app: Optional[str] = None, *, since: Optional[datetime] = None
             report = _crash_report(path)
             if report is None or (app and report.app.lower() != app.lower()):
                 continue
-            if since and report.date and report.date.replace(tzinfo=None) < since.replace(tzinfo=None):
+            if since and report.date and _before(report.date, since):
                 continue
             found.append(report)
     return sorted(found, key=lambda report: (report.date is not None, report.date), reverse=True)
@@ -2138,16 +2151,22 @@ def logs(
     if conditions:
         args += ["--predicate", " AND ".join(conditions)]
     entries: List[LogEntry] = []
-    reader = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8")
-    assert reader.stdout is not None
+    reader = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+    assert reader.stdout is not None and reader.stderr is not None
+    stopped = False  # by us, at the limit: not a failure
     try:
         for line in reader.stdout:
             entry = _log_entry(line) if line.startswith("{") else None
             if entry:
                 entries.append(entry)
                 if limit is not None and len(entries) >= limit:
+                    stopped = True
                     break
     finally:
-        reader.kill()
+        if stopped:
+            reader.kill()
         reader.wait()
+        errors = reader.stderr.read()
+    if not stopped and reader.returncode != 0:
+        raise CommandError(args, reader.returncode, errors)
     return entries

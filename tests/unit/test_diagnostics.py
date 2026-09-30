@@ -6,6 +6,7 @@ from datetime import datetime
 
 import pytest
 
+import macos
 from macos import apps, network, system
 
 darwin = pytest.mark.skipif(sys.platform != "darwin", reason="reads this Mac's own state")
@@ -101,3 +102,55 @@ def test_logs():
 def test_platform_checks():
     with pytest.raises(ValueError, match="limit"):
         system.logs(limit=-1)
+
+
+def test_crash_reports_skip_corrupt_shapes_and_compare_instants(tmp_path, monkeypatch):
+    from datetime import timezone
+
+    (tmp_path / "list.ips").write_text("[1, 2]\n{}")
+    header = {"app_name": "Mail", "bug_type": "309", "timestamp": "2026-09-29 13:55:00.00 -0300"}
+    (tmp_path / "odd.ips").write_text(json.dumps(header) + "\n" + json.dumps({"exception": "not a dict", "termination": [1]}))
+    monkeypatch.setattr(system, "_REPORT_FOLDERS", (str(tmp_path),))
+    monkeypatch.setattr(system, "require_macos", lambda: None)
+
+    found = system.crash_reports()
+    assert [(crash.app, crash.reason) for crash in found] == [("Mail", None)]  # the list header skipped, nothing broken
+    # 13:55 at -03:00 is 16:55 UTC: after a 15:00 UTC cutoff, before a 17:00 one.
+    assert len(system.crash_reports(since=datetime(2026, 9, 29, 15, 0, tzinfo=timezone.utc))) == 1
+    assert system.crash_reports(since=datetime(2026, 9, 29, 17, 0, tzinfo=timezone.utc)) == []
+
+
+def test_installed_walks_every_subfolder_and_skips_odd_plists(tmp_path, monkeypatch):
+    import plistlib
+
+    deep = tmp_path / "Development" / "Tools" / "Deep.app" / "Contents"
+    deep.mkdir(parents=True)
+    (deep / "Info.plist").write_bytes(plistlib.dumps({"CFBundleName": "Deep", "CFBundleIdentifier": "com.example.deep"}))
+    odd = tmp_path / "Odd.app" / "Contents"
+    odd.mkdir(parents=True)
+    (odd / "Info.plist").write_bytes(plistlib.dumps(["not", "a", "dict"]))
+    monkeypatch.setattr(apps, "_APP_FOLDERS", (str(tmp_path),))
+    monkeypatch.setattr(apps, "require_macos", lambda: None)
+    monkeypatch.setattr(macos.spotlight, "search", lambda query: [])
+    assert [app.name for app in apps.installed()] == ["Deep"]
+
+
+def test_logs_report_log_shows_failures(monkeypatch):
+    import io
+    import subprocess
+
+    class Failed:
+        def __init__(self, args, **kwargs):
+            self.stdout, self.stderr, self.returncode = io.StringIO(""), io.StringIO("log: bad predicate"), None
+
+        def kill(self):
+            raise AssertionError("it ended by itself: nothing to kill")
+
+        def wait(self):
+            self.returncode = 64
+
+    monkeypatch.setattr(system, "require_macos", lambda: None)
+    monkeypatch.setattr(subprocess, "Popen", Failed)
+    with pytest.raises(macos.CommandError) as raised:
+        system.logs(process="Safari")
+    assert "bad predicate" in str(raised.value)

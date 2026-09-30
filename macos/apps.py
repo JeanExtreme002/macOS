@@ -768,6 +768,8 @@ def _installed_app(path: str) -> Optional[InstalledApp]:
         info = plistlib.loads(Path(path, "Contents", "Info.plist").read_bytes())
     except (OSError, ValueError, plistlib.InvalidFileException):
         return None
+    if not isinstance(info, dict):
+        return None  # a valid plist, but not an app's description
     name = info.get("CFBundleDisplayName") or info.get("CFBundleName") or Path(path).stem
     return InstalledApp(
         name=str(name),
@@ -785,8 +787,8 @@ def installed() -> List[InstalledApp]:
 
         {app.name: app.version for app in macos.apps.installed()}   # {'Safari': '18.3', 'Xcode': '16.2', ...}
 
-    It lists the Applications folders (yours, the Mac's and the system's)
-    and the apps Spotlight knows elsewhere.
+    It lists the Applications folders (yours, the Mac's and the system's),
+    their subfolders included, and the apps Spotlight knows elsewhere.
     """
     from . import spotlight
 
@@ -798,9 +800,7 @@ def installed() -> List[InstalledApp]:
             for name in list(folders):
                 if name.endswith(".app"):
                     paths.add(os.path.realpath(os.path.join(current, name)))
-                    folders.remove(name)  # an app's insides aren't other apps
-            if current.count(os.sep) - root.count(os.sep) >= 1:
-                folders.clear()  # Applications and one level of subfolders (Utilities...)
+                    folders.remove(name)  # an app's insides aren't other apps: only other folders are walked
     try:
         # Apps installed elsewhere, as Spotlight knows them; nothing is lost if it's off.
         found = spotlight.search('kMDItemContentType == "com.apple.application-bundle"')

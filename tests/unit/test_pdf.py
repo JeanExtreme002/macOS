@@ -196,3 +196,19 @@ def test_images(tmp_path):
     assert [path.name for path in macos.pdf.images(document, tmp_path / "two", pages=[2])] == ["page2-1.png"]
     with pytest.raises(ValueError, match="out of range"):
         macos.pdf.images(document, tmp_path / "never", pages=[4])
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads PDFs with CoreGraphics")
+def test_images_in_calibrated_colors_and_inverted(tmp_path):
+    from tests.helpers import pdf_with_images
+
+    document = tmp_path / "raw.pdf"
+    document.write_bytes(pdf_with_images([
+        ("[/CalGray << /WhitePoint [0.95 1 1.09] >>]", "[1 0]", 4, 4, bytes([0]) * 16),   # black, inverted: white
+        ("[/CalRGB << /WhitePoint [0.95 1 1.09] >>]", None, 4, 4, bytes([200, 30, 30]) * 16),
+        ("/DeviceGray", "[0 0.5]", 4, 4, bytes([128]) * 16),   # a mapping it can't draw: skipped
+    ]))  # fmt: skip
+    found = macos.pdf.images(document, tmp_path / "out")
+    assert [path.name for path in found] == ["page1-1.png", "page1-2.png"]
+    assert macos.image.dominant_colors(found[0], 1) == ["#ffffff"]
+    assert macos.image.dominant_colors(found[1], 1) == ["#c81e1e"]
