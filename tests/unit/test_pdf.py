@@ -300,6 +300,12 @@ def test_redact_targets():
     counts = [0, 0]
     both = _patterns(["Ana", "Ana Souza"])
     assert _scrub("Report on Ana Souza", both, counts) == "Report on " + "█" * 9 and counts == [1, 1]
+    counts = [0, 0]  # the other order too: the shorter target is still found inside the longer one
+    assert _scrub("Report on Ana Souza", _patterns(["Ana Souza", "Souza"]), counts) == "Report on " + "█" * 9
+    assert counts == [1, 1]
+    # A pattern that only matches between characters never counts as found: it would black out nothing.
+    counts = [0]
+    assert _scrub("secret plan", [("", re.compile(r"(?=secret)"))], counts) == "secret plan" and counts == [0]
     assert _patterns("a.b")[0][1].search("a.b") and not _patterns("a.b")[0][1].search("axb")  # literal, not a pattern
     assert _utf16("💡 CPF", 2) == 3  # PDFKit counts an emoji as two
 
