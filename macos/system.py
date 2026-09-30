@@ -107,6 +107,10 @@ __all__ = [
     "crash_reports",
     "LogEntry",
     "logs",
+    "USBDevice",
+    "usb_devices",
+    "StartupItem",
+    "startup_items",
 ]
 
 
@@ -206,6 +210,10 @@ def _iokit() -> ctypes.CDLL:
     io.IOIteratorNext.restype = ctypes.c_uint32
     io.IOObjectGetClass.argtypes = (ctypes.c_uint32, ctypes.c_char_p)
     io.IOObjectGetClass.restype = ctypes.c_int
+    io.IORegistryEntryCreateCFProperties.argtypes = (
+        ctypes.c_uint32, ctypes.POINTER(_cf.CFTypeRef), _cf.CFTypeRef, ctypes.c_uint32
+    )
+    io.IORegistryEntryCreateCFProperties.restype = ctypes.c_int
     return io
 
 
@@ -2170,3 +2178,195 @@ def logs(
     if not stopped and reader.returncode != 0:
         raise CommandError(args, reader.returncode, errors)
     return entries
+
+
+# --- USB devices ---------------------------------------------------------------------
+
+_USB_SPEEDS = {0: "low", 1: "full", 2: "high", 3: "super", 4: "super_plus"}  # 1.5, 12, 480 Mbit/s, 5 and 10+ Gbit/s
+_HUB = 9  # bDeviceClass of a hub
+
+
+@dataclass(frozen=True)
+class USBDevice:
+    """A device connected over USB."""
+
+    name: Optional[str]
+    vendor: Optional[str]
+    vendor_id: Optional[int]
+    product_id: Optional[int]
+    serial: Optional[str]
+    speed: Optional[str]
+    """``'low'``, ``'full'`` (USB 1), ``'high'`` (USB 2), ``'super'`` or ``'super_plus'`` (USB 3)."""
+    is_hub: bool
+
+
+def _usb_device(properties: Dict[str, Any]) -> USBDevice:
+    def text(*keys: str) -> Optional[str]:
+        for key in keys:
+            value = properties.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    def number(key: str) -> Optional[int]:
+        value = properties.get(key)
+        return int(value) if isinstance(value, int) else None
+
+    speed = number("Device Speed")
+    return USBDevice(
+        name=text("USB Product Name", "kUSBProductString"),
+        vendor=text("USB Vendor Name", "kUSBVendorString"),
+        vendor_id=number("idVendor"),
+        product_id=number("idProduct"),
+        serial=text("USB Serial Number", "kUSBSerialNumberString"),
+        speed=_USB_SPEEDS.get(speed) if speed is not None else None,
+        is_hub=number("bDeviceClass") == _HUB,
+    )
+
+
+def usb_devices() -> List[USBDevice]:
+    """
+    The devices connected over USB: name, maker, IDs and speed.
+
+    ::
+
+        [device.name for device in macos.system.usb_devices()]   # ['USB Keyboard', 'Samsung T7', ...]
+
+    Hubs are listed too (``is_hub``), since a device behind a slow hub runs
+    slowly. Built-in keyboards and trackpads on recent Macs aren't USB, so
+    they're not listed. To know when a device comes or goes, see
+    :mod:`macos.events`.
+    """
+    require_macos()
+    io = _iokit()
+    iterator = ctypes.c_uint32()
+    if io.IOServiceGetMatchingServices(0, io.IOServiceMatching(b"IOUSBHostDevice"), ctypes.byref(iterator)) != 0:
+        return []
+    found = []
+    try:
+        while True:
+            service = io.IOIteratorNext(iterator.value)
+            if not service:
+                break
+            try:
+                properties = _cf.CFTypeRef()
+                if io.IORegistryEntryCreateCFProperties(service, ctypes.byref(properties), None, 0) == 0 and properties.value:
+                    with _cf.owned(properties.value):
+                        values = _cf.to_python(properties.value)
+                    if isinstance(values, dict):
+                        found.append(_usb_device(values))
+            finally:
+                io.IOObjectRelease(service)
+    finally:
+        io.IOObjectRelease(iterator.value)
+    return found
+
+
+# --- Startup items --------------------------------------------------------------------
+
+_STARTUP_FOLDERS = (
+    ("~/Library/LaunchAgents", "agent", False),
+    ("/Library/LaunchAgents", "agent", True),
+    ("/Library/LaunchDaemons", "daemon", True),
+)
+
+
+@dataclass(frozen=True)
+class StartupItem:
+    """Something macOS starts by itself: a launch agent (in the user's session) or a daemon (for the whole system)."""
+
+    label: str
+    """Its name for launchd, such as ``'com.google.keystone.agent'``."""
+    kind: str
+    """``'agent'`` (runs as a user, in their session) or ``'daemon'`` (runs as the system, before anyone logs in)."""
+    for_all_users: bool
+    """Installed for every user of the Mac, rather than for this one."""
+    program: Optional[str]
+    """What it runs."""
+    arguments: Tuple[str, ...]
+    run_at_load: bool
+    """Started when loaded: at login for an agent, at startup for a daemon."""
+    keep_alive: bool
+    """Started again whenever it stops."""
+    enabled: bool
+    """Not turned off, by its own file or by launchctl."""
+    running: Optional[bool]
+    """Running now; ``None`` when launchd didn't say."""
+    path: Path
+    """Its description file (a .plist)."""
+
+
+def _launchd_state(domain: str, label: str) -> Optional[bool]:
+    """Whether a job runs now: ``True``, ``False`` (loaded, not running, or not loaded), or ``None`` if launchd won't say."""
+    try:
+        output = _run(["launchctl", "print", "{}/{}".format(domain, label)])
+    except CommandError as error:
+        return False if "Could not find service" in (error.stderr or "") else None
+    found = re.search(r"^\s*state = (\S+)", output, re.M)
+    return found.group(1) == "running" if found else None
+
+
+def _disabled(domain: str) -> Dict[str, bool]:
+    """launchctl's own switches: label -> disabled."""
+    try:
+        output = _run(["launchctl", "print-disabled", domain])
+    except CommandError:
+        return {}
+    return {label: state == "disabled" for label, state in re.findall(r'"([^"]+)" => (enabled|disabled)', output)}
+
+
+def startup_items() -> List[StartupItem]:
+    """
+    What macOS starts by itself, besides the apps opened at login: launch agents and daemons.
+
+    ::
+
+        for item in macos.system.startup_items():
+            if item.enabled:
+                print(item.label, item.program)   # com.google.keystone.agent /Library/Google/...
+
+    Agents run in the user's session; daemons run for the whole system. It
+    reads the user's and the Mac's ``LaunchAgents`` and ``LaunchDaemons``
+    folders, leaving out Apple's own in ``/System``. Jobs made with
+    :mod:`macos.schedule` are among the agents. For the apps opened at
+    login, see :func:`macos.apps.login_items`.
+    """
+    import plistlib
+
+    require_macos()
+    user_domain = "gui/{}".format(os.getuid())
+    switches = {"agent": _disabled(user_domain), "daemon": _disabled("system")}
+    found = []
+    for folder, kind, shared in _STARTUP_FOLDERS:
+        root = Path(folder).expanduser()
+        try:
+            files = sorted(root.glob("*.plist"))
+        except OSError:
+            continue
+        for path in files:
+            try:
+                info = plistlib.loads(path.read_bytes())
+            except (OSError, ValueError, plistlib.InvalidFileException):
+                continue
+            if not isinstance(info, dict) or not info.get("Label"):
+                continue
+            label = str(info["Label"])
+            arguments = tuple(str(argument) for argument in info.get("ProgramArguments") or ())
+            program = info.get("Program") or (arguments[0] if arguments else None)
+            keep_alive = info.get("KeepAlive")
+            enabled = not info.get("Disabled", False) and not switches[kind].get(label, False)
+            found.append(
+                StartupItem(
+                    label=label,
+                    kind=kind,
+                    for_all_users=shared,
+                    program=str(program) if program else None,
+                    arguments=arguments,
+                    run_at_load=bool(info.get("RunAtLoad", False)),
+                    keep_alive=bool(keep_alive) if not isinstance(keep_alive, dict) else True,
+                    enabled=enabled,
+                    running=_launchd_state(user_domain if kind == "agent" else "system", label),
+                    path=path,
+                )
+            )
+    return found

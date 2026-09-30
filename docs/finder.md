@@ -156,6 +156,19 @@ macos.finder.remove_icon("~/Projects")                                 # its usu
 Finder and the Dock may take a moment to show it. An app in `/Applications`
 may need an administrator's rights.
 
+## The largest files
+
+{func}`~macos.finder.largest` finds what takes the most room in a folder and
+its subfolders, quickly, through Spotlight's index:
+
+```python
+for path, size in macos.finder.largest("~", count=10):
+    print("{:>8.1f} MB  {}".format(size / 1e6, path))
+```
+
+Files under `at_least` bytes (1 MB) are left out. Folders Spotlight doesn't
+index, such as hidden ones or `~/Library`, are walked instead, which is slower.
+
 ## Finder settings
 
 The settings people change most, each with its reader: they apply at once, as
@@ -272,3 +285,5 @@ them be placed freely.
 - {func}`macos.finder.set_icon`
 - {func}`macos.finder.remove_icon`
 - {func}`macos.finder.has_custom_icon`
+
+- {func}`macos.finder.largest`

@@ -75,6 +75,18 @@ macos.power.sleep_display()   # turn the display off; the Mac keeps running
 With the default setting (a password is required right after the display turns
 off), {func}`~macos.power.sleep_display` also locks the screen.
 
+## The charger
+
+{func}`~macos.power.adapter` tells about the charger the Mac is plugged into,
+or `None` on battery:
+
+```python
+macos.power.adapter()   # Adapter(watts=96, name='96W USB-C Power Adapter', manufacturer='Apple Inc.', ...)
+```
+
+A charger weaker than the Mac's own charges it slowly, or not at all while
+it's busy.
+
 ## Reference
 
 - {func}`macos.power.battery`
@@ -83,3 +95,5 @@ off), {func}`~macos.power.sleep_display` also locks the screen.
 - {func}`macos.power.keep_awake`
 - {func}`macos.power.sleep`
 - {func}`macos.power.sleep_display`
+- {class}`macos.power.Adapter`
+- {func}`macos.power.adapter`

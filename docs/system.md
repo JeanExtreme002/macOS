@@ -343,6 +343,29 @@ it by `process`, `subsystem`, text (`contains`) or `level`, and `limit`
 stops at that many messages (1000 by default). Some messages hide private
 data as `<private>`.
 
+## Startup items and USB devices
+
+{func}`~macos.system.startup_items` lists what macOS starts by itself besides
+the apps opened at login: launch agents (in the user's session) and
+daemons (for the whole system), with what each runs and whether it's
+running now:
+
+```python
+for item in macos.system.startup_items():
+    print(item.kind, item.label, item.running, item.program)
+    # agent com.google.keystone.agent False /Library/Google/GoogleSoftwareUpdate/...
+```
+
+It leaves out Apple's own, in `/System`. For the apps opened at login, see
+{func}`macos.apps.login_items`.
+
+{func}`~macos.system.usb_devices` lists the devices connected over USB, with
+their maker, IDs and speed (`"high"` is USB 2, `"super"` USB 3):
+
+```python
+[(device.name, device.speed) for device in macos.system.usb_devices()]   # [('Portable SSD T7', 'super')]
+```
+
 ## Reference
 
 - {func}`macos.system.version`
@@ -421,3 +444,7 @@ data as `<private>`.
 - {func}`macos.system.crash_reports`
 - {class}`macos.system.LogEntry`
 - {func}`macos.system.logs`
+- {class}`macos.system.StartupItem`
+- {func}`macos.system.startup_items`
+- {class}`macos.system.USBDevice`
+- {func}`macos.system.usb_devices`

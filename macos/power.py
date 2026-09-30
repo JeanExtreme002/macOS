@@ -21,13 +21,22 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import lru_cache
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 from . import _cf, _objc
 from ._system import framework, run as _run
 from .errors import MacOSError
 
-__all__ = ["Battery", "battery", "low_power_mode", "keep_awake", "sleep", "sleep_display"]
+__all__ = [
+    "Battery",
+    "battery",
+    "low_power_mode",
+    "keep_awake",
+    "sleep",
+    "sleep_display",
+    "Adapter",
+    "adapter",
+]
 
 kIOPMAssertionLevelOn = 255
 kIOReturnSuccess = 0
@@ -208,3 +217,53 @@ def sleep_display() -> None:
     set to *Immediately* (the default), this also locks the screen.
     """
     _run(["pmset", "displaysleepnow"])
+
+
+@dataclass(frozen=True)
+class Adapter:
+    """The power adapter (charger) the Mac is plugged into."""
+
+    watts: Optional[int]
+    """What it can give, such as 96: a 30 W adapter charges a big laptop slowly."""
+    name: Optional[str]
+    """Such as ``'96W USB-C Power Adapter'``."""
+    manufacturer: Optional[str]
+    voltage: Optional[float]
+    """In volts, as it's delivering now."""
+    current: Optional[float]
+    """In amperes, the most it's delivering now."""
+
+
+def adapter() -> Optional[Adapter]:
+    """
+    The charger the Mac is plugged into, or ``None`` on battery (or on a desktop Mac, which has none to report).
+
+    ::
+
+        macos.power.adapter()   # Adapter(watts=96, name='96W USB-C Power Adapter', ...)
+    """
+    io = _iokit()
+    io.IOPSCopyExternalPowerAdapterDetails.argtypes = ()
+    io.IOPSCopyExternalPowerAdapterDetails.restype = ctypes.c_void_p
+    with _cf.owned(io.IOPSCopyExternalPowerAdapterDetails()) as details:
+        found = _cf.to_python(details) if details else None
+    return _adapter(found)
+
+
+def _adapter(found: Any) -> Optional[Adapter]:
+    """An :class:`Adapter` from the IOKit's description of it; ``None`` when there's none."""
+    if not isinstance(found, dict) or not found:
+        return None
+
+    def number(key: str, scale: float = 1.0) -> Optional[float]:
+        value = found.get(key)
+        return round(float(value) / scale, 2) if isinstance(value, (int, float)) and value else None
+
+    watts = found.get("Watts")
+    return Adapter(
+        watts=int(watts) if isinstance(watts, (int, float)) and watts else None,
+        name=found.get("Name") or found.get("Description") or None,
+        manufacturer=found.get("Manufacturer") or None,
+        voltage=number("Voltage", 1000),  # the IOKit gives millivolts
+        current=number("Current", 1000),  # and milliamperes
+    )

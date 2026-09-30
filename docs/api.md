@@ -452,6 +452,8 @@ explain how to use each part.
 .. autofunction:: macos.power.keep_awake
 .. autofunction:: macos.power.sleep
 .. autofunction:: macos.power.sleep_display
+.. autoclass:: macos.power.Adapter
+.. autofunction:: macos.power.adapter
 ```
 
 ## macos.shortcuts
@@ -522,6 +524,7 @@ explain how to use each part.
 .. autofunction:: macos.finder.set_icon
 .. autofunction:: macos.finder.remove_icon
 .. autofunction:: macos.finder.has_custom_icon
+.. autofunction:: macos.finder.largest
 ```
 
 ## macos.volume
@@ -764,6 +767,11 @@ explain how to use each part.
 .. autofunction:: macos.network.speed_test
 .. autoclass:: macos.network.WiFiSignal
 .. autofunction:: macos.network.wifi_signal
+.. autoclass:: macos.network.NetworkInterface
+.. autofunction:: macos.network.interfaces
+.. autofunction:: macos.network.dns_servers
+.. autoclass:: macos.network.Proxies
+.. autofunction:: macos.network.proxies
 ```
 
 ## macos.screen
@@ -917,6 +925,10 @@ explain how to use each part.
 .. autofunction:: macos.system.crash_reports
 .. autoclass:: macos.system.LogEntry
 .. autofunction:: macos.system.logs
+.. autoclass:: macos.system.StartupItem
+.. autofunction:: macos.system.startup_items
+.. autoclass:: macos.system.USBDevice
+.. autofunction:: macos.system.usb_devices
 ```
 
 ## Exceptions

@@ -23,11 +23,12 @@ import collections
 import ctypes
 import fnmatch
 import os
+import stat
 import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Union
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
@@ -89,6 +90,7 @@ __all__ = [
     "set_icon",
     "remove_icon",
     "has_custom_icon",
+    "largest",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -1172,3 +1174,53 @@ def has_custom_icon(path: PathLike) -> bool:
             return False  # no Finder flags at all
         raise OSError(error, "can't read the Finder flags of {}: {}".format(target, os.strerror(error)))
     return size >= 10 and bool(int.from_bytes(info.raw[8:10], "big") & _HAS_CUSTOM_ICON)
+
+
+def largest(folder: PathLike, count: int = 20, *, at_least: int = 1_000_000) -> List[Tuple[Path, int]]:
+    """
+    The largest files in ``folder`` and its subfolders, the biggest first, with their size in bytes.
+
+    ::
+
+        for path, size in macos.finder.largest("~", count=10):
+            print("{:>8.1f} MB  {}".format(size / 1e6, path))
+
+    It asks Spotlight, which knows every file's size, so it's quick even for
+    the whole home folder; ``at_least`` (1 MB by default) skips smaller
+    files. Folders Spotlight doesn't index (hidden ones, ``~/Library``...)
+    are walked instead, which is slower.
+    """
+    from . import spotlight
+    from ._system import require_macos
+
+    if count < 1:
+        raise ValueError("count must be 1 or more, not {}".format(count))
+    require_macos()  # before Spotlight: its "not supported" mustn't pass for "nothing indexed"
+    root = _existing(folder)
+    if not root.is_dir():
+        raise NotADirectoryError(str(root))
+    paths: Iterable[Path]
+    try:
+        paths = spotlight.search("kMDItemFSSize >= {}".format(int(at_least)), folder=root)
+    except MacOSError:
+        paths = []
+    sizes = {}
+    for path in paths:
+        try:
+            details = os.stat(path, follow_symlinks=False)
+        except OSError:
+            continue  # gone since it was indexed
+        if stat.S_ISREG(details.st_mode):
+            sizes[Path(path)] = details.st_size
+    if not sizes:
+        # Nothing indexed there (or nothing that big): look for ourselves.
+        for current, _, files in os.walk(root):
+            for name in files:
+                path = Path(current, name)
+                try:
+                    details = os.stat(path, follow_symlinks=False)
+                except OSError:
+                    continue
+                if stat.S_ISREG(details.st_mode) and details.st_size >= at_least:
+                    sizes[path] = details.st_size
+    return sorted(sizes.items(), key=lambda item: (-item[1], str(item[0])))[:count]

@@ -20,7 +20,7 @@ import re
 import socket
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import _cf, _objc
 from ._system import framework, require_macos, run as _run
@@ -36,6 +36,11 @@ __all__ = [
     "speed_test",
     "WiFiSignal",
     "wifi_signal",
+    "NetworkInterface",
+    "interfaces",
+    "dns_servers",
+    "Proxies",
+    "proxies",
 ]
 
 _REACHABLE = 1 << 1  # kSCNetworkReachabilityFlagsReachable
@@ -285,3 +290,209 @@ def wifi_signal() -> Optional[WiFiSignal]:
             channel_width=_WIDTHS.get(number("channelWidth") or 0),
             security=_SECURITY.get(security),
         )
+
+
+# --- Interfaces, DNS and proxies ---------------------------------------------------------
+
+_AF_INET, _AF_INET6, _AF_LINK = 2, 30, 18
+_IFF_UP, _IFF_LOOPBACK = 0x1, 0x8
+
+
+class _SockAddr(ctypes.Structure):
+    _fields_ = [("len", ctypes.c_uint8), ("family", ctypes.c_uint8), ("data", ctypes.c_char * 14)]
+
+
+class _IfAddrs(ctypes.Structure):
+    pass
+
+
+_IfAddrs._fields_ = [
+    ("next", ctypes.POINTER(_IfAddrs)),
+    ("name", ctypes.c_char_p),
+    ("flags", ctypes.c_uint),
+    ("address", ctypes.POINTER(_SockAddr)),
+    ("netmask", ctypes.c_void_p),
+    ("destination", ctypes.c_void_p),
+    ("data", ctypes.c_void_p),
+]
+
+
+@dataclass(frozen=True)
+class NetworkInterface:
+    """A network interface: Wi-Fi, Ethernet, a VPN tunnel..."""
+
+    name: str
+    """The system's name for it, such as ``'en0'``."""
+    display_name: Optional[str]
+    """As System Settings names it, such as ``'Wi-Fi'``; ``None`` for virtual ones (VPN tunnels...)."""
+    mac: Optional[str]
+    """Its hardware address, such as ``'a4:83:e7:12:34:56'``."""
+    ipv4: Tuple[str, ...]
+    ipv6: Tuple[str, ...]
+    up: bool
+    """Turned on."""
+    active: bool
+    """Up, with an address to talk with: an IPv4 one, or an IPv6 one beyond its own link.
+
+    Ports without a cable, and tunnels of a VPN that's off, aren't."""
+
+
+def _display_names() -> Dict[str, str]:
+    sc = framework("SystemConfiguration")
+    pointer = ctypes.c_void_p
+    sc.SCNetworkInterfaceCopyAll.argtypes = ()
+    sc.SCNetworkInterfaceCopyAll.restype = pointer
+    sc.SCNetworkInterfaceGetBSDName.argtypes = (pointer,)
+    sc.SCNetworkInterfaceGetBSDName.restype = pointer
+    sc.SCNetworkInterfaceGetLocalizedDisplayName.argtypes = (pointer,)
+    sc.SCNetworkInterfaceGetLocalizedDisplayName.restype = pointer
+    names = {}
+    with _cf.owned(sc.SCNetworkInterfaceCopyAll()) as every:
+        for item in _cf.items(every):
+            name = _cf.to_str(sc.SCNetworkInterfaceGetBSDName(item))
+            shown = _cf.to_str(sc.SCNetworkInterfaceGetLocalizedDisplayName(item))
+            if name and shown:
+                names[name] = shown
+    return names
+
+
+def interfaces() -> List[NetworkInterface]:
+    """
+    Every network interface, with its addresses: Wi-Fi, Ethernet, Thunderbolt, VPN tunnels...
+
+    ::
+
+        for found in macos.network.interfaces():
+            if found.active and found.ipv4:
+                print(found.display_name or found.name, found.ipv4)   # Wi-Fi ('192.168.0.8',)
+
+    The loopback (``lo0``) is left out. For the one internet traffic goes
+    through, see :func:`interface` and :func:`ip`.
+    """
+    require_macos()
+    libc = ctypes.CDLL(None)
+    libc.getifaddrs.argtypes = (ctypes.POINTER(ctypes.POINTER(_IfAddrs)),)
+    libc.getifaddrs.restype = ctypes.c_int
+    libc.freeifaddrs.argtypes = (ctypes.POINTER(_IfAddrs),)
+    libc.freeifaddrs.restype = None
+    head = ctypes.POINTER(_IfAddrs)()
+    if libc.getifaddrs(ctypes.byref(head)) != 0:
+        raise MacOSError("could not list the network interfaces")
+    found: Dict[str, Dict[str, Any]] = {}
+    try:
+        entry = head
+        while entry:
+            item = entry.contents
+            name = (item.name or b"").decode("utf-8", "replace")
+            record = found.setdefault(name, {"flags": item.flags, "mac": None, "ipv4": [], "ipv6": []})
+            record["flags"] |= item.flags
+            if item.address:
+                family = item.address.contents.family
+                raw = ctypes.string_at(ctypes.addressof(item.address.contents), item.address.contents.len)
+                if family == _AF_INET and len(raw) >= 8:
+                    record["ipv4"].append(socket.inet_ntop(socket.AF_INET, raw[4:8]))
+                elif family == _AF_INET6 and len(raw) >= 24:
+                    record["ipv6"].append(socket.inet_ntop(socket.AF_INET6, raw[8:24]))
+                elif family == _AF_LINK and len(raw) >= 8:
+                    # sockaddr_dl: 8 header bytes, then the name, then the address.
+                    name_length, address_length = raw[5], raw[6]
+                    mac = raw[8 + name_length:8 + name_length + address_length]
+                    if address_length == 6 and any(mac):
+                        record["mac"] = ":".join("{:02x}".format(byte) for byte in mac)
+            entry = item.next
+    finally:
+        libc.freeifaddrs(head)
+    names = _display_names()
+    return [
+        NetworkInterface(
+            name=name,
+            display_name=names.get(name),
+            mac=record["mac"],
+            ipv4=tuple(record["ipv4"]),
+            ipv6=tuple(record["ipv6"]),
+            up=bool(record["flags"] & _IFF_UP),
+            # The kernel's "running" flag stays set on a port without a cable: an address says more.
+            active=bool(record["flags"] & _IFF_UP)
+            and bool(record["ipv4"] or any(not address.startswith("fe80:") for address in record["ipv6"])),
+        )
+        for name, record in found.items()
+        if not record["flags"] & _IFF_LOOPBACK
+    ]
+
+
+def _dynamic_store(key: str) -> Any:
+    sc = framework("SystemConfiguration")
+    pointer = ctypes.c_void_p
+    sc.SCDynamicStoreCreate.argtypes = (pointer, pointer, pointer, pointer)
+    sc.SCDynamicStoreCreate.restype = pointer
+    sc.SCDynamicStoreCopyValue.argtypes = (pointer, pointer)
+    sc.SCDynamicStoreCopyValue.restype = pointer
+    with _cf.owned(_cf.string("pymacos")) as name:
+        store = sc.SCDynamicStoreCreate(None, name, None, None)
+    if not store:
+        raise MacOSError("could not read the network configuration")
+    try:
+        with _cf.owned(_cf.string(key)) as wanted, _cf.owned(sc.SCDynamicStoreCopyValue(store, wanted)) as value:
+            return _cf.to_python(value) if value else None
+    finally:
+        _cf.release(store)
+
+
+def dns_servers() -> List[str]:
+    """
+    The DNS servers the Mac asks, in order: ``['192.168.0.1', '8.8.8.8']``.
+
+    They're the ones in use now, whether set in System Settings or given by
+    the network or a VPN. ``[]`` when offline.
+    """
+    require_macos()
+    found = _dynamic_store("State:/Network/Global/DNS")
+    servers = found.get("ServerAddresses") if isinstance(found, dict) else None
+    return [str(server) for server in servers] if isinstance(servers, list) else []
+
+
+@dataclass(frozen=True)
+class Proxies:
+    """The proxies in use; each is ``"host:port"``, or ``None`` when off."""
+
+    http: Optional[str]
+    https: Optional[str]
+    socks: Optional[str]
+    auto_config_url: Optional[str]
+    """A PAC file's address, which decides the proxy for each site."""
+    exceptions: Tuple[str, ...]
+    """Hosts reached without a proxy, such as ``'*.local'``."""
+
+
+def proxies() -> Proxies:
+    """
+    The proxies in use, as System Settings › Network › Details › Proxies sets them, or a profile does.
+
+    ::
+
+        macos.network.proxies()   # Proxies(http=None, https='proxy.example.com:8080', socks=None, ...)
+    """
+    require_macos()
+    sc = framework("SystemConfiguration")
+    sc.SCDynamicStoreCopyProxies.argtypes = (ctypes.c_void_p,)
+    sc.SCDynamicStoreCopyProxies.restype = ctypes.c_void_p
+    with _cf.owned(sc.SCDynamicStoreCopyProxies(None)) as settings:
+        found = _cf.to_python(settings) if settings else {}
+    return _proxies(found if isinstance(found, dict) else {})
+
+
+def _proxies(found: Dict[str, Any]) -> Proxies:
+    def proxy(prefix: str) -> Optional[str]:
+        if not found.get(prefix + "Enable") or not found.get(prefix + "Proxy"):
+            return None
+        port = found.get(prefix + "Port")
+        return "{}:{}".format(found[prefix + "Proxy"], port) if port else str(found[prefix + "Proxy"])
+
+    auto = found.get("ProxyAutoConfigURLString") if found.get("ProxyAutoConfigEnable") else None
+    return Proxies(
+        http=proxy("HTTP"),
+        https=proxy("HTTPS"),
+        socks=proxy("SOCKS"),
+        auto_config_url=str(auto) if auto else None,
+        exceptions=tuple(str(host) for host in found.get("ExceptionsList") or ()),
+    )
