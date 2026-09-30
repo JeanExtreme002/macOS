@@ -8,6 +8,8 @@ import macos
 def _or_skip(call):
     try:
         return call()
+    except TimeoutError as error:
+        pytest.skip(str(error))
     except macos.MacOSError as error:
         if "could not reach" in str(error):
             pytest.skip("Apple's geocoding service is out of reach: {}".format(error))

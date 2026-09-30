@@ -229,3 +229,17 @@ def test_processes():
 def test_process_checks():
     with pytest.raises(ValueError, match="pid must be positive"):
         macos.system.process(0)
+
+
+def test_process_names_cut_by_the_kernel():
+    from pathlib import Path
+
+    long_path = Path("/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper (Renderer)")
+    name = macos.system._process_name
+    assert name(b"Code Helper (Plugin)", b"Code Helper (Pl", Path("/x/Code Helper (Plugin)")) == "Code Helper (Plugin)"
+    assert name(b"Google Chrome Helper (Rendere", b"Google Chrome H", long_path) == "Google Chrome Helper (Rendere"
+    beta = long_path.with_name("Google Chrome Helper (Renderer) Beta")  # 36 characters: cut to 31
+    assert name(b"Google Chrome Helper (Renderer)", b"Google Chrome H", beta) == "Google Chrome Helper (Renderer) Beta"
+    assert name(b"", b"Google Chrome H", long_path) == "Google Chrome Helper (Renderer)"  # only the short name
+    assert name(b"", b"launchd", Path("/sbin/launchd")) == "launchd"
+    assert name(b"", b"kernel_task", None) == "kernel_task"

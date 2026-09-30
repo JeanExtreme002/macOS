@@ -148,3 +148,22 @@ def test_custom_icons(tmp_path):
     assert list(folder.iterdir()) == []  # the hidden "Icon" file goes too
     with pytest.raises(FileNotFoundError):
         finder.set_icon(tmp_path / "missing", logo)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads extended attributes as macOS keeps them")
+def test_custom_icon_errors_are_not_hidden(tmp_path, monkeypatch):
+    import ctypes
+    import errno
+
+    file = tmp_path / "notes.txt"
+    file.write_text("notes")
+
+    class Failing:
+        def getxattr(self, *args):
+            ctypes.set_errno(errno.EIO)
+            return -1
+
+    monkeypatch.setattr(macos.apps, "_libc", lambda: Failing())
+    with pytest.raises(OSError) as raised:
+        finder.has_custom_icon(file)
+    assert raised.value.errno == errno.EIO

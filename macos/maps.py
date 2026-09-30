@@ -17,7 +17,6 @@ requests an app makes in a short time: space out large batches.
 import ctypes
 import threading
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import List, Optional, Tuple
 
 from . import _objc
@@ -54,9 +53,8 @@ class Place:
     """Such as ``'America/Sao_Paulo'``."""
 
 
-# One geocoding request at a time, as CLGeocoder allows: its answer lands here.
+# One geocoding request at a time, as CLGeocoder allows.
 _lock = threading.Lock()
-_answers: List[Tuple[List[Place], Optional[Tuple[int, str]]]] = []
 
 
 def _text(placemark: int, key: str) -> Optional[str]:
@@ -84,9 +82,11 @@ def _place(placemark: int) -> Place:
     )
 
 
-@lru_cache(maxsize=None)
-def _handler() -> int:
-    """The completion block, made once: ``void (^)(NSArray<CLPlacemark *> *, NSError *)``."""
+Answer = Tuple[List[Place], Optional[Tuple[int, str]]]
+
+
+def _handler(answers: List[Answer]) -> int:
+    """A completion block, ``void (^)(NSArray<CLPlacemark *> *, NSError *)``, that files the answer in ``answers``."""
 
     def done(placemarks: Optional[int], error: Optional[int]) -> None:
         # Read everything now: the placemarks go away with the block's call.
@@ -95,7 +95,7 @@ def _handler() -> int:
         if error:
             code = int(_objc.send(error, "code", restype=ctypes.c_long))
             failure = (code, _objc.pystring(_objc.send(error, "localizedDescription")) or "")
-        _answers.append((found, failure))
+        answers.append((found, failure))
 
     return _objc.block(done, b"v@?@@", ctypes.c_void_p, ctypes.c_void_p)
 
@@ -108,17 +108,19 @@ def _frameworks() -> None:
 def _ask(selector: str, argument: int, timeout: float) -> List[Place]:
     if threading.current_thread() is not threading.main_thread():
         raise MacOSError("geocoding answers on the main thread: call it from there")
+    # Each request has its own block and answers: a canceled one's late answer lands in its
+    # own list, which nobody reads, and can't pass for the next request's.
+    answers: List[Answer] = []
     with _lock:
-        del _answers[:]
         geocoder = _objc.send(_objc.send(_objc.cls("CLGeocoder"), "alloc"), "init")
         try:
-            _objc.send(geocoder, selector, argument, _handler(), argtypes=(_objc.id, ctypes.c_void_p), restype=None)
-            if not _objc.run_until(lambda: bool(_answers), timeout):
+            _objc.send(geocoder, selector, argument, _handler(answers), argtypes=(_objc.id, ctypes.c_void_p), restype=None)
+            if not _objc.run_until(lambda: bool(answers), timeout):
                 _objc.send(geocoder, "cancelGeocode", restype=None)
                 raise TimeoutError("Apple's geocoding service didn't answer within {} seconds".format(timeout))
         finally:
             _objc.send(geocoder, "release", restype=None)
-        found, failure = _answers.pop()
+    found, failure = answers[0]
     return _result(found, failure)
 
 

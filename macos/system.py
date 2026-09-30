@@ -1187,16 +1187,13 @@ class _Timebase(ctypes.Structure):
 def _libproc() -> Tuple[ctypes.CDLL, float]:
     """libproc, and how many nanoseconds a tick of its CPU times lasts."""
     require_macos()
-    lib = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
-    lib.proc_listallpids.argtypes = (ctypes.c_void_p, ctypes.c_int)
-    lib.proc_listallpids.restype = ctypes.c_int
+    lib = ctypes.CDLL("/usr/lib/libSystem.B.dylib")  # libproc is part of it: there's no libproc.dylib
     lib.proc_pidinfo.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int)
     lib.proc_pidinfo.restype = ctypes.c_int
     lib.proc_pidpath.argtypes = (ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32)
     lib.proc_pidpath.restype = ctypes.c_int
-    system = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
     timebase = _Timebase()
-    system.mach_timebase_info(ctypes.byref(timebase))
+    lib.mach_timebase_info(ctypes.byref(timebase))
     return lib, timebase.numer / timebase.denom
 
 
@@ -1231,6 +1228,14 @@ def _user(uid: int) -> Optional[str]:
         return None
 
 
+def _process_name(name: bytes, short_name: bytes, path: Optional[Path]) -> str:
+    """The process's name: the kernel cuts it to its fields' sizes, 31 characters or 15 for the short one."""
+    raw, limit = (name, 31) if name else (short_name, 15)
+    if path and len(raw) >= limit:
+        return path.name  # cut: the executable's name is whole
+    return raw.decode("utf-8", "replace")
+
+
 def _info(lib: ctypes.CDLL, pid: int, flavor: int, into: ctypes.Structure) -> bool:
     return bool(lib.proc_pidinfo(pid, flavor, 0, ctypes.byref(into), ctypes.sizeof(into)) == ctypes.sizeof(into))
 
@@ -1245,9 +1250,7 @@ def _read_process(pid: int) -> Optional[Process]:
     # The rest only for this user's processes: macOS keeps other users' to themselves.
     full, task = _BSDInfo(), _TaskInfo()
     has_full, has_task = _info(lib, pid, _PROC_PIDTBSDINFO, full), _info(lib, pid, _PROC_PIDTASKINFO, task)
-    name = ((full.name if has_full else b"") or short.comm).decode("utf-8", "replace")
-    if path and len(name) >= 15:
-        name = path.name  # the kernel cuts long names
+    name = _process_name(full.name if has_full else b"", short.comm, path)
     return Process(
         pid=pid,
         name=name,
@@ -1274,11 +1277,10 @@ def processes() -> List[Process]:
     administrator's script run with ``sudo`` sees them all. No permission
     is needed.
     """
-    lib, _ = _libproc()
-    count = lib.proc_listallpids(None, 0)
-    pids = (ctypes.c_int * (count + 64))()  # room for those started meanwhile
-    count = lib.proc_listallpids(pids, ctypes.sizeof(pids))
-    found = [_read_process(pid) for pid in sorted(set(pids[:count])) if pid > 0]
+    from .apps import _pids  # retries when processes start while it lists them
+
+    require_macos()
+    found = [_read_process(pid) for pid in sorted(set(_pids()))]
     return [process for process in found if process is not None]
 
 

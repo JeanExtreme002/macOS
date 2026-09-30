@@ -31,7 +31,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Set,
 
 from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
-from ._system import applescript, framework, require_macos, restart_later, run as _run
+from ._system import applescript, framework, restart_later, run as _run
 from .errors import MacOSError
 
 __all__ = [
@@ -1161,12 +1161,14 @@ def remove_icon(path: PathLike) -> None:
 
 def has_custom_icon(path: PathLike) -> bool:
     """Whether ``path`` has a custom icon, set with :func:`set_icon` or in Finder's Get Info."""
+    from .apps import _ENOATTR, _libc
+
     target = _existing(path)
-    require_macos()
-    libc = ctypes.CDLL(None, use_errno=True)
-    libc.getxattr.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int)
-    libc.getxattr.restype = ctypes.c_ssize_t
-    info = ctypes.create_string_buffer(32)
-    if libc.getxattr(os.fsencode(target), b"com.apple.FinderInfo", info, 32, 0, 0) < 10:
-        return False
-    return bool(int.from_bytes(info.raw[8:10], "big") & _HAS_CUSTOM_ICON)
+    info = ctypes.create_string_buffer(32)  # FinderInfo's size
+    size = _libc().getxattr(os.fsencode(target), b"com.apple.FinderInfo", info, 32, 0, 0)
+    if size < 0:
+        error = ctypes.get_errno()
+        if error == _ENOATTR:
+            return False  # no Finder flags at all
+        raise OSError(error, "can't read the Finder flags of {}: {}".format(target, os.strerror(error)))
+    return size >= 10 and bool(int.from_bytes(info.raw[8:10], "big") & _HAS_CUSTOM_ICON)
