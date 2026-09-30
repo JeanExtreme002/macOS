@@ -148,7 +148,7 @@ like pasting one in Get Info:
 
 ```python
 macos.finder.set_icon("~/Projects", "logo.png")                        # an image
-macos.finder.set_icon("~/Projects/app", "/Applications/Xcode.app")      # another item's icon
+macos.finder.set_icon("~/Projects/app", "/Applications/Xcode.app")     # another item's icon
 macos.finder.has_custom_icon("~/Projects")                             # True
 macos.finder.remove_icon("~/Projects")                                 # its usual icon again
 ```
