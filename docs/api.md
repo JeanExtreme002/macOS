@@ -646,6 +646,7 @@ explain how to use each part.
 .. autofunction:: macos.pdf.set_bookmarks
 .. autofunction:: macos.pdf.images
 .. autofunction:: macos.pdf.redact
+.. autoclass:: macos.pdf.Redaction
 ```
 
 ## macos.document

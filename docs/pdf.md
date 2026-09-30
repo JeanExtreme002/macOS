@@ -266,16 +266,20 @@ it for good before blacking it out:
 ```python
 import re
 
-macos.pdf.redact("contract.pdf", ["Ana Souza", "123.456.789-00"], "contract-public.pdf")
+done = macos.pdf.redact("contract.pdf", ["Ana Souza", "123.456.789-00"], "contract-public.pdf")
+done.matches   # {'Ana Souza': 3, '123.456.789-00': 1}
+done.pages     # {1: 2, 4: 2}: the pages redrawn, with their matches
 
 cpf = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
 email = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 macos.pdf.redact("list.pdf", [cpf, email], "list-public.pdf")
 ```
 
-A text matches ignoring case, and any spacing or line break between its
-words, so a name split over two lines is found. A compiled {mod}`re` pattern
-catches what follows a shape: IDs, emails, phone numbers.
+A text matches as whole words, ignoring case and any spacing or line break
+between them: a name split over two lines is found, and `"Ana"` doesn't black
+out "Banana". A compiled {mod}`re` pattern catches what follows a shape: IDs,
+emails, phone numbers. The {class}`~macos.pdf.Redaction` it returns tells how
+many times each target was found, and on which pages.
 
 Each page with a match is redrawn as a picture, with black boxes over the
 matches: there's no text under them anymore. The rest of that page still
@@ -290,11 +294,25 @@ What else in the file holds a match goes too:
 - the title, author, subject and keywords, and bookmark titles, where the
   match becomes `█`.
 
-When a target isn't found, {func}`~macos.pdf.redact` raises
+When a target isn't found at all, {func}`~macos.pdf.redact` raises
 {class}`ValueError` and writes nothing: a redaction that missed would look
-like it worked. A scanned page has no text to find; run
-{func}`~macos.pdf.ocr` first. Check the result before you share it, as with
-any redaction.
+like it worked.
+
+```{warning}
+It finds only what the PDF holds as text. **Look over the result before
+sharing it**, and compare the counts with what you expect. These stay
+visible:
+
+- text in pictures: a scanned page, a screenshot, a logo, a signature;
+- text turned into shapes, as some design and print PDFs have;
+- fonts whose letters can't be read back (the text {func}`~macos.pdf.text`
+  returns looks garbled);
+- words split by a hyphen at the end of a line.
+
+A scanned page has no text to find: run {func}`~macos.pdf.ocr` first. On a
+scan made searchable that way, the boxes go where the OCR placed the words,
+which may be a little off the picture: check those pages closely.
+```
 
 ## Reference
 
@@ -322,3 +340,4 @@ any redaction.
 - {func}`macos.pdf.set_bookmarks`
 - {func}`macos.pdf.images`
 - {func}`macos.pdf.redact`
+- {class}`macos.pdf.Redaction`

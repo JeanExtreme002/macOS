@@ -245,7 +245,11 @@ def test_redact_removes_the_text(tmp_path):
     source = macos.pdf.set_bookmarks(merged, [("Contrato de Ana Souza", 1), ("Anexo", 2)], tmp_path / "in.pdf")
     before = macos.pdf.render(source, 2)
 
-    output = macos.pdf.redact(source, ["ana souza", re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")], tmp_path / "out.pdf")
+    cpf = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
+    done = macos.pdf.redact(source, ["ana souza", cpf], tmp_path / "out.pdf")
+    output = done.path
+
+    assert done.matches == {"ana souza": 1, cpf.pattern: 1} and done.pages == {1: 2}
 
     assert macos.pdf.page_count(output) == 2
     assert macos.pdf.text(output, [1]).strip() == ""  # the redacted page is a picture now
@@ -273,12 +277,12 @@ def test_redact_a_rotated_page_and_a_form_field(tmp_path):
 
     rotated = tmp_path / "rotated.pdf"
     rotated.write_bytes(pdf_with_text([("CPF 123.456.789-00", 72, 700)], rotate=90))
-    output = macos.pdf.redact(rotated, "123.456.789-00", tmp_path / "rotated-out.pdf")
+    output = macos.pdf.redact(rotated, "123.456.789-00", tmp_path / "rotated-out.pdf").path
     assert b"123.456" not in _raw_text(output)
     assert png_size(macos.pdf.render(output, 1, size=792)) == (792, 612)  # still turned as it was seen
 
     form = tmp_path / "form.pdf"
     pdf_form(form)
     filled = macos.pdf.fill_form(form, {"Full name": "Ana Souza"}, tmp_path / "filled.pdf")
-    output = macos.pdf.redact(filled, "Ana Souza", tmp_path / "form-out.pdf")
+    output = macos.pdf.redact(filled, "Ana Souza", tmp_path / "form-out.pdf").path
     assert macos.pdf.form_fields(output) == [] and b"Souza" not in _raw_text(output)

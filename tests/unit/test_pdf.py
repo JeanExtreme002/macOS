@@ -285,8 +285,12 @@ def test_redact_targets():
     from macos.pdf import _patterns, _scrub, _utf16
 
     (label, words), (_, cpf) = _patterns(["Ana  Souza", re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")])
-    assert label == "'Ana  Souza'"
+    assert label == "Ana  Souza"
     assert words.search("assinado por ANA\nsouza") and not words.search("Anasouza")  # any case and spacing
+    ana = _patterns("Ana")[0][1]
+    assert [m.group() for m in ana.finditer("Ana, Banana, Anapolis, ANA.")] == ["Ana", "ANA"]  # whole words only
+    assert _patterns("-00")[0][1].search("789-00")  # an edge that isn't a letter or digit needs no word around it
+    assert _patterns("Jose")[0][1].search("José") is None and _patterns("José")[0][1].search("JOSÉ.")
     assert _scrub("Contrato de Ana Souza, CPF 123.456.789-00", [("", words), ("", cpf)]) == (
         "Contrato de " + "█" * 9 + ", CPF " + "█" * 14
     )

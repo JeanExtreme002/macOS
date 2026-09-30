@@ -60,6 +60,7 @@ __all__ = [
     "set_bookmarks",
     "images",
     "redact",
+    "Redaction",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -1644,7 +1645,12 @@ _OPAQUE_RGB = 5  # kCGImageAlphaNoneSkipLast
 
 
 def _patterns(targets: Union[Target, Sequence[Target]]) -> List[Tuple[str, "re.Pattern[str]"]]:
-    """Each target as a label and a pattern: a text matches ignoring case, and any spacing or line break between words."""
+    """
+    Each target as it was given (the text, or the pattern's source) and a pattern to find it.
+
+    A text matches ignoring case and any spacing or line break between its words, and only
+    as whole words: "Ana" doesn't match inside "Banana".
+    """
     items = [targets] if isinstance(targets, (str, re.Pattern)) else list(targets)
     if not items:
         raise ValueError("redact() needs at least one text or pattern")
@@ -1653,10 +1659,13 @@ def _patterns(targets: Union[Target, Sequence[Target]]) -> List[Tuple[str, "re.P
         if isinstance(item, re.Pattern):
             if item.fullmatch(""):
                 raise ValueError("the pattern {!r} matches an empty text".format(item.pattern))
-            found.append((repr(item.pattern), item))
+            found.append((item.pattern, item))
         elif isinstance(item, str) and item.strip():
             words = r"\s+".join(re.escape(word) for word in item.split())
-            found.append((repr(item), re.compile(words, re.IGNORECASE)))
+            # Whole words: no letter or digit right before or after, where the text itself starts or ends with one.
+            before = r"(?<!\w)" if re.match(r"\w", item.strip()) else ""
+            after = r"(?!\w)" if re.search(r"\w$", item.strip()) else ""
+            found.append((item, re.compile(before + words + after, re.IGNORECASE)))
         else:
             raise ValueError("redact() takes texts and compiled patterns, not {!r}".format(item))
     return found
@@ -1814,26 +1823,41 @@ def _scrub_outline(outline: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"
         _scrub_outline(child, patterns)
 
 
+@dataclass(frozen=True)
+class Redaction:
+    """What :func:`redact` blacked out."""
+
+    path: Path
+    """The redacted PDF."""
+    matches: Dict[str, int]
+    """How many times each target was found and blacked out, by the target as given (a pattern by its source)."""
+    pages: Dict[int, int]
+    """The pages redrawn, with how many matches each had: check them before sharing the PDF."""
+
+
 def redact(
     path: PathLike,
     targets: Union[Target, Sequence[Target]],
     output: PathLike,
     *,
     password: Optional[str] = None,
-) -> Path:
+) -> Redaction:
     """
     Black out text in a PDF for good, and save it to ``output``: the text is removed, not just covered.
 
     ::
 
-        macos.pdf.redact("contract.pdf", ["Ana Souza", "123.456.789-00"], "public.pdf")
+        done = macos.pdf.redact("contract.pdf", ["Ana Souza", "123.456.789-00"], "public.pdf")
+        done.matches   # {'Ana Souza': 3, '123.456.789-00': 1}
+        done.pages     # {1: 2, 4: 2}: the pages to look over
 
         cpf = re.compile(r"\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}")
         macos.pdf.redact("list.pdf", [cpf], "public.pdf")      # every CPF
 
-    ``targets`` are texts, matched ignoring case and any spacing or line
-    break between their words, or compiled :mod:`re` patterns, for what
-    follows a shape (IDs, emails, phone numbers). Each page with a match
+    ``targets`` are texts, matched as whole words, ignoring case and any
+    spacing or line break between them ("Ana" doesn't black out "Banana"),
+    or compiled :mod:`re` patterns, for what follows a shape (IDs, emails,
+    phone numbers). Each page with a match
     is redrawn as a picture with black boxes over the matches, so there's
     no text left under them to copy or search; the rest of that page stays
     visible, but its text can't be selected anymore (:func:`ocr` gives it
@@ -1843,21 +1867,32 @@ def redact(
     page is flattened, with a box over them), and the matches in the
     title, author, subject, keywords and bookmarks, which become ``█``.
 
-    Raises :class:`ValueError`, writing nothing, when a target isn't found:
-    a redaction that missed would look like it worked. Scanned pages have
-    no text to find: run :func:`ocr` first. ``password`` opens an
-    encrypted PDF; the result isn't encrypted.
+    It returns a :class:`Redaction`: how many times each target was found,
+    and on which pages. Raises :class:`ValueError`, writing nothing, when
+    a target isn't found at all: a redaction that missed would look like
+    it worked.
+
+    It finds only the text a PDF holds as text, so **look over the result
+    before sharing it**: text in pictures (a scan, a screenshot, a logo),
+    text turned into shapes, fonts that can't be read back, and words
+    split by a hyphen stay visible. On a scan made searchable by OCR, the
+    boxes go where the OCR placed the words, which may be a little off.
+    Scanned pages have no text to find: run :func:`ocr` first.
+    ``password`` opens an encrypted PDF; the result isn't encrypted.
     """
     patterns = _patterns(targets)
     framework("AppKit")
     with _open(path, password) as document:
         counts = [0] * len(patterns)
         flatten = {}
+        per_page = {}
         for number in range(1, _count(document) + 1):
+            already = sum(counts)
             boxes = _redactions(_page(document, number), patterns, counts)
             if boxes:
                 flatten[number] = boxes
-        missing = [label for (label, _), count in zip(patterns, counts) if not count]
+                per_page[number] = sum(counts) - already
+        missing = [repr(label) for (label, _), count in zip(patterns, counts) if not count]
         if missing:
             raise ValueError(
                 "{} isn't in the PDF's text, so nothing was written: check the spelling, "
@@ -1869,4 +1904,8 @@ def redact(
         root = _objc.send(document, "outlineRoot")
         if root:
             _scrub_outline(root, patterns)
-        return _save(document, output)
+        saved = _save(document, output)
+    matches: Dict[str, int] = {}
+    for (label, _), count in zip(patterns, counts):
+        matches[label] = matches.get(label, 0) + count
+    return Redaction(path=saved, matches=matches, pages=per_page)
