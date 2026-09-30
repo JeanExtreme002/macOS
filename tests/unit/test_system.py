@@ -1,5 +1,6 @@
 """Unit tests for :mod:`macos.system`. They run on any platform."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -200,3 +201,31 @@ def test_cpu_usage_survives_a_counter_wrapping_around(monkeypatch):
     monkeypatch.setattr(system.time, "sleep", lambda seconds: None)
 
     assert system.cpu_usage() == 0.6  # (200 user + 100 system) busy of 500 ticks
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real processes")
+def test_processes():
+    import os
+    import subprocess
+
+    found = macos.system.processes()
+    own = next(process for process in found if process.pid == os.getpid())
+    assert own.memory and own.cpu_time is not None and own.started and own.path and own.path.exists()
+    assert any(process.pid == 1 and process.name == "launchd" and process.user == "root" for process in found)
+    assert macos.system.process(os.getpid()).parent_pid == os.getppid()
+
+    child = subprocess.Popen(["sleep", "30"])
+    try:
+        assert macos.system.process(child.pid).name == "sleep"
+        macos.system.process(child.pid).kill()
+        assert child.wait(timeout=5) == -15
+    finally:
+        child.kill()
+    assert macos.system.process(child.pid) is None
+    with pytest.raises(ProcessLookupError):
+        macos.system.kill(child.pid)
+
+
+def test_process_checks():
+    with pytest.raises(ValueError, match="pid must be positive"):
+        macos.system.process(0)

@@ -251,6 +251,16 @@ explain how to use each part.
    :no-value:
 ```
 
+## macos.maps
+
+```{eval-rst}
+.. module:: macos.maps
+
+.. autofunction:: macos.maps.geocode
+.. autofunction:: macos.maps.reverse_geocode
+.. autoclass:: macos.maps.Place
+```
+
 ## macos.music
 
 ```{eval-rst}
@@ -505,6 +515,9 @@ explain how to use each part.
 .. autofunction:: macos.finder.set_quit_menu
 .. autofunction:: macos.finder.desktop_view
 .. autofunction:: macos.finder.set_desktop_view
+.. autofunction:: macos.finder.set_icon
+.. autofunction:: macos.finder.remove_icon
+.. autofunction:: macos.finder.has_custom_icon
 ```
 
 ## macos.volume
@@ -864,6 +877,10 @@ explain how to use each part.
 .. autofunction:: macos.system.set_menu_bar_items
 .. autoclass:: macos.system.SecurityStatus
 .. autofunction:: macos.system.security_status
+.. autoclass:: macos.system.Process
+.. autofunction:: macos.system.processes
+.. autofunction:: macos.system.process
+.. autofunction:: macos.system.kill
 ```
 
 ## Exceptions

@@ -1,10 +1,12 @@
 """Unit tests for :mod:`macos.finder`. They run on any platform."""
 
+import sys
 from pathlib import Path
 
 import pytest
 
 import macos
+from macos import finder
 
 
 def test_finder_reveal(fake_run, tmp_path):
@@ -126,3 +128,23 @@ def test_quick_look_returns_at_once(fake_run, monkeypatch, tmp_path):
 
     macos.finder.quick_look(tmp_path / "a.txt")
     assert started == [(["qlmanage", "-p", str(tmp_path / "a.txt")], True)]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="sets real icons, on files in a temporary folder")
+def test_custom_icons(tmp_path):
+    from tests.helpers import small_png
+
+    folder, file, logo = tmp_path / "Folder", tmp_path / "notes.txt", tmp_path / "logo.png"
+    folder.mkdir()
+    file.write_text("notes")
+    logo.write_bytes(small_png(64, 64))
+
+    for target, image in ((folder, logo), (file, Path("/System/Applications/Calculator.app"))):
+        assert not finder.has_custom_icon(target)
+        finder.set_icon(target, image)
+        assert finder.has_custom_icon(target)
+        finder.remove_icon(target)
+        assert not finder.has_custom_icon(target)
+    assert list(folder.iterdir()) == []  # the hidden "Icon" file goes too
+    with pytest.raises(FileNotFoundError):
+        finder.set_icon(tmp_path / "missing", logo)

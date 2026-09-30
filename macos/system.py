@@ -21,7 +21,7 @@ import platform
 import re
 import time
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
@@ -84,6 +84,10 @@ __all__ = [
     "set_menu_bar_items",
     "SecurityStatus",
     "security_status",
+    "Process",
+    "processes",
+    "process",
+    "kill",
 ]
 
 
@@ -1096,3 +1100,208 @@ def security_status() -> SecurityStatus:
         gatekeeper=_state(["spctl", "--status"], "assessments enabled", "assessments disabled"),
         sip=_state(["csrutil", "status"], "status: enabled", "status: disabled"),
     )
+
+
+# --- Processes ------------------------------------------------------------------
+
+_PROC_PIDTBSDINFO, _PROC_PIDTASKINFO, _PROC_PIDT_SHORTBSDINFO = 3, 4, 13
+_PATH_MAX = 4096
+
+
+class _BSDInfo(ctypes.Structure):
+    # <sys/proc_info.h>'s proc_bsdinfo.
+    _fields_ = [
+        ("flags", ctypes.c_uint32),
+        ("status", ctypes.c_uint32),
+        ("xstatus", ctypes.c_uint32),
+        ("pid", ctypes.c_uint32),
+        ("ppid", ctypes.c_uint32),
+        ("uid", ctypes.c_uint32),
+        ("gid", ctypes.c_uint32),
+        ("ruid", ctypes.c_uint32),
+        ("rgid", ctypes.c_uint32),
+        ("svuid", ctypes.c_uint32),
+        ("svgid", ctypes.c_uint32),
+        ("rfu_1", ctypes.c_uint32),
+        ("comm", ctypes.c_char * 16),
+        ("name", ctypes.c_char * 32),
+        ("nfiles", ctypes.c_uint32),
+        ("pgid", ctypes.c_uint32),
+        ("pjobc", ctypes.c_uint32),
+        ("e_tdev", ctypes.c_uint32),
+        ("e_tpgid", ctypes.c_uint32),
+        ("nice", ctypes.c_int32),
+        ("start_tvsec", ctypes.c_uint64),
+        ("start_tvusec", ctypes.c_uint64),
+    ]
+
+
+class _ShortInfo(ctypes.Structure):
+    # <sys/proc_info.h>'s proc_bsdshortinfo: what any user may read of any process.
+    _fields_ = [
+        ("pid", ctypes.c_uint32),
+        ("ppid", ctypes.c_uint32),
+        ("pgid", ctypes.c_uint32),
+        ("status", ctypes.c_uint32),
+        ("comm", ctypes.c_char * 16),
+        ("flags", ctypes.c_uint32),
+        ("uid", ctypes.c_uint32),
+        ("gid", ctypes.c_uint32),
+        ("ruid", ctypes.c_uint32),
+        ("rgid", ctypes.c_uint32),
+        ("svuid", ctypes.c_uint32),
+        ("svgid", ctypes.c_uint32),
+        ("rfu", ctypes.c_uint32),
+    ]
+
+
+class _TaskInfo(ctypes.Structure):
+    # <sys/proc_info.h>'s proc_taskinfo.
+    _fields_ = [
+        ("virtual_size", ctypes.c_uint64),
+        ("resident_size", ctypes.c_uint64),
+        ("total_user", ctypes.c_uint64),
+        ("total_system", ctypes.c_uint64),
+        ("threads_user", ctypes.c_uint64),
+        ("threads_system", ctypes.c_uint64),
+        ("policy", ctypes.c_int32),
+        ("faults", ctypes.c_int32),
+        ("pageins", ctypes.c_int32),
+        ("cow_faults", ctypes.c_int32),
+        ("messages_sent", ctypes.c_int32),
+        ("messages_received", ctypes.c_int32),
+        ("syscalls_mach", ctypes.c_int32),
+        ("syscalls_unix", ctypes.c_int32),
+        ("csw", ctypes.c_int32),
+        ("threadnum", ctypes.c_int32),
+        ("numrunning", ctypes.c_int32),
+        ("priority", ctypes.c_int32),
+    ]
+
+
+class _Timebase(ctypes.Structure):
+    _fields_ = [("numer", ctypes.c_uint32), ("denom", ctypes.c_uint32)]
+
+
+@lru_cache(maxsize=None)
+def _libproc() -> Tuple[ctypes.CDLL, float]:
+    """libproc, and how many nanoseconds a tick of its CPU times lasts."""
+    require_macos()
+    lib = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    lib.proc_listallpids.argtypes = (ctypes.c_void_p, ctypes.c_int)
+    lib.proc_listallpids.restype = ctypes.c_int
+    lib.proc_pidinfo.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int)
+    lib.proc_pidinfo.restype = ctypes.c_int
+    lib.proc_pidpath.argtypes = (ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32)
+    lib.proc_pidpath.restype = ctypes.c_int
+    system = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    timebase = _Timebase()
+    system.mach_timebase_info(ctypes.byref(timebase))
+    return lib, timebase.numer / timebase.denom
+
+
+@dataclass(frozen=True)
+class Process:
+    """A running process, as it was when read."""
+
+    pid: int
+    name: str
+    path: Optional[Path]
+    """Its executable; ``None`` for the few the system hides."""
+    user: Optional[str]
+    parent_pid: int
+    started: Optional[datetime]
+    """``None`` for other users' processes."""
+    memory: Optional[int]
+    """Memory it uses (resident), in bytes; ``None`` for other users' processes."""
+    cpu_time: Optional[timedelta]
+    """Processor time used since it started; ``None`` for other users' processes."""
+
+    def kill(self, *, force: bool = False) -> None:
+        """Ask the process to quit, or end it at once (``force=True``). See :func:`kill`."""
+        kill(self, force=force)
+
+
+def _user(uid: int) -> Optional[str]:
+    import pwd
+
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return None
+
+
+def _info(lib: ctypes.CDLL, pid: int, flavor: int, into: ctypes.Structure) -> bool:
+    return bool(lib.proc_pidinfo(pid, flavor, 0, ctypes.byref(into), ctypes.sizeof(into)) == ctypes.sizeof(into))
+
+
+def _read_process(pid: int) -> Optional[Process]:
+    lib, tick = _libproc()
+    short = _ShortInfo()
+    if not _info(lib, pid, _PROC_PIDT_SHORTBSDINFO, short):
+        return None  # gone
+    buffer = ctypes.create_string_buffer(_PATH_MAX)
+    path = Path(buffer.value.decode("utf-8", "replace")) if lib.proc_pidpath(pid, buffer, _PATH_MAX) > 0 else None
+    # The rest only for this user's processes: macOS keeps other users' to themselves.
+    full, task = _BSDInfo(), _TaskInfo()
+    has_full, has_task = _info(lib, pid, _PROC_PIDTBSDINFO, full), _info(lib, pid, _PROC_PIDTASKINFO, task)
+    name = ((full.name if has_full else b"") or short.comm).decode("utf-8", "replace")
+    if path and len(name) >= 15:
+        name = path.name  # the kernel cuts long names
+    return Process(
+        pid=pid,
+        name=name,
+        path=path,
+        user=_user(short.uid),
+        parent_pid=short.ppid,
+        started=datetime.fromtimestamp(full.start_tvsec + full.start_tvusec / 1e6) if has_full and full.start_tvsec else None,
+        memory=int(task.resident_size) if has_task else None,
+        cpu_time=timedelta(microseconds=(task.total_user + task.total_system) * tick / 1000) if has_task else None,
+    )
+
+
+def processes() -> List[Process]:
+    """
+    The running processes, by pid, like Activity Monitor's list.
+
+    ::
+
+        biggest = sorted(macos.system.processes(), key=lambda p: p.memory or 0, reverse=True)[:5]
+        [(p.name, p.memory // 2**20) for p in biggest]   # [('Safari', 1840), ('Code Helper', 950), ...]
+
+    Other users' processes, the system's included, come without their
+    memory, processor time and start, which macOS keeps from this user; an
+    administrator's script run with ``sudo`` sees them all. No permission
+    is needed.
+    """
+    lib, _ = _libproc()
+    count = lib.proc_listallpids(None, 0)
+    pids = (ctypes.c_int * (count + 64))()  # room for those started meanwhile
+    count = lib.proc_listallpids(pids, ctypes.sizeof(pids))
+    found = [_read_process(pid) for pid in sorted(set(pids[:count])) if pid > 0]
+    return [process for process in found if process is not None]
+
+
+def process(pid: int) -> Optional[Process]:
+    """The process with ``pid``, or ``None`` when there's none (it may have quit)."""
+    if pid <= 0:
+        raise ValueError("pid must be positive, not {}".format(pid))
+    return _read_process(pid)
+
+
+def kill(process: Union[int, Process], *, force: bool = False) -> None:
+    """
+    Ask a process (a :class:`Process` or its pid) to quit, as ``kill`` does, or end it at once (``force=True``).
+
+    Asking lets it save and clean up, and it may take a moment or refuse;
+    ``force`` doesn't. To quit an app, prefer :meth:`macos.apps.App.quit`.
+    A process already gone raises :class:`ProcessLookupError`; another
+    user's, :class:`PermissionError`.
+    """
+    import signal
+
+    require_macos()
+    pid = process.pid if isinstance(process, Process) else int(process)
+    if pid <= 1:
+        raise ValueError("pid must be a process's, not {}".format(pid))
+    os.kill(pid, signal.SIGKILL if force else signal.SIGTERM)

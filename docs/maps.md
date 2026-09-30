@@ -1,0 +1,56 @@
+# Maps
+
+{mod}`macos.maps` turns an address into coordinates, and coordinates into an
+address, as the Maps app does.
+
+```python
+import macos
+
+place = macos.maps.geocode("Avenida Paulista, 1578, São Paulo")[0]
+place.latitude, place.longitude              # (-23.561463, -46.655952)
+
+macos.maps.reverse_geocode(48.8584, 2.2945)  # Place(name='Eiffel Tower', city='Paris', ...)
+```
+
+It goes through Apple's geocoding service: it needs the internet, but no
+permission, not even Location.
+
+## From an address
+
+{func}`~macos.maps.geocode` returns the places matching an address, the
+likeliest first, or `[]`. Any address works, whole or in part, in any
+language:
+
+```python
+for place in macos.maps.geocode("1 Infinite Loop, Cupertino"):
+    print(place.street, place.city, place.state, place.country_code)   # 1 Infinite Loop Cupertino CA US
+```
+
+Each {class}`~macos.maps.Place` has its `name`, `street` (written as the
+country writes it), `city`, `state`, `postal_code`, `country`,
+`country_code`, `latitude`, `longitude` and `time_zone`. The service guesses
+rather than give up: for vague addresses, check the place's `country_code`
+or `city`.
+
+## From coordinates
+
+{func}`~macos.maps.reverse_geocode` returns the address at a point:
+
+```python
+place = macos.maps.reverse_geocode(-22.9519, -43.2105)
+place.city, place.time_zone   # ('Rio de Janeiro', 'America/Sao_Paulo')
+```
+
+Out at sea, it's the ocean's name, without an address.
+
+## Limits
+
+Apple limits how many requests an app makes in a short time: space out
+large batches, or a request raises {class}`~macos.MacOSError`. Call these
+functions from the main thread, where the answers arrive.
+
+## Reference
+
+- {func}`macos.maps.geocode`
+- {func}`macos.maps.reverse_geocode`
+- {class}`macos.maps.Place`

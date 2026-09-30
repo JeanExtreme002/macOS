@@ -215,6 +215,25 @@ macos.system.security_status()
 
 Each is `None` when macOS doesn't say.
 
+## Processes
+
+{func}`~macos.system.processes` lists the running processes, like Activity
+Monitor, and {func}`~macos.system.kill` ends one:
+
+```python
+biggest = sorted(macos.system.processes(), key=lambda p: p.memory or 0, reverse=True)[:3]
+[(p.name, p.memory // 2**20) for p in biggest]   # [('Safari', 1840), ('Code Helper', 950), ...]
+
+macos.system.process(1234).kill()                # asks it to quit, as `kill` does
+```
+
+Each {class}`~macos.system.Process` has its `pid`, `name`, `path`, `user`,
+`parent_pid`, `started`, `memory` (in bytes) and `cpu_time`. Other users'
+processes, the system's included, come without their memory, processor
+time and start, which macOS keeps from this user. `kill(force=True)` ends a
+process at once, without letting it save; to quit an app, prefer
+{meth}`App.quit() <macos.apps.App.quit>`.
+
 ## Reference
 
 - {func}`macos.system.version`
@@ -270,3 +289,7 @@ Each is `None` when macOS doesn't say.
 - {func}`macos.system.set_menu_bar_items`
 - {class}`macos.system.SecurityStatus`
 - {func}`macos.system.security_status`
+- {class}`macos.system.Process`
+- {func}`macos.system.processes`
+- {func}`macos.system.process`
+- {func}`macos.system.kill`

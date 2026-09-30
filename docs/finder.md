@@ -141,6 +141,21 @@ opens, and returns at once:
 macos.finder.quick_look("report.pdf")
 ```
 
+## Custom icons
+
+{func}`~macos.finder.set_icon` gives a folder, a file or an app a custom icon,
+like pasting one in Get Info:
+
+```python
+macos.finder.set_icon("~/Projects", "logo.png")                        # an image
+macos.finder.set_icon("~/Projects/app", "/Applications/Xcode.app")      # another item's icon
+macos.finder.has_custom_icon("~/Projects")                             # True
+macos.finder.remove_icon("~/Projects")                                 # its usual icon again
+```
+
+Finder and the Dock may take a moment to show it. An app in `/Applications`
+may need an administrator's rights.
+
 ## Finder settings
 
 The settings people change most, each with its reader: they apply at once, as
@@ -254,3 +269,6 @@ them be placed freely.
 - {func}`macos.finder.set_quit_menu`
 - {func}`macos.finder.desktop_view`
 - {func}`macos.finder.set_desktop_view`
+- {func}`macos.finder.set_icon`
+- {func}`macos.finder.remove_icon`
+- {func}`macos.finder.has_custom_icon`

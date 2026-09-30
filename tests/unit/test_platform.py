@@ -337,6 +337,14 @@ def test_other_platforms_raise_not_supported(monkeypatch):
         lambda: macos.printer.print_file(__file__),
         lambda: macos.settings.export(),
         lambda: macos.settings.apply({}),
+        lambda: macos.maps.geocode("Paris"),
+        lambda: macos.maps.reverse_geocode(48.8, 2.3),
+        lambda: macos.system.processes(),
+        lambda: macos.system.process(1),
+        lambda: macos.system.kill(99999),
+        lambda: macos.finder.set_icon(__file__, __file__),
+        lambda: macos.finder.remove_icon(__file__),
+        lambda: macos.finder.has_custom_icon(__file__),
     ],
 )
 def test_every_feature_raises_not_supported_outside_macos(call):
