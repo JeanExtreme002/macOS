@@ -49,6 +49,8 @@ __all__ = [
     "default_browser",
     "is_quarantined",
     "unquarantine",
+    "InstalledApp",
+    "installed",
 ]
 
 # NSApplicationActivationPolicy
@@ -740,3 +742,70 @@ def unquarantine(path: Union[str, "os.PathLike[str]"]) -> int:
             if error not in (_ENOATTR, errno.ENOENT):
                 raise OSError(error, "can't remove the quarantine from {}: {}".format(item, os.strerror(error)))
     return removed
+
+
+# --- Installed apps -------------------------------------------------------------
+
+_APP_FOLDERS = ("/Applications", "/System/Applications", "~/Applications")
+
+
+@dataclass(frozen=True)
+class InstalledApp:
+    """An app installed on this Mac."""
+
+    name: str
+    bundle_id: Optional[str]
+    version: Optional[str]
+    """As the app shows it, such as ``'17.4'``."""
+    path: Path
+
+
+def _installed_app(path: str) -> Optional[InstalledApp]:
+    import plistlib
+
+    try:
+        # Path's own reader: this module's open() is the one that opens apps.
+        info = plistlib.loads(Path(path, "Contents", "Info.plist").read_bytes())
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return None
+    if not isinstance(info, dict):
+        return None  # a valid plist, but not an app's description
+    name = info.get("CFBundleDisplayName") or info.get("CFBundleName") or Path(path).stem
+    return InstalledApp(
+        name=str(name),
+        bundle_id=info.get("CFBundleIdentifier"),
+        version=str(info["CFBundleShortVersionString"]) if info.get("CFBundleShortVersionString") else None,
+        path=Path(path),
+    )
+
+
+def installed() -> List[InstalledApp]:
+    """
+    The apps installed on this Mac, by name, with their version and bundle ID.
+
+    ::
+
+        {app.name: app.version for app in macos.apps.installed()}   # {'Safari': '18.3', 'Xcode': '16.2', ...}
+
+    It lists the Applications folders (yours, the Mac's and the system's),
+    their subfolders included, and the apps Spotlight knows elsewhere.
+    """
+    from . import spotlight
+
+    require_macos()
+    paths = set()
+    for folder in _APP_FOLDERS:
+        root = os.path.expanduser(folder)
+        for current, folders, _ in os.walk(root):
+            for name in list(folders):
+                if name.endswith(".app"):
+                    paths.add(os.path.realpath(os.path.join(current, name)))
+                    folders.remove(name)  # an app's insides aren't other apps: only other folders are walked
+    try:
+        # Apps installed elsewhere, as Spotlight knows them; nothing is lost if it's off.
+        found = spotlight.search('kMDItemContentType == "com.apple.application-bundle"')
+        paths.update(os.path.realpath(str(path)) for path in found if "/Contents/" not in str(path))
+    except MacOSError:
+        pass
+    apps = [app for app in (_installed_app(path) for path in paths) if app]
+    return sorted(apps, key=lambda app: (app.name.lower(), str(app.path)))

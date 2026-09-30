@@ -88,3 +88,37 @@ def pdf_form(path):
         widget("Size", "/Btn", 250, 550, control=1, on="Large")
         pdf._save(document, path)
     return path
+
+
+def pdf_with_images(images):
+    """
+    A one-page PDF drawing raw images, written by hand: each is ``(color space, decode, width, height, samples)``.
+
+    ``color space`` is PDF source such as ``"/DeviceGray"`` or ``"[/CalRGB << /WhitePoint [0.95 1 1.09] >>]"``;
+    ``decode`` is ``None`` or an array's source such as ``"[1 0]"``.
+    """
+    objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"]
+    names = " ".join("/Im{0} {1} 0 R".format(index, 5 + index) for index in range(len(images)))
+    drawing = " ".join("q 100 0 0 100 {} 0 cm /Im{} Do Q".format(index * 110, index) for index in range(len(images)))
+    objects.append("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << {} >> >> "
+                   "/Contents 4 0 R >>".format(names))  # fmt: skip
+    objects.append("<< /Length {} >>\nstream\n{}\nendstream".format(len(drawing), drawing))
+    for space, decode, width, height, samples in images:
+        extra = " /Decode {}".format(decode) if decode else ""
+        objects.append(
+            "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace {} /BitsPerComponent 8{} /Length {} >>\n"
+            "stream\n".format(width, height, space, extra, len(samples))
+        )
+        objects[-1] = objects[-1].encode("latin-1") + samples + b"\nendstream"
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += "{} 0 obj\n".format(number).encode()
+        out += body if isinstance(body, bytes) else body.encode("latin-1")
+        out += b"\nendobj\n"
+    table = len(out)
+    out += "xref\n0 {}\n0000000000 65535 f \n".format(len(objects) + 1).encode()
+    out += b"".join("{:010d} 00000 n \n".format(offset).encode() for offset in offsets)
+    out += "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n".format(len(objects) + 1, table).encode()
+    return bytes(out)

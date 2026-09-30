@@ -24,11 +24,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 from . import _cf, _objc
 from ._system import framework, require_macos, run as _run
-from .errors import MacOSError, NotSupportedError
+from .errors import CommandError, MacOSError, NotSupportedError
 
 __all__ = [
     "version",
@@ -103,6 +103,10 @@ __all__ = [
     "gpu_usage",
     "DiskHealth",
     "disk_health",
+    "CrashReport",
+    "crash_reports",
+    "LogEntry",
+    "logs",
 ]
 
 
@@ -1948,3 +1952,221 @@ def disk_health() -> List[DiskHealth]:
             )
         )
     return disks
+
+
+# --- Crash reports ----------------------------------------------------------------
+
+_REPORT_FOLDERS = ("~/Library/Logs/DiagnosticReports", "/Library/Logs/DiagnosticReports")
+_CRASHES = {"309", "109"}  # the .ips reports' bug_type for a crash, in the current format and the old one
+
+
+@dataclass(frozen=True)
+class CrashReport:
+    """An app or a process that crashed, as the report macOS wrote tells."""
+
+    app: str
+    version: Optional[str]
+    date: Optional[datetime]
+    reason: Optional[str]
+    """What stopped it, such as ``'EXC_BAD_ACCESS (SIGSEGV)'``."""
+    path: Path
+    """The report, to read or share with the app's developers."""
+
+
+def _crash_report(path: Path) -> Optional[CrashReport]:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as file:
+            header = json.loads(file.readline())
+            if not isinstance(header, dict) or str(header.get("bug_type")) not in _CRASHES:
+                return None
+            try:
+                body = json.loads(file.read())
+            except ValueError:
+                body = {}
+    except (OSError, ValueError):
+        return None
+
+    def part(value: object) -> Dict[str, Any]:
+        return value if isinstance(value, dict) else {}  # a corrupt report must not break the listing
+
+    body = part(body)
+    exception = part(body.get("exception"))
+    reason = exception.get("type")
+    if reason and exception.get("signal"):
+        reason = "{} ({})".format(reason, exception["signal"])
+    elif not reason:
+        reason = part(body.get("termination")).get("indicator")
+    date = None
+    try:
+        date = datetime.strptime(str(header.get("timestamp")), "%Y-%m-%d %H:%M:%S.%f %z")
+    except ValueError:
+        pass
+    return CrashReport(
+        app=str(header.get("app_name") or header.get("name") or body.get("procName") or path.stem),
+        version=header.get("app_version") or None,
+        date=date,
+        reason=reason,
+        path=path,
+    )
+
+
+def _before(date: datetime, cutoff: datetime) -> bool:
+    """Whether ``date`` (with its offset) is before ``cutoff``, which is taken as this Mac's local time when it has none."""
+    if cutoff.tzinfo is None:
+        return date.astimezone().replace(tzinfo=None) < cutoff  # the report's instant, on the local clock
+    return date < cutoff
+
+
+def crash_reports(app: Optional[str] = None, *, since: Optional[datetime] = None) -> List[CrashReport]:
+    """
+    The crashes macOS recorded, the latest first: which app, when, and why.
+
+    ::
+
+        for crash in macos.system.crash_reports(since=datetime.now() - timedelta(days=7)):
+            print(crash.date, crash.app, crash.reason)   # 2026-09-29 13:55 Safari EXC_BAD_ACCESS (SIGSEGV)
+
+    ``app`` keeps one app's, by name (case doesn't matter); ``since`` is
+    this Mac's local time unless it carries a time zone. It reads the
+    reports in ``~/Library/Logs/DiagnosticReports``, and the system's that
+    this user may read. macOS deletes them after a while.
+    """
+    require_macos()
+    found = []
+    for folder in _REPORT_FOLDERS:
+        root = Path(folder).expanduser()
+        try:
+            candidates = list(root.glob("*.ips"))
+        except OSError:
+            continue
+        for path in candidates:
+            report = _crash_report(path)
+            if report is None or (app and report.app.lower() != app.lower()):
+                continue
+            if since and report.date and _before(report.date, since):
+                continue
+            found.append(report)
+    return sorted(found, key=lambda report: (report.date is not None, report.date), reverse=True)
+
+
+# --- The system log -----------------------------------------------------------------
+
+_LOG_LEVELS = {"default": "Default", "info": "Info", "debug": "Debug", "error": "Error", "fault": "Fault"}
+
+
+@dataclass(frozen=True)
+class LogEntry:
+    """A message in the system log."""
+
+    date: Optional[datetime]
+    process: str
+    pid: Optional[int]
+    subsystem: Optional[str]
+    """Such as ``'com.apple.bluetooth'``."""
+    category: Optional[str]
+    level: str
+    """``'default'``, ``'info'``, ``'debug'``, ``'error'`` or ``'fault'``."""
+    message: str
+
+
+def _quoted(text: str) -> str:
+    """``text`` as a string in a log predicate."""
+    return '"{}"'.format(text.replace("\\", "\\\\").replace('"', '\\"'))
+
+
+def _log_entry(line: str) -> Optional[LogEntry]:
+    try:
+        event = json.loads(line)
+    except ValueError:
+        return None
+    if event.get("eventType") != "logEvent":
+        return None
+    date = None
+    try:
+        date = datetime.strptime(event.get("timestamp", ""), "%Y-%m-%d %H:%M:%S.%f%z")
+    except ValueError:
+        pass
+    pid = event.get("processID")
+    return LogEntry(
+        date=date,
+        process=os.path.basename(event.get("processImagePath") or "") or "?",
+        pid=int(pid) if str(pid).isdigit() else None,
+        subsystem=event.get("subsystem") or None,
+        category=event.get("category") or None,
+        level=str(event.get("messageType") or "Default").lower(),
+        message=event.get("eventMessage") or "",
+    )
+
+
+def logs(
+    *,
+    process: Optional[str] = None,
+    subsystem: Optional[str] = None,
+    contains: Optional[str] = None,
+    level: Optional[str] = None,
+    last: Union[str, timedelta] = "10m",
+    limit: Optional[int] = 1000,
+) -> List[LogEntry]:
+    """
+    Read the system log (Console's), oldest first, filtered by process, subsystem, text or level.
+
+    ::
+
+        for entry in macos.system.logs(process="Safari", level="error", last="1h"):
+            print(entry.date, entry.message)
+
+    ``contains`` keeps messages holding a text (case doesn't matter);
+    ``level`` keeps messages from that level up: ``"debug"``, ``"info"``,
+    ``"default"``, ``"error"`` or ``"fault"``. ``last`` is how far back, as
+    ``"30s"``, ``"10m"``, ``"2h"``, ``"1d"`` or a :class:`~datetime.timedelta`.
+    The log is large (thousands of messages a minute): filter it, and
+    ``limit`` stops at that many messages (``None`` for all). Goes through
+    ``log show``; some messages hide private data as ``<private>``.
+    """
+    import subprocess
+
+    if isinstance(last, timedelta):
+        last = "{}s".format(max(1, int(last.total_seconds())))
+    if not re.fullmatch(r"\d+[smhd]", last):
+        raise ValueError("last must be like '30s', '10m', '2h' or '1d', or a timedelta, not {!r}".format(last))
+    if level is not None and level not in _LOG_LEVELS:
+        raise ValueError("level must be one of {}, not {!r}".format(", ".join(_LOG_LEVELS), level))
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be 1 or more, or None, not {}".format(limit))
+    require_macos()
+    conditions = []
+    if process:
+        conditions.append("process == {}".format(_quoted(process)))
+    if subsystem:
+        conditions.append("subsystem == {}".format(_quoted(subsystem)))
+    if contains:
+        conditions.append("eventMessage CONTAINS[c] {}".format(_quoted(contains)))
+    if level == "error":
+        conditions.append("messageType >= error")  # errors and faults: a keyword, not a string
+    elif level == "fault":
+        conditions.append("messageType == fault")
+    args = ["/usr/bin/log", "show", "--style", "ndjson", "--last", last]
+    if level in ("info", "debug"):
+        args.append("--" + level)  # log show leaves them out unless asked
+    if conditions:
+        args += ["--predicate", " AND ".join(conditions)]
+    entries: List[LogEntry] = []
+    reader = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+    assert reader.stdout is not None and reader.stderr is not None
+    stopped = False  # by us, at the limit: not a failure
+    try:
+        for line in reader.stdout:
+            entry = _log_entry(line) if line.startswith("{") else None
+            if entry:
+                entries.append(entry)
+                if limit is not None and len(entries) >= limit:
+                    stopped = True
+                    break
+    finally:
+        if stopped:
+            reader.kill()
+        reader.wait()
+        errors = reader.stderr.read()
+    if not stopped and reader.returncode != 0:
+        raise CommandError(args, reader.returncode, errors)
+    return entries

@@ -190,6 +190,18 @@ macos.apps.unquarantine("/Applications/Tool.app")     # 1204 files
 
 All functions work from any thread, not only the main one.
 
+## Installed apps
+
+{func}`~macos.apps.installed` lists the apps installed on this Mac, with their
+version and bundle ID:
+
+```python
+{app.name: app.version for app in macos.apps.installed()}   # {'Safari': '18.6', 'Xcode': '16.2', ...}
+```
+
+It looks in the Applications folders (yours, the Mac's and the system's),
+and at the apps Spotlight knows elsewhere.
+
 ## Reference
 
 - {func}`macos.apps.running`
@@ -209,3 +221,5 @@ All functions work from any thread, not only the main one.
 - {class}`macos.apps.LoginItem`
 - {func}`macos.apps.is_quarantined`
 - {func}`macos.apps.unquarantine`
+- {class}`macos.apps.InstalledApp`
+- {func}`macos.apps.installed`

@@ -17,7 +17,10 @@ def movie(tmp_path_factory):
     if not macos.screen.has_permission():
         pytest.skip("no video wallpaper, and no Screen Recording permission to make a video")
     # Recorded once for the module: each recording is a few seconds, and screencapture has hung on CI.
-    return macos.screen.record(tmp_path_factory.mktemp("movie") / "screen.mov", 3, region=(0, 0, 320, 200))
+    try:
+        return macos.screen.record(tmp_path_factory.mktemp("movie") / "screen.mov", 3, region=(0, 0, 320, 200))
+    except macos.MacOSError as error:
+        pytest.skip("no video to test with: {}".format(error))  # these test video, not screen recording
 
 
 def test_video_info_frame_and_convert(movie, tmp_path):

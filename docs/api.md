@@ -83,6 +83,8 @@ explain how to use each part.
 .. autofunction:: macos.apps.install_from_dmg
 .. autofunction:: macos.apps.is_quarantined
 .. autofunction:: macos.apps.unquarantine
+.. autoclass:: macos.apps.InstalledApp
+.. autofunction:: macos.apps.installed
 ```
 
 ## macos.keyboard
@@ -628,6 +630,10 @@ explain how to use each part.
 .. autofunction:: macos.pdf.fill_form
 .. autofunction:: macos.pdf.sign
 .. autofunction:: macos.pdf.add_text
+.. autoclass:: macos.pdf.Bookmark
+.. autofunction:: macos.pdf.bookmarks
+.. autofunction:: macos.pdf.set_bookmarks
+.. autofunction:: macos.pdf.images
 ```
 
 ## macos.video
@@ -756,6 +762,8 @@ explain how to use each part.
 .. autofunction:: macos.network.set_wifi_power
 .. autoclass:: macos.network.SpeedTest
 .. autofunction:: macos.network.speed_test
+.. autoclass:: macos.network.WiFiSignal
+.. autofunction:: macos.network.wifi_signal
 ```
 
 ## macos.screen
@@ -905,6 +913,10 @@ explain how to use each part.
 .. autofunction:: macos.system.gpu_usage
 .. autoclass:: macos.system.DiskHealth
 .. autofunction:: macos.system.disk_health
+.. autoclass:: macos.system.CrashReport
+.. autofunction:: macos.system.crash_reports
+.. autoclass:: macos.system.LogEntry
+.. autofunction:: macos.system.logs
 ```
 
 ## Exceptions
