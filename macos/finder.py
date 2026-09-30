@@ -1187,8 +1187,9 @@ def largest(folder: PathLike, count: int = 20, *, at_least: int = 1_000_000) -> 
 
     It asks Spotlight, which knows every file's size, so it's quick even for
     the whole home folder; ``at_least`` (1 MB by default) skips smaller
-    files. Folders Spotlight doesn't index (hidden ones, ``~/Library``...)
-    are walked instead, which is slower.
+    files. The folders Spotlight leaves out, hidden ones and ``~/Library``,
+    are walked instead when they're the folder or right under it, which is
+    slower; hidden folders deeper in (a project's ``.git``) aren't searched.
     """
     from . import spotlight
     from ._system import require_macos
@@ -1199,22 +1200,10 @@ def largest(folder: PathLike, count: int = 20, *, at_least: int = 1_000_000) -> 
     root = _existing(folder)
     if not root.is_dir():
         raise NotADirectoryError(str(root))
-    paths: Iterable[Path]
-    try:
-        paths = spotlight.search("kMDItemFSSize >= {}".format(int(at_least)), folder=root)
-    except MacOSError:
-        paths = []
-    sizes = {}
-    for path in paths:
-        try:
-            details = os.stat(path, follow_symlinks=False)
-        except OSError:
-            continue  # gone since it was indexed
-        if stat.S_ISREG(details.st_mode):
-            sizes[Path(path)] = details.st_size
-    if not sizes:
-        # Nothing indexed there (or nothing that big): look for ourselves.
-        for current, _, files in os.walk(root):
+    sizes: Dict[Path, int] = {}
+
+    def walk(top: Path) -> None:
+        for current, _, files in os.walk(top):
             for name in files:
                 path = Path(current, name)
                 try:
@@ -1223,4 +1212,37 @@ def largest(folder: PathLike, count: int = 20, *, at_least: int = 1_000_000) -> 
                     continue
                 if stat.S_ISREG(details.st_mode) and details.st_size >= at_least:
                     sizes[path] = details.st_size
+
+    if _unindexed(root):
+        walk(root)  # Spotlight doesn't look in there at all
+    else:
+        paths: Iterable[Path]
+        try:
+            paths = spotlight.search("kMDItemFSSize >= {}".format(int(at_least)), folder=root)
+        except MacOSError:
+            paths = []
+        for path in paths:
+            try:
+                details = os.stat(path, follow_symlinks=False)
+            except OSError:
+                continue  # gone since it was indexed
+            if stat.S_ISREG(details.st_mode):
+                sizes[Path(path)] = details.st_size
+        if not sizes:
+            walk(root)  # nothing indexed there (or nothing that big): look for ourselves
+        else:
+            # Spotlight leaves out hidden folders and ~/Library: walk those right under the folder too.
+            try:
+                children = [child for child in root.iterdir() if child.is_dir() and not child.is_symlink()]
+            except OSError:
+                children = []
+            for child in children:
+                if _unindexed(child):
+                    walk(child)
     return sorted(sizes.items(), key=lambda item: (-item[1], str(item[0])))[:count]
+
+
+def _unindexed(folder: Path) -> bool:
+    """Whether Spotlight leaves ``folder`` out: a hidden one, or the user's Library, or inside one."""
+    library = Path.home() / "Library"
+    return any(part.startswith(".") for part in folder.parts[1:]) or folder == library or library in folder.parents

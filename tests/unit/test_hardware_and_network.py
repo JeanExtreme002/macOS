@@ -93,4 +93,46 @@ def test_interfaces_dns_and_startup_items_read():
         assert item.label and item.kind in ("agent", "daemon") and item.path.suffix == ".plist"
     for device in system.usb_devices():  # CI's VM may have none
         assert device.speed in (None, "low", "full", "high", "super", "super_plus")
-    assert power.adapter() is None or power.adapter().watts is None or power.adapter().watts > 0
+    charger = power.adapter()  # read once: it may change between reads
+    assert charger is None or charger.watts is None or charger.watts > 0
+
+
+def test_largest_also_walks_what_spotlight_leaves_out(tmp_path, monkeypatch):
+    visible, hidden = tmp_path / "Movies", tmp_path / ".cache"
+    visible.mkdir()
+    hidden.mkdir()
+    (visible / "film.mov").write_bytes(b"x" * 3000)
+    (hidden / "huge.bin").write_bytes(b"x" * 9000)  # Spotlight never indexes a hidden folder
+    monkeypatch.setattr(macos._system, "require_macos", lambda: None)
+    monkeypatch.setattr(macos.spotlight, "search", lambda query, folder=None: [visible / "film.mov"])
+    found = finder.largest(tmp_path, at_least=1000)
+    assert [(path.name, size) for path, size in found] == [("huge.bin", 9000), ("film.mov", 3000)]
+
+
+def test_disabled_jobs_in_words_or_booleans(monkeypatch):
+    output = """
+    disabled services = {
+        "com.example.one" => disabled
+        "com.example.two" => enabled
+        "com.example.three" => true
+        "com.example.four" => false
+    }
+    """
+    monkeypatch.setattr(system, "_run", lambda args: output)
+    assert system._disabled("gui/501") == {
+        "com.example.one": True, "com.example.two": False, "com.example.three": True, "com.example.four": False
+    }  # fmt: skip
+
+
+def test_startup_item_with_broken_arguments(tmp_path, monkeypatch):
+    import plistlib
+
+    for label, arguments in (("com.example.number", 42), ("com.example.text", "/usr/bin/true")):
+        (tmp_path / (label + ".plist")).write_bytes(plistlib.dumps({"Label": label, "ProgramArguments": arguments}))
+    monkeypatch.setattr(system, "_STARTUP_FOLDERS", ((str(tmp_path), "agent", False),))
+    monkeypatch.setattr(system, "require_macos", lambda: None)
+    monkeypatch.setattr(system.os, "getuid", lambda: 501, raising=False)
+    monkeypatch.setattr(system, "_disabled", lambda domain: {})
+    monkeypatch.setattr(system, "_launchd_state", lambda domain, label: None)
+    found = {item.label: (item.program, item.arguments) for item in system.startup_items()}
+    assert found == {"com.example.number": (None, ()), "com.example.text": (None, ())}  # listed, not split into letters

@@ -2312,7 +2312,9 @@ def _disabled(domain: str) -> Dict[str, bool]:
         output = _run(["launchctl", "print-disabled", domain])
     except CommandError:
         return {}
-    return {label: state == "disabled" for label, state in re.findall(r'"([^"]+)" => (enabled|disabled)', output)}
+    # Written as words or as booleans, depending on the macOS version: "disabled" and true mean off.
+    found = re.findall(r'"([^"]+)"\s*=>\s*(enabled|disabled|true|false)', output)
+    return {label: state in ("disabled", "true") for label, state in found}
 
 
 def startup_items() -> List[StartupItem]:
@@ -2351,7 +2353,9 @@ def startup_items() -> List[StartupItem]:
             if not isinstance(info, dict) or not info.get("Label"):
                 continue
             label = str(info["Label"])
-            arguments = tuple(str(argument) for argument in info.get("ProgramArguments") or ())
+            listed = info.get("ProgramArguments")
+            # Only an array holds arguments: a string or a number there is a broken file, not letters to split.
+            arguments = tuple(str(argument) for argument in listed) if isinstance(listed, list) else ()
             program = info.get("Program") or (arguments[0] if arguments else None)
             keep_alive = info.get("KeepAlive")
             enabled = not info.get("Disabled", False) and not switches[kind].get(label, False)
