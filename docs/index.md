@@ -58,7 +58,7 @@ macos.finder.trash("old.log")                   # moved to the Trash
 |---|---|
 | **Apps & Automation** | [Apps](apps.md), [Browser](browser.md), [Clipboard](clipboard.md), [Events](events.md), [Hotkeys](hotkeys.md), [Keyboard](keyboard.md), [Maps](maps.md), [Mouse](mouse.md), [Music](music.md), [Schedule](schedule.md), [Shortcuts](shortcuts.md), [Windows](windows.md) |
 | **User Interaction** | [Dialogs](dialog.md), [Notifications](notifications.md), [Sound](sound.md), [Speech](speech.md) |
-| **Files & Documents** | [Audio Files](audio-files.md), [Finder](finder.md), [Images](image.md), [PDF](pdf.md), [Spotlight](spotlight.md), [Video](video.md) |
+| **Files & Documents** | [Audio Files](audio-files.md), [Documents](document.md), [Finder](finder.md), [Images](image.md), [PDF](pdf.md), [Spotlight](spotlight.md), [Video](video.md) |
 | **Intelligence** | [Language](language.md), [Vision](vision.md) |
 | **Security** | [Authentication](auth.md), [Keychain](keychain.md) |
 | **System & Hardware** | [Appearance](appearance.md), [Audio](audio.md), [Bluetooth](bluetooth.md), [Camera](camera.md), [Defaults](defaults.md), [Dock](dock.md), [Network](network.md), [Power](power.md), [Printer](printer.md), [Screen](screen.md), [Settings](settings.md), [System](system.md), [Time Machine](time_machine.md), [Trackpad](trackpad.md), [Volume](volume.md) |
@@ -109,6 +109,7 @@ speech
 :hidden:
 
 audio-files
+document
 finder
 image
 pdf

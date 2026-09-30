@@ -1,7 +1,7 @@
 # Network
 
 {mod}`macos.network` tells you whether the Mac is online, its address on the
-local network, and turns Wi-Fi on and off.
+local network, turns Wi-Fi on and off, and connects VPNs.
 
 ```python
 import macos
@@ -103,6 +103,37 @@ it has an address to talk with. {func}`~macos.network.dns_servers` and
 {func}`~macos.network.proxies` are the ones in use now, whether set in
 System Settings, by the network or by a VPN or a profile.
 
+## VPN
+
+```python
+macos.network.vpns()                  # [VPN(name='Office', kind='L2TP', status='disconnected', ...)]
+macos.network.connect_vpn("Office")
+macos.network.disconnect_vpn("Office")
+```
+
+{func}`~macos.network.vpns` lists the VPNs set up in System Settings › VPN,
+with their `status`: `'connected'`, `'connecting'`, `'disconnecting'` or
+`'disconnected'`. {func}`~macos.network.connect_vpn` connects one, by name or
+`id`, and waits until it's connected, up to `timeout` seconds (30 by
+default), raising {class}`~macos.MacOSError` if it fails; `wait=False`
+returns at once. It uses the password saved with the VPN: one that asks each
+time may show its prompt. {func}`~macos.network.disconnect_vpn` disconnects it.
+
+A script that needs the office network can connect only while it runs:
+
+```python
+macos.network.connect_vpn("Office")
+try:
+    sync_reports()
+finally:
+    macos.network.disconnect_vpn("Office")
+```
+
+Each VPN's `kind` is its protocol, such as `'L2TP'` or `'IPSec'`, or for a VPN
+app, the app's bundle ID. VPN apps that don't add theirs to System Settings
+aren't listed, and IKEv2 VPNs may not be either: macOS has long left them out
+of what the command line sees.
+
 ## Reference
 
 - {func}`macos.network.is_online`
@@ -119,3 +150,7 @@ System Settings, by the network or by a VPN or a profile.
 - {func}`macos.network.dns_servers`
 - {class}`macos.network.Proxies`
 - {func}`macos.network.proxies`
+- {class}`macos.network.VPN`
+- {func}`macos.network.vpns`
+- {func}`macos.network.connect_vpn`
+- {func}`macos.network.disconnect_vpn`

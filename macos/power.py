@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Battery status and keeping the Mac awake.
+Battery status, keeping the Mac awake, and what keeps it awake.
 
 ::
 
@@ -11,6 +11,8 @@ Battery status and keeping the Mac awake.
     with macos.power.keep_awake():
         train_model()       # the Mac won't go to sleep meanwhile
 
+    macos.power.sleep_blockers()   # [SleepBlocker(process='zoom.us', reason='Meeting in progress', ...)]
+
 Both talk to IOKit directly: the battery comes from the same power-source
 information as the menu bar icon, and ``keep_awake`` holds a power assertion,
 like the ``caffeinate`` command does.
@@ -19,9 +21,9 @@ like the ``caffeinate`` command does.
 import ctypes
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from . import _cf, _objc
 from ._system import framework, run as _run
@@ -36,6 +38,8 @@ __all__ = [
     "sleep_display",
     "Adapter",
     "adapter",
+    "SleepBlocker",
+    "sleep_blockers",
 ]
 
 kIOPMAssertionLevelOn = 255
@@ -62,6 +66,8 @@ def _iokit() -> ctypes.CDLL:
     io.IOPMAssertionCreateWithName.restype = ctypes.c_int
     io.IOPMAssertionRelease.argtypes = (ctypes.c_uint32,)
     io.IOPMAssertionRelease.restype = ctypes.c_int
+    io.IOPMCopyAssertionsByProcess.argtypes = (ctypes.POINTER(_cf.CFTypeRef),)
+    io.IOPMCopyAssertionsByProcess.restype = ctypes.c_int
 
     io.IOServiceMatching.argtypes = (ctypes.c_char_p,)
     io.IOServiceMatching.restype = _cf.CFTypeRef
@@ -267,3 +273,94 @@ def _adapter(found: Any) -> Optional[Adapter]:
         voltage=number("Voltage", 1000),  # the IOKit gives millivolts
         current=number("Current", 1000),  # and milliamperes
     )
+
+
+# The assertions that keep the Mac awake, and whether they keep the display on too, as powerd applies them
+# (PMAssertions.c). Not UserIsActive, which is someone using the Mac, nor ExternalMedia, which only
+# delays the deeper standby sleep.
+_KEEPS_AWAKE = {
+    "PreventUserIdleSystemSleep": False,
+    "NoIdleSleepAssertion": False,
+    "SystemIsActive": False,
+    "PreventSystemSleep": False,
+    "DenySystemSleep": False,
+    "InternalPreventSleep": False,
+    "MaintenanceActivity": False,
+    "PreventUserIdleDisplaySleep": True,
+    "NoDisplaySleepAssertion": True,
+    "InternalPreventDisplaySleep": True,
+}
+
+
+@dataclass(frozen=True)
+class SleepBlocker:
+    """A process keeping the Mac from going to sleep on its own."""
+
+    pid: int
+    process: str
+    """Such as ``'caffeinate'`` or ``'zoom.us'``."""
+    reason: str
+    """What the process says it's doing, such as ``'Playing video'``."""
+    display: bool
+    """Whether it keeps the display on too, not only the Mac awake."""
+    kind: str
+    """The macOS name of the request, such as ``'PreventUserIdleSystemSleep'``."""
+    since: Optional[datetime]
+    until: Optional[datetime]
+    """When it gives up by itself, or ``None`` when it holds until its process lets go."""
+
+
+def sleep_blockers() -> List[SleepBlocker]:
+    """
+    The processes keeping the Mac from going to sleep, oldest first: the answer
+    to "why doesn't my Mac sleep?", like ``pmset -g assertions``.
+
+    ::
+
+        for blocker in macos.power.sleep_blockers():
+            print(blocker.process, blocker.reason)   # caffeinate  caffeinate command-line tool
+
+    macOS itself shows up as ``powerd`` while the display is on. Apps playing
+    sound or video, :func:`keep_awake` and ``caffeinate`` are the usual others.
+    """
+    io = _iokit()
+    found = _cf.CFTypeRef()
+    status = io.IOPMCopyAssertionsByProcess(ctypes.byref(found))
+    if status != kIOReturnSuccess:
+        raise MacOSError("could not read the power assertions (IOReturn {:#x})".format(status & 0xFFFFFFFF))
+    with _cf.owned(found.value) as assertions:
+        # The keys are process IDs, as numbers: not a property list, so each value converts on its own.
+        by_process = [_cf.to_python(value) for value in _cf.values(assertions)]
+    return _sleep_blockers(entry for entries in by_process if isinstance(entries, list) for entry in entries)
+
+
+def _local(moment: Any) -> Optional[datetime]:
+    """A property list date (UTC) on the local clock."""
+    if not isinstance(moment, datetime):
+        return None
+    return moment.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+
+
+def _sleep_blockers(entries: Any) -> List[SleepBlocker]:
+    blockers = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        kind = entry.get("AssertType")
+        if kind not in _KEEPS_AWAKE or entry.get("AssertLevel", kIOPMAssertionLevelOn) != kIOPMAssertionLevelOn:
+            continue
+        since = _local(entry.get("AssertStartWhen"))
+        timeout = entry.get("TimeoutSeconds")
+        pid = entry.get("AssertPID")
+        blockers.append(
+            SleepBlocker(
+                pid=pid if isinstance(pid, int) else 0,
+                process=str(entry.get("Process Name") or ""),
+                reason=str(entry.get("AssertName") or ""),
+                display=_KEEPS_AWAKE[kind],
+                kind=kind,
+                since=since,
+                until=since + timedelta(seconds=timeout) if since and isinstance(timeout, (int, float)) and timeout > 0 else None,
+            )
+        )
+    return sorted(blockers, key=lambda blocker: (blocker.since or datetime.min, blocker.pid))

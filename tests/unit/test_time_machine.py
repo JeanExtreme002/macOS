@@ -29,3 +29,20 @@ def test_time_machine_destinations_and_last_backup(fake_run):
     assert macos.time_machine.destinations() == []
     with pytest.raises(macos.MacOSError, match="no backup disk"):
         macos.time_machine.backup_now()
+
+
+def test_time_machine_exclusions(fake_run, tmp_path):
+    folder = tmp_path / "node_modules"
+    folder.mkdir()
+    macos.time_machine.exclude(folder)
+    assert fake_run.args == ["tmutil", "addexclusion", str(folder)]
+    macos.time_machine.include(folder)
+    assert fake_run.args == ["tmutil", "removeexclusion", str(folder)]
+
+    fake_run.stdout = "[Excluded]  {}\n".format(folder)
+    assert macos.time_machine.is_excluded(folder) is True
+    fake_run.stdout = "[Included]  {}\n".format(folder)
+    assert macos.time_machine.is_excluded(folder) is False
+
+    with pytest.raises(FileNotFoundError):
+        macos.time_machine.exclude(tmp_path / "missing")

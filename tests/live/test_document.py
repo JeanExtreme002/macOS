@@ -1,0 +1,73 @@
+"""Tests of :mod:`macos.document` against the real system. Skipped outside macOS."""
+
+import zipfile
+
+import pytest
+
+import macos
+from tests.helpers import docx_with_table, png_size
+
+
+@pytest.fixture
+def report(tmp_path):
+    return docx_with_table(tmp_path / "report.docx", "Relatório mensal", [["Mês", "Total"], ["Setembro", "R$ 1.234"]])
+
+
+def test_text_of_a_word_document(report):
+    assert macos.document.text(report) == "Relatório mensal\nMês\nTotal\nSetembro\nR$ 1.234\n"
+
+
+@pytest.mark.parametrize("extension", [".rtf", ".html", ".odt", ".docx", ".doc", ".txt", ".webarchive"])
+def test_convert_between_formats(report, tmp_path, extension):
+    output = macos.document.convert(report, tmp_path / "out" / ("report" + extension))
+    assert output == tmp_path / "out" / ("report" + extension)
+    assert "Setembro" in macos.document.text(output) and "Relatório" in macos.document.text(output)
+    assert [path.name for path in output.parent.iterdir()] == [output.name]  # no temporary file left
+
+
+def test_convert_keeps_tables_except_in_word_files(report, tmp_path):
+    assert "<table:table " in zipfile.ZipFile(macos.document.convert(report, tmp_path / "a.odt")).read("content.xml").decode()
+    assert b"\\trowd" in macos.document.convert(report, tmp_path / "a.rtf").read_bytes()
+    assert b"<w:tbl>" not in zipfile.ZipFile(macos.document.convert(report, tmp_path / "a.docx")).read("word/document.xml")
+
+
+def test_convert_to_pdf_lays_out_pages(tmp_path):
+    source = tmp_path / "long.html"
+    paragraphs = "".join("<p>Parágrafo {} de um relatório comprido.</p>".format(number) for number in range(150))
+    source.write_text("<html><body><h1>Relatório</h1>{}</body></html>".format(paragraphs))
+
+    a4 = macos.document.convert(source, tmp_path / "long.pdf", paper="a4")
+    assert macos.pdf.page_count(a4) > 1
+    text = macos.pdf.text(a4)
+    assert text.startswith("Relatório") and "Parágrafo 149 de um relatório comprido." in text  # UTF-8, and nothing lost
+    width, height = png_size(macos.pdf.render(a4, 1, size=1000))
+    assert abs(width / height - 595.28 / 841.89) < 0.01
+
+    letter = macos.document.convert(source, tmp_path / "letter.pdf", paper="letter", margin=36)
+    width, height = png_size(macos.pdf.render(letter, 1, size=1000))
+    assert abs(width / height - 612 / 792) < 0.01
+    wide = macos.document.convert(source, tmp_path / "wide.pdf", paper="a4", margin=150)
+    assert macos.pdf.page_count(wide) > macos.pdf.page_count(a4)  # wider margins: less on each page
+
+    with pytest.raises(ValueError, match="paper is"):
+        macos.document.convert(source, tmp_path / "x.pdf", paper="a5")
+    with pytest.raises(ValueError, match="margin must leave room"):
+        macos.document.convert(source, tmp_path / "x.pdf", margin=400)
+
+
+def test_convert_a_word_table_to_pdf(report, tmp_path):
+    output = macos.document.convert(report, tmp_path / "report.pdf")
+    assert macos.pdf.page_count(output) == 1
+    text = macos.pdf.text(output)
+    assert "Setembro" in text and "R$ 1.234" in text
+    # Drawn as a table, the cells of a row share a line: "Mês" and "Total" aren't on lines of their own.
+    assert "Mês\nTotal" not in text
+
+
+def test_text_reads_the_encoding_an_html_page_declares(tmp_path):
+    page = tmp_path / "latin.html"
+    page.write_bytes('<html><head><meta charset="iso-8859-1"></head><body><p>Olá ação</p></body></html>'.encode("latin-1"))
+    assert macos.document.text(page) == "Olá ação\n"
+    plain = tmp_path / "plain.txt"
+    plain.write_text("Olá\n", encoding="utf-8")
+    assert macos.document.text(plain) == "Olá\n"

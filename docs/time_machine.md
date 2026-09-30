@@ -1,6 +1,7 @@
 # Time Machine
 
-{mod}`macos.time_machine` starts Time Machine backups and follows them.
+{mod}`macos.time_machine` starts Time Machine backups, follows them, and
+chooses what they leave out.
 
 ```python
 import macos
@@ -10,6 +11,8 @@ macos.time_machine.backup_now()
 macos.time_machine.is_backing_up()  # True
 macos.time_machine.progress()       # 0.42
 macos.time_machine.last_backup()    # datetime.datetime(2026, 9, 28, 23, 10, 4)
+
+macos.time_machine.exclude("~/code/app/node_modules")
 ```
 
 It uses the `tmutil` command that ships with macOS.
@@ -35,6 +38,29 @@ none runs, or while it's getting ready).
 it needs the backup disk to be connected, and may need Full Disk Access for the
 app running Python.
 
+## Leaving files out
+
+{func}`~macos.time_machine.exclude` leaves a file or folder out of the backups,
+from the next one on: what can be downloaded or rebuilt again
+(`node_modules`, virtual environments, caches, virtual machines) only makes
+backups big and slow. {func}`~macos.time_machine.include` backs it up again.
+
+```python
+from pathlib import Path
+
+for folder in Path("~/code").expanduser().glob("*/node_modules"):
+    macos.time_machine.exclude(folder)
+```
+
+The choice travels with the file: it stays when the file is moved or renamed.
+It needs no administrator password, but doesn't show in System Settings'
+*Exclude from Backups* list either. Copies made before stay on the backup disk.
+
+{func}`~macos.time_machine.is_excluded` tells whether Time Machine leaves a path
+out for any reason: {func}`~macos.time_machine.exclude`, the list in System
+Settings, or macOS itself, which skips caches and temporary files. What's
+inside an excluded folder is excluded too.
+
 ## Reference
 
 - {func}`macos.time_machine.destinations`
@@ -43,3 +69,6 @@ app running Python.
 - {func}`macos.time_machine.is_backing_up`
 - {func}`macos.time_machine.progress`
 - {func}`macos.time_machine.last_backup`
+- {func}`macos.time_machine.exclude`
+- {func}`macos.time_machine.include`
+- {func}`macos.time_machine.is_excluded`

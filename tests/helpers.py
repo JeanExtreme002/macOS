@@ -145,3 +145,40 @@ def pdf_with_text(lines, rotate=0):
     out += b"".join("{:010d} 00000 n \n".format(offset).encode() for offset in offsets)
     out += "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n".format(len(objects) + 1, table).encode()
     return bytes(out)
+
+
+def docx_with_table(path, title, rows):
+    """Write a minimal Word document: a bold title, then a table of ``rows`` (lists of cell texts)."""
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
+    )
+    relations = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Target="word/document.xml" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"/></Relationships>'
+    )
+    table = "".join(
+        "<w:tr>{}</w:tr>".format("".join("<w:tc><w:p><w:r><w:t>{}</w:t></w:r></w:p></w:tc>".format(escape(cell)) for cell in row))
+        for row in rows
+    )
+    body = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+        "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r></w:p>"
+        '<w:tbl><w:tblPr><w:tblBorders><w:insideV w:val="single" w:sz="4"/></w:tblBorders></w:tblPr>{}</w:tbl>'
+        "</w:body></w:document>"
+    ).format(escape(title), table)
+    with zipfile.ZipFile(str(path), "w") as archive:
+        archive.writestr("[Content_Types].xml", types)
+        archive.writestr("_rels/.rels", relations)
+        archive.writestr("word/document.xml", body)
+    return path

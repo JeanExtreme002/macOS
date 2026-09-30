@@ -77,7 +77,8 @@ def test_schedule_argument_checks(fake_run, home):
     script = home / "backup.py"
     checks = [
         (lambda: macos.schedule.add("bad name", script, every=60), "name must be"),
-        (lambda: macos.schedule.add("x", script), "every=, at= or at_login=True"),
+        (lambda: macos.schedule.add("x", script), "every=, at=, at_login=True, when_changed= or at_mount=True"),
+        (lambda: macos.schedule.add("x", script, when_changed=[]), "at least one path"),
         (lambda: macos.schedule.add("x", script, every=60, at="09:00"), "either every or at"),
         (lambda: macos.schedule.add("x", script, every=0), "at least 1 second"),
         (lambda: macos.schedule.add("x", script, at="25:00"), "a time such as"),
@@ -147,3 +148,16 @@ def test_schedule_remove_only_ignores_a_job_that_isnt_loaded(fake_run, home, mon
     with pytest.raises(macos.CommandError):
         macos.schedule.remove("backup")
     assert macos.schedule.get("backup") is not None  # still managed, since it may still be loaded
+
+
+def test_schedule_when_changed_and_at_mount(fake_run, home):
+    job = macos.schedule.add("tidy", home / "backup.py", when_changed="~/Downloads")
+    assert _plist(home, "tidy")["WatchPaths"] == [str(home / "Downloads")]
+    assert "StartOnMount" not in _plist(home, "tidy") and "StartInterval" not in _plist(home, "tidy")
+    assert job.when_changed == (home / "Downloads",) and job.at_mount is False
+
+    job = macos.schedule.add("copy", home / "backup.py", at_mount=True, every=600, when_changed=[home / "a", "b"])
+    plist = _plist(home, "copy")
+    assert plist["StartOnMount"] is True and plist["StartInterval"] == 600
+    assert plist["WatchPaths"] == [str(home / "a"), str(Path("b").absolute())]
+    assert job.at_mount is True and job.every == 600 and len(job.when_changed) == 2

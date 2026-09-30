@@ -1,7 +1,8 @@
 # Schedule
 
-{mod}`macos.schedule` runs your Python scripts on a schedule, or when you log
-in, with launchd: the Mac's cron, without writing its XML by hand.
+{mod}`macos.schedule` runs your Python scripts on a schedule, when you log in,
+when a folder changes or when a disk is plugged in, with launchd: the Mac's
+cron, without writing its XML by hand.
 
 ```python
 import macos
@@ -10,6 +11,8 @@ macos.schedule.add("backup", "~/scripts/backup.py", every=3600)       # every ho
 macos.schedule.add("report", "report.py", at="09:00")                 # every day at 9
 macos.schedule.add("sync", "sync.py", at="18:30", weekdays=["mon", "fri"])
 macos.schedule.add("hello", "hello.py", at_login=True)
+macos.schedule.add("tidy", "tidy.py", when_changed="~/Downloads")     # a file arrives
+macos.schedule.add("copy", "copy.py", at_mount=True)                  # a disk is plugged in
 ```
 
 A job keeps running after your script ends and after a restart, as long as
@@ -25,6 +28,9 @@ the script, and when to run it:
 - `at`: a time of day, `"09:00"` or a {class}`~datetime.time`, or a list of
   them; with `weekdays` (`["mon", "wed", "fri"]`), only on those days.
 - `at_login=True`: each time you log in, and once right away.
+- `when_changed`: a file or folder, or a list of them: see
+  [Running when something happens](#running-when-something-happens).
+- `at_mount=True`: each time a disk is mounted.
 
 ```python
 macos.schedule.add("tidy", "tidy_downloads.py", at=["08:00", "20:00"])
@@ -39,6 +45,45 @@ macOS announces the new job with a *Background Items Added* notification,
 and lists it in System Settings › General › Login Items & Extensions. The
 script runs outside your terminal, so it doesn't get the terminal's
 [permissions](permissions.md): macOS asks for them again, for Python.
+
+## Running when something happens
+
+`when_changed` runs the script when a file changes, or when a file is added to,
+removed from or renamed in a folder (not in its subfolders). It keeps working
+after a restart, with no Python left running: launchd watches for it.
+
+```python
+macos.schedule.add("tidy", "~/scripts/tidy_downloads.py", when_changed="~/Downloads")
+```
+
+```python
+# tidy_downloads.py: move the PDFs into their own folder.
+from pathlib import Path
+
+downloads = Path("~/Downloads").expanduser()
+pdfs = downloads / "PDFs"
+pdfs.mkdir(exist_ok=True)
+for file in downloads.glob("*.pdf"):
+    file.rename(pdfs / file.name)
+```
+
+The script isn't told what changed: it looks at the folder itself. Changes
+made while it runs, or a few seconds apart, lead to one more run, not one
+each, and moving files out of the folder counts as a change too, so the script
+should do nothing when there's nothing left to do. A path that doesn't exist
+yet counts once it's created. launchd may also run the script once as the job
+is added.
+
+`at_mount=True` runs it each time a disk is mounted: an external drive, a USB
+stick, a disk image, a network share. The script can look at `/Volumes` to
+find which:
+
+```python
+macos.schedule.add("backup-photos", "copy_photos.py", at_mount=True)
+```
+
+These combine with the others: `every=3600, when_changed="~/Inbox"` runs
+hourly and on changes.
 
 ## Checking on jobs
 

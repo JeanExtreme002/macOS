@@ -29,6 +29,21 @@ def test_keep_awake_holds_a_power_assertion():
     assert not active()
 
 
+def test_sleep_blockers_see_keep_awake():
+    import os
+
+    reason = "pymacos test {}".format(uuid.uuid4())
+
+    def mine():
+        return [blocker for blocker in macos.power.sleep_blockers() if blocker.reason == reason]
+
+    with macos.power.keep_awake(reason=reason, display=True):
+        found = mine()
+        assert len(found) == 1 and found[0].pid == os.getpid() and found[0].display is True
+        assert found[0].since is not None and found[0].until is None
+    assert mine() == []
+
+
 def test_battery_health():
     battery = macos.power.battery()
     if battery is None:
