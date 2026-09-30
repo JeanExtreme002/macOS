@@ -124,3 +124,37 @@ def _dominant(pdf_path, folder, box, count=1):
     png.write_bytes(macos.pdf.render(pdf_path, 1, size=700))
     colors = macos.image.dominant_colors(macos.image.crop(png, folder / "crop.png", box), count)
     return colors if count > 1 else colors[0]
+
+
+@pytest.mark.parametrize("angle, corner", [(0, "top_left"), (90, "top_left"), (180, "bottom_right"), (270, "top_right")])
+@pytest.mark.skipif(sys.platform != "darwin", reason="adds annotations with PDFKit")
+def test_add_text_on_a_rotated_page(tmp_path, angle, corner):
+    from tests.helpers import rgb_png
+
+    white = tmp_path / "white.png"
+    white.write_bytes(rgb_png(612, 792, lambda x, y: (255, 255, 255)))
+    page = macos.pdf.from_images([white], tmp_path / "page.pdf")
+    if angle:
+        page = macos.pdf.rotate(page, angle, tmp_path / "rotated.pdf")
+    stamped = macos.pdf.add_text(page, "Received", tmp_path / "stamped.pdf", position=corner, size=24)
+
+    png = tmp_path / "render.png"
+    png.write_bytes(macos.pdf.render(stamped, 1, size=700))
+    width, height = macos.image.info(png).width, macos.image.info(png).height
+    assert (width > height) == (angle % 180 == 90)  # rendered as it's seen
+
+    def inked(horizontal, vertical):
+        """Whether the corner of the rendered page has anything but white, as the page is seen."""
+        box = (
+            0 if horizontal == "left" else width - 180,
+            0 if vertical == "top" else height - 70,
+            180,
+            70,
+        )
+        colors = macos.image.dominant_colors(macos.image.crop(png, tmp_path / "corner.png", box), 2)
+        return any(color != "#ffffff" for color in colors)
+
+    vertical, horizontal = corner.split("_")
+    assert inked(horizontal, vertical)  # where asked, upright and whole
+    opposite = ("right" if horizontal == "left" else "left", "bottom" if vertical == "top" else "top")
+    assert not inked(*opposite)
