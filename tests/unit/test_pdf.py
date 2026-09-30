@@ -309,6 +309,8 @@ def test_redact_targets():
     assert _patterns("a.b")[0][1].search("a.b") and not _patterns("a.b")[0][1].search("axb")  # literal, not a pattern
     assert _utf16("💡 CPF", 2) == 3  # PDFKit counts an emoji as two
 
+    with pytest.raises(ValueError, match="is for bytes"):
+        _patterns([re.compile(b"secret")])
     with pytest.raises(ValueError, match="each target once: 'Ana' is given more than once"):
         _patterns(["Ana", re.compile("Ana")])  # a text and a pattern with the same source count as one
     with pytest.raises(ValueError, match="each target once"):

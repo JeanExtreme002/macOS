@@ -1658,6 +1658,8 @@ def _patterns(targets: Union[Target, Sequence[Target]]) -> List[Tuple[str, "re.P
     found = []
     for item in items:
         if isinstance(item, re.Pattern):
+            if not isinstance(item.pattern, str):
+                raise ValueError("the pattern {!r} is for bytes: compile it from a str".format(item.pattern))
             if item.fullmatch(""):
                 raise ValueError("the pattern {!r} matches an empty text".format(item.pattern))
             found.append((item.pattern, item))
@@ -1721,12 +1723,11 @@ def _redactions(
                 if box.size.width > 0 and box.size.height > 0:
                     boxes.append(_seen_box(page, box))
     for annotation in _objc.nsarray(_objc.send(page, "annotations")):
-        held = " ".join(
-            _objc.pystring(_objc.send(annotation, getter)) or "" for getter in ("contents", "widgetStringValue")
-        )
+        # Each on its own: joined, "Ana" in one and "Souza" in the other would make a match that isn't there.
+        held = [_objc.pystring(_objc.send(annotation, getter)) or "" for getter in ("contents", "widgetStringValue")]
         hits = 0
         for index, (_, pattern) in enumerate(patterns):
-            times = sum(1 for match in pattern.finditer(held) if match.group())
+            times = sum(1 for text in held for match in pattern.finditer(text) if match.group())
             counts[index] += times
             hits += times
         if hits:

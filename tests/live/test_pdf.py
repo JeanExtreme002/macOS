@@ -367,3 +367,23 @@ def test_redact_removes_hidden_text_and_counts_every_match(tmp_path, monkeypatch
     noted = macos.pdf.add_text(plain, "Ana Souza, Ana Souza", tmp_path / "noted.pdf", page=1, position=(72, 400))
     done = macos.pdf.redact(noted, "Ana Souza", tmp_path / "noted-out.pdf")
     assert done.matches == {"Ana Souza": 3} and done.pages == {1: 3}
+
+
+def test_redact_doesnt_join_an_annotations_properties(tmp_path):
+    from macos import pdf
+    from tests.helpers import pdf_form
+
+    form = tmp_path / "form.pdf"
+    pdf_form(form)
+    filled = macos.pdf.fill_form(form, {"Full name": "Souza"}, tmp_path / "filled.pdf")
+    source = tmp_path / "noted.pdf"
+    with pdf._open(filled) as document:
+        for _, widget in pdf._widgets(document):
+            if _objc.pystring(_objc.send(widget, "fieldName")) == "Full name":
+                _objc.send(widget, "setContents:", _objc.nsstring("Ana"), argtypes=(_objc.id,), restype=None)
+        pdf._save(document, source)
+
+    # "Ana" is the field's comment and "Souza" its value: "Ana Souza" is in neither.
+    with pytest.raises(ValueError, match="'Ana Souza' isn't in the PDF"):
+        macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf")
+    assert macos.pdf.redact(source, "Souza", tmp_path / "out.pdf").matches == {"Souza": 1}
