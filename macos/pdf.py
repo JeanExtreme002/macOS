@@ -1669,6 +1669,11 @@ def _patterns(targets: Union[Target, Sequence[Target]]) -> List[Tuple[str, "re.P
             found.append((item, re.compile(before + words + after, re.IGNORECASE)))
         else:
             raise ValueError("redact() takes texts and compiled patterns, not {!r}".format(item))
+    labels = [label for label, _ in found]
+    repeated = sorted({label for label in labels if labels.count(label) > 1})
+    if repeated:
+        # Redaction.matches counts by target: the same one twice would count each match twice.
+        raise ValueError("each target once: {} is given more than once".format(", ".join(map(repr, repeated))))
     return found
 
 
@@ -1898,7 +1903,8 @@ def redact(
 
     It also redacts form fields and comments that hold a match (their
     page is flattened, with a box over them), and the matches in the
-    title, author, subject, keywords and bookmarks, which become ``█``.
+    title, author, subject, keywords, creator and bookmarks, which become
+    ``█``.
 
     It returns a :class:`Redaction`: how many times each target was found,
     and on which pages. Raises :class:`ValueError`, writing nothing, when
@@ -1939,7 +1945,5 @@ def redact(
         for number, boxes in flatten.items():
             _flatten(document, number, boxes)
         saved = _save(document, output)
-    matches: Dict[str, int] = {}
-    for (label, _), count in zip(patterns, counts):
-        matches[label] = matches.get(label, 0) + count
+    matches = {label: count for (label, _), count in zip(patterns, counts)}
     return Redaction(path=saved, matches=matches, pages=per_page)

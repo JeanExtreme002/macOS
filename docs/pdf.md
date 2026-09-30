@@ -293,7 +293,7 @@ What else in the file holds a match goes too:
 
 - form fields and comments: their page is flattened, with a box over them
   (its other fields become part of the picture);
-- the title, author, subject and keywords, and bookmark titles, where the
+- the title, author, subject, keywords and creator, and bookmark titles, where the
   match becomes `█`. These count in the {class}`~macos.pdf.Redaction` too: a
   target found only in the title is redacted, not reported missing.
 
