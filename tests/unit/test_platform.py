@@ -356,6 +356,7 @@ def test_other_platforms_raise_not_supported(monkeypatch):
         lambda: macos.pdf.form_fields(__file__),
         lambda: macos.pdf.fill_form(__file__, {}, "out.pdf"),
         lambda: macos.pdf.sign(__file__, __file__, "out.pdf"),
+        lambda: macos.pdf.add_text(__file__, "text", "out.pdf"),
         lambda: macos.maps.open("Paris"),
         lambda: macos.maps.directions("Paris"),
         lambda: macos.finder.set_icon(__file__, __file__),

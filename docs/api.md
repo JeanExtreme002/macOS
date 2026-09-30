@@ -627,6 +627,7 @@ explain how to use each part.
 .. autofunction:: macos.pdf.form_fields
 .. autofunction:: macos.pdf.fill_form
 .. autofunction:: macos.pdf.sign
+.. autofunction:: macos.pdf.add_text
 ```
 
 ## macos.video

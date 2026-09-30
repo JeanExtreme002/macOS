@@ -190,6 +190,22 @@ It's an image, not a cryptographic signature. The pages are redrawn as
 they look, filled-in fields included, so they're no longer editable:
 fill the form first.
 
+## Adding text
+
+{func}`~macos.pdf.add_text` writes text on a page, as a text box you can still
+edit or move in Preview:
+
+```python
+macos.pdf.add_text("contract.pdf", "Received on 29/09/2026", "stamped.pdf")      # page 1, top left
+macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", page=2, position=(120, 540), size=14)
+macos.pdf.add_text("draft.pdf", "Checked\nby Ana", "notes.pdf", position="top_right", color="#c00000")
+```
+
+`position` works as for {func}`~macos.pdf.sign`: a corner, or the `(x, y)` of
+the text's bottom-left corner in points from the page's bottom-left.
+`size` is in points; `font` a font's name, such as `"Helvetica-Bold"`;
+`color` a hex color. It adds to the page: its own text can't be edited.
+
 ## Reference
 
 - {func}`macos.pdf.page_count`
@@ -210,3 +226,4 @@ fill the form first.
 - {func}`macos.pdf.form_fields`
 - {func}`macos.pdf.fill_form`
 - {func}`macos.pdf.sign`
+- {func}`macos.pdf.add_text`

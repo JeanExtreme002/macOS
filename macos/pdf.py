@@ -52,6 +52,7 @@ __all__ = [
     "form_fields",
     "fill_form",
     "sign",
+    "add_text",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -960,6 +961,23 @@ def fill_form(
 # --- Signing --------------------------------------------------------------------
 
 _CORNERS = ("bottom_right", "bottom_left", "top_right", "top_left")
+Position = Union[str, Tuple[float, float]]
+
+
+def _check_position(position: Position) -> None:
+    if isinstance(position, str) and position not in _CORNERS:
+        raise ValueError("position must be one of {} or (x, y), not {!r}".format(", ".join(_CORNERS), position))
+
+
+def _origin(
+    position: Position, width: float, height: float, page_width: float, page_height: float, margin: float
+) -> Tuple[float, float]:
+    """Where a box of ``width`` × ``height`` goes: its bottom-left corner, in points from the page's bottom-left."""
+    if isinstance(position, tuple):
+        return float(position[0]), float(position[1])
+    x = margin if position.endswith("left") else page_width - margin - width
+    y = margin if position.startswith("bottom") else page_height - margin - height
+    return x, y
 
 
 def sign(
@@ -968,7 +986,7 @@ def sign(
     output: PathLike,
     *,
     page: Optional[int] = None,
-    position: Union[str, Tuple[float, float]] = "bottom_right",
+    position: Position = "bottom_right",
     width: float = 150,
     margin: float = 36,
     password: Optional[str] = None,
@@ -996,8 +1014,7 @@ def sign(
 
     if width <= 0:
         raise ValueError("width must be positive, not {}".format(width))
-    if isinstance(position, str) and position not in _CORNERS:
-        raise ValueError("position must be one of {} or (x, y), not {!r}".format(", ".join(_CORNERS), position))
+    _check_position(position)
     source, _ = _image_source(image)
     with _cf.owned(source):
         picture = images._io().CGImageSourceCreateImageAtIndex(source, 0, None)
@@ -1037,11 +1054,7 @@ def sign(
                         )
                         if number == target:
                             size = _objc.CGSize(width, width * aspect)
-                            if isinstance(position, tuple):
-                                x, y = float(position[0]), float(position[1])
-                            else:
-                                x = margin if position.endswith("left") else box.size.width - margin - size.width
-                                y = margin if position.startswith("bottom") else box.size.height - margin - size.height
+                            x, y = _origin(position, size.width, size.height, box.size.width, box.size.height, margin)
                             graphics.CGContextDrawImage(context, _objc.CGRect(_objc.CGPoint(x, y), size), picture)
                         graphics.CGContextEndPage(context)
                     graphics.CGPDFContextClose(context)
@@ -1052,3 +1065,104 @@ def sign(
             return _write_atomically(output, write)
     finally:
         _cf.release(picture)
+
+
+# --- Adding text --------------------------------------------------------------
+
+
+def add_text(
+    path: PathLike,
+    text: str,
+    output: PathLike,
+    *,
+    page: int = 1,
+    position: Position = "top_left",
+    size: float = 12,
+    color: str = "#000000",
+    font: Optional[str] = None,
+    margin: float = 36,
+    password: Optional[str] = None,
+) -> Path:
+    """
+    Write ``text`` on a page, as a text box you can still edit or move in Preview, and save the result to ``output``.
+
+    ::
+
+        macos.pdf.add_text("contract.pdf", "Received on 29/09/2026", "stamped.pdf")            # page 1, top left
+        macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", page=2, position=(120, 540), size=14)
+        macos.pdf.add_text("draft.pdf", "Checked\\nby Ana", "notes.pdf", position="top_right", color="#c00000")
+
+    ``position`` works as for :func:`sign`: a corner, ``margin`` points from
+    the edges, or the ``(x, y)`` of the text's bottom-left corner, in points
+    from the page's bottom-left. ``size`` is in points; ``font`` a font's
+    name, such as ``"Helvetica-Bold"`` (the system font by default); ``color``
+    a hex color. Lines break at ``\\n``. The page's own text is left as it
+    is: this adds to it.
+    """
+    if not text.strip():
+        raise ValueError("text must not be empty")
+    if size <= 0:
+        raise ValueError("size must be positive, not {}".format(size))
+    _check_position(position)
+    red, green, blue = _color(color)
+    framework("AppKit")
+    with _open(path, password) as document:
+        target = _page(document, page)
+        if font is None:
+            typeface = _objc.send(_objc.cls("NSFont"), "systemFontOfSize:", float(size), argtypes=(ctypes.c_double,))
+        else:
+            typeface = _objc.send(
+                _objc.cls("NSFont"), "fontWithName:size:", _objc.nsstring(font), float(size), argtypes=(_objc.id, ctypes.c_double)
+            )
+            if not typeface:
+                raise ValueError("no font is named {!r}; see macos.system.fonts()".format(font))
+        ink = _objc.send(
+            _objc.cls("NSColor"),
+            "colorWithSRGBRed:green:blue:alpha:",
+            red,
+            green,
+            blue,
+            1.0,
+            argtypes=(ctypes.c_double,) * 4,
+        )
+        # Measure the text as it will be drawn, to size the box around it.
+        attributes = _objc.send(
+            _objc.cls("NSDictionary"),
+            "dictionaryWithObject:forKey:",
+            typeface,
+            _objc.nsstring("NSFont"),
+            argtypes=(_objc.id, _objc.id),
+        )
+        measured = _objc.send(
+            _objc.send(_objc.cls("NSAttributedString"), "alloc"),
+            "initWithString:attributes:",
+            _objc.nsstring(text),
+            attributes,
+            argtypes=(_objc.id, _objc.id),
+        )
+        _objc.send(measured, "autorelease")
+        extent = _objc.send(measured, "size", restype=_objc.CGSize)
+        width, height = extent.width + 8, extent.height + 4  # a little room: FreeText boxes pad their text
+        bounds = _objc.send(target, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+        x, y = _origin(position, width, height, bounds.size.width, bounds.size.height, margin)
+        box = _objc.CGRect(_objc.CGPoint(bounds.origin.x + x, bounds.origin.y + y), _objc.CGSize(width, height))
+        note = _objc.send(
+            _objc.send(_objc.cls("PDFAnnotation"), "alloc"),
+            "initWithBounds:forType:withProperties:",
+            box,
+            _objc.nsstring("FreeText"),
+            None,
+            argtypes=(_objc.CGRect, _objc.id, _objc.id),
+        )
+        _objc.send(note, "autorelease")
+        _objc.send(note, "setContents:", _objc.nsstring(text), argtypes=(_objc.id,), restype=None)
+        _objc.send(note, "setFont:", typeface, argtypes=(_objc.id,), restype=None)
+        _objc.send(note, "setFontColor:", ink, argtypes=(_objc.id,), restype=None)
+        clear = _objc.send(_objc.cls("NSColor"), "clearColor")
+        _objc.send(note, "setColor:", clear, argtypes=(_objc.id,), restype=None)  # no background
+        border = _objc.send(_objc.send(_objc.cls("PDFBorder"), "alloc"), "init")
+        _objc.send(border, "autorelease")
+        _objc.send(border, "setLineWidth:", 0.0, argtypes=(ctypes.c_double,), restype=None)
+        _objc.send(note, "setBorder:", border, argtypes=(_objc.id,), restype=None)
+        _objc.send(target, "addAnnotation:", note, argtypes=(_objc.id,), restype=None)
+        return _save(document, output)
