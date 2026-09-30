@@ -1590,20 +1590,34 @@ def connections() -> List[Connection]:
 # --- Open files -------------------------------------------------------------------
 
 
-def _files(lib: ctypes.CDLL, pid: int) -> List[str]:
-    """The paths ``pid`` has open, its working folder and its executable; ``[]`` for another user's process."""
-    paths = []
+class _Opened(NamedTuple):
+    path: str
+    file: Optional[Tuple[int, int]]
+    """Its device and inode, which name it whatever the link it was opened by; ``None`` when unknown."""
+
+
+def _vnode(raw: bytes, start: int) -> _Opened:
+    """A vnode_info_path starting at ``start``: its vinfo_stat's device and inode, then its path."""
+    device = int(ctypes.c_uint32.from_buffer_copy(raw, start).value)
+    inode = int(ctypes.c_uint64.from_buffer_copy(raw, start + 8).value)
+    name = raw[start + _VNODE_INFO:start + _VNODE_INFO + _MAXPATHLEN].split(b"\x00", 1)[0]
+    return _Opened(os.fsdecode(name), (device, inode))  # fsdecode: any bytes a name holds survive
+
+
+def _files(lib: ctypes.CDLL, pid: int) -> List[_Opened]:
+    """What ``pid`` has open, its working folder and its executable; ``[]`` for another user's process."""
+    opened = []
     for fd in _descriptors(lib, pid, _PROX_FDTYPE_VNODE):
         info = ctypes.create_string_buffer(_FILE_INFO_SIZE)
         if lib.proc_pidfdinfo(pid, fd, _PROC_PIDFDVNODEPATHINFO, info, _FILE_INFO_SIZE) > _FILE_PATH:
-            paths.append(info.raw[_FILE_PATH:].split(b"\x00", 1)[0])
+            opened.append(_vnode(info.raw, _SOCKET))  # after the proc_fileinfo
     folders = ctypes.create_string_buffer(_FOLDERS_INFO_SIZE)
     if lib.proc_pidinfo(pid, _PROC_PIDVNODEPATHINFO, 0, folders, _FOLDERS_INFO_SIZE) > _VNODE_INFO:
-        paths.append(folders.raw[_VNODE_INFO:_VNODE_INFO + _MAXPATHLEN].split(b"\x00", 1)[0])  # the working folder
+        opened.append(_vnode(folders.raw, 0))  # the working folder
     executable = ctypes.create_string_buffer(_PATH_MAX)
-    if lib.proc_pidpath(pid, executable, _PATH_MAX) > 0 and paths:  # only for processes it can look into
-        paths.append(executable.value)
-    return [path.decode("utf-8", "replace") for path in paths if path]
+    if lib.proc_pidpath(pid, executable, _PATH_MAX) > 0 and opened:  # only for processes it can look into
+        opened.append(_Opened(os.fsdecode(executable.value), None))
+    return [entry for entry in opened if entry.path]
 
 
 def open_files(process: Union[int, Process]) -> List[Path]:
@@ -1615,7 +1629,7 @@ def open_files(process: Union[int, Process]) -> List[Path]:
     require_macos()
     pid = process.pid if isinstance(process, Process) else int(process)
     lib, _ = _libproc()
-    return sorted({Path(path) for path in _files(lib, pid)})
+    return sorted({Path(entry.path) for entry in _files(lib, pid)})
 
 
 def _is_in(path: str, target: str) -> bool:
@@ -1632,8 +1646,9 @@ def who_uses(path: Union[str, "os.PathLike[str]"]) -> List[Process]:
 
         macos.system.who_uses("/Volumes/Backup")   # [Process(name='Preview', ...)]: why the disk won't eject
 
-    For a folder or a disk, anything inside counts. Like ``lsof`` without
-    ``sudo``: only this user's processes are seen.
+    For a folder or a disk, anything inside counts; a file counts under any
+    of its names (hard links). Like ``lsof`` without ``sudo``: only this
+    user's processes are seen.
     """
     from .apps import _pids
 
@@ -1642,9 +1657,17 @@ def who_uses(path: Union[str, "os.PathLike[str]"]) -> List[Process]:
         raise FileNotFoundError(target)
     require_macos()
     lib, _ = _libproc()
+    details = os.stat(target)
+    same_file = None if os.path.isdir(target) else (details.st_dev & 0xFFFFFFFF, details.st_ino)
+
+    def uses(entry: _Opened) -> bool:
+        if same_file and entry.file == same_file:
+            return True  # the same file, opened by another of its names
+        return _is_in(os.path.realpath(entry.path), target)
+
     users = []
     for pid in _pids():
-        if any(_is_in(os.path.realpath(opened), target) for opened in _files(lib, pid)):
+        if any(uses(entry) for entry in _files(lib, pid)):
             found = _read_process(pid)
             if found:
                 users.append(found)

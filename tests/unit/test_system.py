@@ -350,3 +350,38 @@ def test_paths_inside_a_folder():
     assert inside("/Volumes/Backup/photos/a.jpg", "/Volumes/Backup") and inside("/Volumes/Backup", "/Volumes/Backup/")
     assert not inside("/Volumes/Backup 2/a.jpg", "/Volumes/Backup")
     assert inside("/Users/alice/notes.txt", "/")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real open files")
+def test_who_uses_a_file_by_any_of_its_names(tmp_path):
+    import os
+
+    first, second = tmp_path / "first.txt", tmp_path / "second.txt"
+    first.write_text("same file")
+    os.link(first, second)  # two names for one file
+    with open(first):
+        assert any(user.pid == os.getpid() for user in macos.system.who_uses(second))
+    assert not any(user.pid == os.getpid() for user in macos.system.who_uses(second))
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads the real sockets")
+def test_a_connected_udp_socket_over_ipv6():
+    import os
+    import socket
+
+    if not socket.has_ipv6:
+        pytest.skip("no IPv6 here")
+    udp = (socket.AF_INET6, socket.SOCK_DGRAM)
+    with socket.socket(*udp) as receiver, socket.socket(*udp) as sender:
+        try:
+            receiver.bind(("::1", 0))
+            sender.connect(("::1", receiver.getsockname()[1]))
+        except OSError:
+            pytest.skip("no IPv6 loopback here")
+        local, remote = sender.getsockname()[1], receiver.getsockname()[1]
+        found = [c for c in macos.system.connections() if c.pid == os.getpid() and c.protocol == "udp"]
+        assert any(
+            c.local_port == local and c.remote_address == "::1" and c.remote_port == remote and c.state is None for c in found
+        )
+        listening = [p.port for p in macos.system.ports() if p.pid == os.getpid() and p.protocol == "udp"]
+        assert remote in listening and local not in listening  # connected: a client, not a listener
