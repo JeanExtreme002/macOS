@@ -277,3 +277,22 @@ def test_sign_and_add_text_near_a_text(tmp_path):
         macos.pdf.add_text(form, "x", tmp_path / "never.pdf", near="Name:", position="top_left")
     with pytest.raises(ValueError, match="side must be one of"):
         macos.pdf.sign(form, signature, tmp_path / "never.pdf", near="Name:", side="up")
+
+
+def test_redact_targets():
+    import re
+
+    from macos.pdf import _patterns, _scrub, _utf16
+
+    (label, words), (_, cpf) = _patterns(["Ana  Souza", re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")])
+    assert label == "'Ana  Souza'"
+    assert words.search("assinado por ANA\nsouza") and not words.search("Anasouza")  # any case and spacing
+    assert _scrub("Contrato de Ana Souza, CPF 123.456.789-00", [("", words), ("", cpf)]) == (
+        "Contrato de " + "█" * 9 + ", CPF " + "█" * 14
+    )
+    assert _patterns("a.b")[0][1].search("a.b") and not _patterns("a.b")[0][1].search("axb")  # literal, not a pattern
+    assert _utf16("💡 CPF", 2) == 3  # PDFKit counts an emoji as two
+
+    for bad, message in [([], "at least one"), (["  "], "takes texts"), ([3], "takes texts"), ([re.compile("x*")], "empty text")]:
+        with pytest.raises(ValueError, match=message):
+            _patterns(bad)

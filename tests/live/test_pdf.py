@@ -5,7 +5,7 @@ import pytest
 
 import macos
 from macos import _objc
-from tests.helpers import rgb_png, small_png
+from tests.helpers import png_size, rgb_png, small_png
 
 
 def _text_pdf(folder, pages):
@@ -216,3 +216,69 @@ def test_ocr_makes_a_scan_searchable(tmp_path):
     assert "ocean waves" in macos.pdf.text(searchable, [2])
     kept = macos.pdf.ocr(source, tmp_path / "kept.pdf")  # pages with text stay as they are
     assert macos.pdf.text(kept) == macos.pdf.text(source)
+
+
+def _raw_text(path):
+    """Everything the file holds, its compressed streams inflated: where redacted text could still hide."""
+    import re
+    import zlib
+
+    raw = path.read_bytes()
+    found = [raw]
+    for match in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.S):
+        try:
+            found.append(zlib.decompress(match.group(1)))
+        except zlib.error:
+            pass
+    return b"\n".join(found)
+
+
+def test_redact_removes_the_text(tmp_path):
+    import re
+
+    from tests.helpers import pdf_with_text
+
+    first, second = tmp_path / "1.pdf", tmp_path / "2.pdf"
+    first.write_bytes(pdf_with_text([("Contrato de Ana", 72, 700), ("Souza, CPF 123.456.789-00", 72, 680)]))
+    second.write_bytes(pdf_with_text([("Anexo sem dados", 72, 700)]))
+    merged = macos.pdf.merge([first, second], tmp_path / "merged.pdf")
+    source = macos.pdf.set_bookmarks(merged, [("Contrato de Ana Souza", 1), ("Anexo", 2)], tmp_path / "in.pdf")
+    before = macos.pdf.render(source, 2)
+
+    output = macos.pdf.redact(source, ["ana souza", re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")], tmp_path / "out.pdf")
+
+    assert macos.pdf.page_count(output) == 2
+    assert macos.pdf.text(output, [1]).strip() == ""  # the redacted page is a picture now
+    assert macos.pdf.text(output, [2]) == "Anexo sem dados"  # the other page didn't change
+    assert macos.pdf.render(output, 2) == before
+    assert [(mark.title, mark.page) for mark in macos.pdf.bookmarks(output)] == [("Contrato de " + "█" * 9, 1), ("Anexo", 2)]
+    raw = _raw_text(output)
+    assert b"Souza" not in raw and b"123.456" not in raw and "Souza".encode("utf-16-be") not in raw
+
+    assert png_size(macos.pdf.render(output, 1, size=792)) == (612, 792)  # the page keeps its size
+
+
+def test_redact_writes_nothing_when_a_target_is_missing(tmp_path):
+    from tests.helpers import pdf_with_text
+
+    source = tmp_path / "in.pdf"
+    source.write_bytes(pdf_with_text([("Contrato de Ana Souza", 72, 700)]))
+    with pytest.raises(ValueError, match="'Maria' isn't in the PDF's text, so nothing was written"):
+        macos.pdf.redact(source, ["Ana Souza", "Maria"], tmp_path / "out.pdf")
+    assert not (tmp_path / "out.pdf").exists()
+
+
+def test_redact_a_rotated_page_and_a_form_field(tmp_path):
+    from tests.helpers import pdf_form, pdf_with_text
+
+    rotated = tmp_path / "rotated.pdf"
+    rotated.write_bytes(pdf_with_text([("CPF 123.456.789-00", 72, 700)], rotate=90))
+    output = macos.pdf.redact(rotated, "123.456.789-00", tmp_path / "rotated-out.pdf")
+    assert b"123.456" not in _raw_text(output)
+    assert png_size(macos.pdf.render(output, 1, size=792)) == (792, 612)  # still turned as it was seen
+
+    form = tmp_path / "form.pdf"
+    pdf_form(form)
+    filled = macos.pdf.fill_form(form, {"Full name": "Ana Souza"}, tmp_path / "filled.pdf")
+    output = macos.pdf.redact(filled, "Ana Souza", tmp_path / "form-out.pdf")
+    assert macos.pdf.form_fields(output) == [] and b"Souza" not in _raw_text(output)

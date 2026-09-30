@@ -1,7 +1,7 @@
 # PDF
 
-{mod}`macos.pdf` reads, merges, splits, rotates and encrypts PDFs, and makes
-them from images, with PDFKit, the framework behind Preview. Pages are numbered from 1, like in Preview.
+{mod}`macos.pdf` reads, merges, splits, rotates, encrypts and redacts PDFs, and
+makes them from images, with PDFKit, the framework behind Preview. Pages are numbered from 1, like in Preview.
 
 ```python
 import macos
@@ -257,6 +257,45 @@ again; the others become PNG (or TIFF, for CMYK). A picture used on several
 pages is saved once, and rare encodings (indexed colors, 1-bit masks) are
 skipped. To save whole pages as images, see {func}`~macos.pdf.render`.
 
+## Redacting
+
+A black rectangle drawn over text in a PDF hides it only on screen: the text
+is still there, to copy, search or extract. {func}`~macos.pdf.redact` removes
+it for good before blacking it out:
+
+```python
+import re
+
+macos.pdf.redact("contract.pdf", ["Ana Souza", "123.456.789-00"], "contract-public.pdf")
+
+cpf = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
+email = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+macos.pdf.redact("list.pdf", [cpf, email], "list-public.pdf")
+```
+
+A text matches ignoring case, and any spacing or line break between its
+words, so a name split over two lines is found. A compiled {mod}`re` pattern
+catches what follows a shape: IDs, emails, phone numbers.
+
+Each page with a match is redrawn as a picture, with black boxes over the
+matches: there's no text under them anymore. The rest of that page still
+shows, but its text can no longer be selected or searched; run
+{func}`~macos.pdf.ocr` on the result to get it back, without what was
+redacted. Pages without a match don't change.
+
+What else in the file holds a match goes too:
+
+- form fields and comments: their page is flattened, with a box over them
+  (its other fields become part of the picture);
+- the title, author, subject and keywords, and bookmark titles, where the
+  match becomes `█`.
+
+When a target isn't found, {func}`~macos.pdf.redact` raises
+{class}`ValueError` and writes nothing: a redaction that missed would look
+like it worked. A scanned page has no text to find; run
+{func}`~macos.pdf.ocr` first. Check the result before you share it, as with
+any redaction.
+
 ## Reference
 
 - {func}`macos.pdf.page_count`
@@ -282,3 +321,4 @@ skipped. To save whole pages as images, see {func}`~macos.pdf.render`.
 - {func}`macos.pdf.bookmarks`
 - {func}`macos.pdf.set_bookmarks`
 - {func}`macos.pdf.images`
+- {func}`macos.pdf.redact`

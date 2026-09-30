@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Read, merge, split, rotate and encrypt PDFs, or make them from images.
+Read, merge, split, rotate, encrypt and redact PDFs, or make them from images.
 
 ::
 
@@ -11,6 +11,7 @@ Read, merge, split, rotate and encrypt PDFs, or make them from images.
     macos.pdf.merge(["a.pdf", "b.pdf"], "both.pdf")
     macos.pdf.extract("report.pdf", [1, 3], "summary.pdf")
     macos.pdf.encrypt("report.pdf", "locked.pdf", password="1234")
+    macos.pdf.redact("contract.pdf", ["Ana Souza"], "public.pdf")
 
 Uses PDFKit, the framework behind Preview. Page numbers start at 1, like in
 Preview.
@@ -58,6 +59,7 @@ __all__ = [
     "bookmarks",
     "set_bookmarks",
     "images",
+    "redact",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -1624,3 +1626,247 @@ def images(
     finally:
         graphics.CGPDFDocumentRelease(document)
     return saved
+
+
+# --- Redaction --------------------------------------------------------------------
+
+Target = Union[str, "re.Pattern[str]"]
+
+
+class _NSRange(ctypes.Structure):
+    _fields_ = [("location", NSUInteger), ("length", NSUInteger)]
+
+
+_REDACTION_SCALE = 3.0  # 216 dots per inch: sharp enough to read and print the rest of the page
+_REDACTION_LONGEST = 6000  # pixels, for huge pages
+_BLOCK = "\u2588"  # █, what redacted text becomes in metadata and bookmarks
+_OPAQUE_RGB = 5  # kCGImageAlphaNoneSkipLast
+
+
+def _patterns(targets: Union[Target, Sequence[Target]]) -> List[Tuple[str, "re.Pattern[str]"]]:
+    """Each target as a label and a pattern: a text matches ignoring case, and any spacing or line break between words."""
+    items = [targets] if isinstance(targets, (str, re.Pattern)) else list(targets)
+    if not items:
+        raise ValueError("redact() needs at least one text or pattern")
+    found = []
+    for item in items:
+        if isinstance(item, re.Pattern):
+            if item.fullmatch(""):
+                raise ValueError("the pattern {!r} matches an empty text".format(item.pattern))
+            found.append((repr(item.pattern), item))
+        elif isinstance(item, str) and item.strip():
+            words = r"\s+".join(re.escape(word) for word in item.split())
+            found.append((repr(item), re.compile(words, re.IGNORECASE)))
+        else:
+            raise ValueError("redact() takes texts and compiled patterns, not {!r}".format(item))
+    return found
+
+
+def _utf16(text: str, index: int) -> int:
+    """Where Python's ``index`` falls in ``text`` counted as PDFKit counts: in UTF-16 units."""
+    return len(text[:index].encode("utf-16-le")) // 2
+
+
+def _seen_box(page: int, box: Any) -> Tuple[float, ...]:
+    bounds = _objc.send(page, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+    rotation = int(_objc.send(page, "rotation", restype=ctypes.c_long))
+    own = (box.origin.x - bounds.origin.x, box.origin.y - bounds.origin.y, box.size.width, box.size.height)
+    return _seen(own, bounds.size.width, bounds.size.height, rotation)
+
+
+def _redactions(page: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], counts: List[int]) -> List[Tuple[float, ...]]:
+    """The boxes to black out on ``page``, as it's seen: its matching text, and annotations that hold a match."""
+    boxes = []
+    content = _objc.pystring(_objc.send(page, "string")) or ""
+    for index, (_, pattern) in enumerate(patterns):
+        for match in pattern.finditer(content):
+            if not match.group():
+                continue
+            start, end = _utf16(content, match.start()), _utf16(content, match.end())
+            selection = _objc.send(page, "selectionForRange:", _NSRange(start, end - start), argtypes=(_NSRange,))
+            if not selection:
+                continue
+            counts[index] += 1
+            # Line by line: a match broken over two lines would otherwise black out the box around both.
+            for line in _objc.nsarray(_objc.send(selection, "selectionsByLine")):
+                box = _objc.send(line, "boundsForPage:", page, argtypes=(_objc.id,), restype=_objc.CGRect)
+                if box.size.width > 0 and box.size.height > 0:
+                    boxes.append(_seen_box(page, box))
+    for annotation in _objc.nsarray(_objc.send(page, "annotations")):
+        held = " ".join(
+            _objc.pystring(_objc.send(annotation, getter)) or "" for getter in ("contents", "widgetStringValue")
+        )
+        hits = [index for index, (_, pattern) in enumerate(patterns) if pattern.search(held)]
+        for index in hits:
+            counts[index] += 1
+        if hits:
+            box = _objc.send(annotation, "bounds", restype=_objc.CGRect)
+            boxes.append(_seen_box(page, box))
+    return boxes
+
+
+def _flatten(document: int, number: int, boxes: Sequence[Tuple[float, ...]]) -> None:
+    """Replace page ``number`` with a picture of it, the ``boxes`` blacked out: its text is gone, not covered."""
+    graphics = _graphics()
+    graphics.CGColorSpaceCreateDeviceRGB.argtypes = ()
+    graphics.CGColorSpaceCreateDeviceRGB.restype = ctypes.c_void_p
+    graphics.CGColorSpaceRelease.argtypes = (ctypes.c_void_p,)
+    graphics.CGColorSpaceRelease.restype = None
+    graphics.CGBitmapContextCreate.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+    )
+    graphics.CGBitmapContextCreate.restype = ctypes.c_void_p
+    graphics.CGBitmapContextCreateImage.argtypes = (ctypes.c_void_p,)
+    graphics.CGBitmapContextCreateImage.restype = ctypes.c_void_p
+    graphics.CGContextFillRect.argtypes = (ctypes.c_void_p, _objc.CGRect)
+    graphics.CGContextFillRect.restype = None
+    graphics.CGImageRelease.argtypes = (ctypes.c_void_p,)
+    graphics.CGImageRelease.restype = None
+
+    page = _page(document, number)
+    bounds = _objc.send(page, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+    width, height = bounds.size.width, bounds.size.height
+    if int(_objc.send(page, "rotation", restype=ctypes.c_long)) % 180:
+        width, height = height, width  # drawn as it's seen, so the picture needs no turning
+    scale = min(_REDACTION_SCALE, _REDACTION_LONGEST / max(width, height, 1.0))
+    pixels_wide, pixels_high = max(1, round(width * scale)), max(1, round(height * scale))
+    space = graphics.CGColorSpaceCreateDeviceRGB()
+    context = graphics.CGBitmapContextCreate(None, pixels_wide, pixels_high, 8, 0, space, _OPAQUE_RGB)
+    graphics.CGColorSpaceRelease(space)
+    if not context:
+        raise MacOSError("could not draw page {}".format(number))
+    try:
+        graphics.CGContextScaleCTM(context, scale, scale)
+        graphics.CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0)
+        graphics.CGContextFillRect(context, _objc.CGRect(_objc.CGPoint(0, 0), _objc.CGSize(width, height)))
+        graphics.CGContextSaveGState(context)
+        _objc.send(page, "drawWithBox:toContext:", _MEDIA_BOX, context, argtypes=(ctypes.c_long, ctypes.c_void_p), restype=None)
+        graphics.CGContextRestoreGState(context)
+        graphics.CGContextSetRGBFillColor(context, 0.0, 0.0, 0.0, 1.0)
+        for x, y, wide, tall in boxes:
+            margin = 1.0  # a point around it: no edge of a letter peeks out
+            area = _objc.CGRect(_objc.CGPoint(x - margin, y - margin), _objc.CGSize(wide + 2 * margin, tall + 2 * margin))
+            graphics.CGContextFillRect(context, area)
+        picture = graphics.CGBitmapContextCreateImage(context)
+    finally:
+        graphics.CGContextRelease(context)
+    if not picture:
+        raise MacOSError("could not draw page {}".format(number))
+    try:
+        image = _objc.send(
+            _objc.send(_objc.cls("NSImage"), "alloc"),
+            "initWithCGImage:size:",
+            picture,
+            _objc.CGSize(width, height),
+            argtypes=(ctypes.c_void_p, _objc.CGSize),
+        )
+        _objc.send(image, "autorelease")
+        flat = _objc.send(_objc.send(_objc.cls("PDFPage"), "alloc"), "initWithImage:", image, argtypes=(_objc.id,))
+        if not flat:
+            raise MacOSError("could not redraw page {}".format(number))
+        _objc.send(flat, "autorelease")
+    finally:
+        graphics.CGImageRelease(picture)
+    _objc.send(document, "insertPage:atIndex:", flat, number - 1, argtypes=(_objc.id, NSUInteger), restype=None)
+    _objc.send(document, "removePageAtIndex:", number, argtypes=(NSUInteger,), restype=None)
+
+
+def _scrub(text: str, patterns: Sequence[Tuple[str, "re.Pattern[str]"]]) -> str:
+    for _, pattern in patterns:
+        text = pattern.sub(lambda match: _BLOCK * len(match.group()), text)
+    return text
+
+
+def _scrub_metadata(document: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]]) -> None:
+    """Redact the title, author, subject, keywords and creator too: they travel with the file."""
+    attributes = _objc.send(document, "documentAttributes")
+    if not attributes:
+        return
+    changed = _objc.send(_objc.send(attributes, "mutableCopy"), "autorelease")
+    for key in ("Title", "Author", "Subject", "Creator", "Keywords"):
+        value = _objc.send(attributes, "objectForKey:", _objc.nsstring(key), argtypes=(_objc.id,))
+        if not value:
+            continue
+        if _objc.send(value, "isKindOfClass:", _objc.cls("NSArray"), argtypes=(_objc.id,), restype=BOOL):
+            words = [_scrub(_objc.pystring(word) or "", patterns) for word in _objc.nsarray(value)]
+            new = _objc.nsarray_of([_objc.nsstring(word) for word in words])
+        elif _objc.send(value, "isKindOfClass:", _objc.cls("NSString"), argtypes=(_objc.id,), restype=BOOL):
+            new = _objc.nsstring(_scrub(_objc.pystring(value) or "", patterns))
+        else:
+            continue
+        _objc.send(changed, "setObject:forKey:", new, _objc.nsstring(key), argtypes=(_objc.id, _objc.id), restype=None)
+    _objc.send(document, "setDocumentAttributes:", changed, argtypes=(_objc.id,), restype=None)
+
+
+def _scrub_outline(outline: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]]) -> None:
+    for index in range(int(_objc.send(outline, "numberOfChildren", restype=NSUInteger))):
+        child = _objc.send(outline, "childAtIndex:", index, argtypes=(NSUInteger,))
+        label = _objc.pystring(_objc.send(child, "label")) or ""
+        scrubbed = _scrub(label, patterns)
+        if scrubbed != label:
+            _objc.send(child, "setLabel:", _objc.nsstring(scrubbed), argtypes=(_objc.id,), restype=None)
+        _scrub_outline(child, patterns)
+
+
+def redact(
+    path: PathLike,
+    targets: Union[Target, Sequence[Target]],
+    output: PathLike,
+    *,
+    password: Optional[str] = None,
+) -> Path:
+    """
+    Black out text in a PDF for good, and save it to ``output``: the text is removed, not just covered.
+
+    ::
+
+        macos.pdf.redact("contract.pdf", ["Ana Souza", "123.456.789-00"], "public.pdf")
+
+        cpf = re.compile(r"\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}")
+        macos.pdf.redact("list.pdf", [cpf], "public.pdf")      # every CPF
+
+    ``targets`` are texts, matched ignoring case and any spacing or line
+    break between their words, or compiled :mod:`re` patterns, for what
+    follows a shape (IDs, emails, phone numbers). Each page with a match
+    is redrawn as a picture with black boxes over the matches, so there's
+    no text left under them to copy or search; the rest of that page stays
+    visible, but its text can't be selected anymore (:func:`ocr` gives it
+    back, boxes excluded). Pages without matches don't change.
+
+    It also redacts form fields and comments that hold a match (their
+    page is flattened, with a box over them), and the matches in the
+    title, author, subject, keywords and bookmarks, which become ``█``.
+
+    Raises :class:`ValueError`, writing nothing, when a target isn't found:
+    a redaction that missed would look like it worked. Scanned pages have
+    no text to find: run :func:`ocr` first. ``password`` opens an
+    encrypted PDF; the result isn't encrypted.
+    """
+    patterns = _patterns(targets)
+    framework("AppKit")
+    with _open(path, password) as document:
+        counts = [0] * len(patterns)
+        flatten = {}
+        for number in range(1, _count(document) + 1):
+            boxes = _redactions(_page(document, number), patterns, counts)
+            if boxes:
+                flatten[number] = boxes
+        missing = [label for (label, _), count in zip(patterns, counts) if not count]
+        if missing:
+            raise ValueError(
+                "{} isn't in the PDF's text, so nothing was written: check the spelling, "
+                "or run macos.pdf.ocr() first on a scan".format(", ".join(missing))
+            )
+        for number, boxes in flatten.items():
+            _flatten(document, number, boxes)
+        _scrub_metadata(document, patterns)
+        root = _objc.send(document, "outlineRoot")
+        if root:
+            _scrub_outline(root, patterns)
+        return _save(document, output)
