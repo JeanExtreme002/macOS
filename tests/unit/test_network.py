@@ -106,3 +106,31 @@ def test_connect_vpn_fails(fake_run, monkeypatch):
     calls = _scutil(monkeypatch, ["Disconnected"])
     macos.network.connect_vpn("Office", wait=False)
     assert calls[-1][:3] == ["scutil", "--nc", "start"]
+
+
+def test_bandwidth_between_two_samples():
+    from macos.network import _bandwidth
+
+    up, down, loopback = 0x1, 0x0, 0x8 | 0x1
+    before = {"en0": (up, 1_000, 500), "en5": (up, 9_000, 9_000), "lo0": (loopback, 0, 0), "awdl0": (up, 0, 0)}
+    after = {
+        "en0": (up, 1_000 + 2_500_000, 500 + 250_000),
+        "en5": (up, 100, 50),  # reset: the adapter came back
+        "lo0": (loopback, 10_000, 10_000),
+        "awdl0": (up, 0, 0),  # never used
+        "en9": (down, 5, 5),
+        "utun4": (up, 7, 7),  # new since the first sample
+    }
+
+    found = _bandwidth(before, after, 2.0, {"en0": "Wi-Fi"})
+
+    assert [use.interface for use in found] == ["en0", "en5"]
+    wifi = found[0]
+    assert (wifi.display_name, wifi.received, wifi.sent) == ("Wi-Fi", 2_500_000, 250_000)
+    assert (wifi.download, wifi.upload) == (10.0, 1.0)  # megabits per second
+    assert (found[1].received, found[1].sent, found[1].display_name) == (100, 50, None)
+
+
+def test_bandwidth_checks_the_interval(fake_run):
+    with pytest.raises(ValueError, match="interval must be positive"):
+        macos.network.bandwidth(0)

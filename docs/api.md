@@ -179,6 +179,8 @@ explain how to use each part.
    :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, center, focus, minimize, restore, close, set_fullscreen, screenshot, snap
 .. autodata:: macos.windows.LAYOUTS
    :no-value:
+.. autofunction:: macos.windows.tile
+.. autofunction:: macos.windows.tile_all
 .. autofunction:: macos.windows.has_permission
 .. autofunction:: macos.windows.request_permission
 .. autofunction:: macos.windows.double_click_title_bar
@@ -791,6 +793,8 @@ explain how to use each part.
 .. autofunction:: macos.network.vpns
 .. autofunction:: macos.network.connect_vpn
 .. autofunction:: macos.network.disconnect_vpn
+.. autoclass:: macos.network.Bandwidth
+.. autofunction:: macos.network.bandwidth
 ```
 
 ## macos.screen

@@ -1,7 +1,8 @@
 # Network
 
 {mod}`macos.network` tells you whether the Mac is online, its address on the
-local network, turns Wi-Fi on and off, and connects VPNs.
+local network, how fast data is flowing, turns Wi-Fi on and off, and connects
+VPNs.
 
 ```python
 import macos
@@ -103,6 +104,35 @@ it has an address to talk with. {func}`~macos.network.dns_servers` and
 {func}`~macos.network.proxies` are the ones in use now, whether set in
 System Settings, by the network or by a VPN or a profile.
 
+## Bandwidth
+
+{func}`~macos.network.bandwidth` tells how fast data is going through each
+interface right now, the busiest first, like the network graph of Activity
+Monitor:
+
+```python
+for use in macos.network.bandwidth():
+    print(use.display_name or use.interface, use.download, use.upload)
+# Wi-Fi 42.1 3.5
+# utun4 0.3 0.1
+```
+
+It measures for `interval` seconds (1 by default). `download` and `upload`
+are in megabits per second, like an internet plan's speed and
+{func}`~macos.network.speed_test`; `received` and `sent` are the bytes in that
+time. The interfaces that are up and have carried data are listed, the
+loopback left out. Unlike {func}`~macos.network.speed_test`, it measures what
+is flowing, not how fast the connection can go; for which process moves the
+data, see {func}`macos.system.network_usage`.
+
+A script can wait for a big download to end before doing something else:
+
+```python
+while any(use.download > 1 for use in macos.network.bandwidth(interval=5)):
+    pass   # still downloading
+macos.power.sleep()
+```
+
 ## VPN
 
 ```python
@@ -154,3 +184,5 @@ of what the command line sees.
 - {func}`macos.network.vpns`
 - {func}`macos.network.connect_vpn`
 - {func}`macos.network.disconnect_vpn`
+- {class}`macos.network.Bandwidth`
+- {func}`macos.network.bandwidth`

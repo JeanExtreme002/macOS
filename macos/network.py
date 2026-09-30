@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Network information, Wi-Fi power and VPNs.
+Network information, Wi-Fi power, VPNs and how fast data flows.
 
 ::
 
@@ -10,6 +10,7 @@ Network information, Wi-Fi power and VPNs.
     macos.network.wifi_power()          # True
     macos.network.set_wifi_power(False)
     macos.network.connect_vpn("Office")
+    macos.network.bandwidth()           # [Bandwidth(interface='en0', display_name='Wi-Fi', download=42.1, ...)]
 
 The Wi-Fi network's name (SSID) isn't here: since macOS 14 reading it needs
 the Location permission.
@@ -19,6 +20,7 @@ import ctypes
 import json
 import re
 import socket
+import sys
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -47,6 +49,8 @@ __all__ = [
     "vpns",
     "connect_vpn",
     "disconnect_vpn",
+    "Bandwidth",
+    "bandwidth",
 ]
 
 _REACHABLE = 1 << 1  # kSCNetworkReachabilityFlagsReachable
@@ -617,3 +621,106 @@ def disconnect_vpn(name: str, *, wait: bool = True, timeout: float = 30.0) -> No
     _run(["scutil", "--nc", "stop", vpn.id])
     if wait:
         _wait_vpn(vpn, "disconnected", timeout)
+
+
+# --- Bandwidth --------------------------------------------------------------------
+
+_IFMIB_IFDATA = (4, 18, 0, 2)  # CTL_NET, PF_LINK, NETLINK_GENERIC, IFMIB_IFDATA; then the index, IFDATA_GENERAL
+_IFDATA_GENERAL = 1
+# struct ifmibdata: a 16-byte name, five 32-bit numbers (the flags second), 16 bytes of filler, then an
+# if_data64, whose 64-bit byte counters don't wrap at 4 GB as getifaddrs' 32-bit ones do.
+_IFMD_FLAGS = 20
+_IFMD_RECEIVED, _IFMD_SENT = 52 + 64, 52 + 72  # ifi_ibytes, ifi_obytes
+
+
+@dataclass(frozen=True)
+class Bandwidth:
+    """How fast data went through a network interface, over an interval."""
+
+    interface: str
+    """The system's name for it, such as ``'en0'``."""
+    display_name: Optional[str]
+    """As System Settings names it, such as ``'Wi-Fi'``; ``None`` for virtual ones (VPN tunnels...)."""
+    download: float
+    """Megabits per second received, as :func:`speed_test` counts them."""
+    upload: float
+    """Megabits per second sent."""
+    received: int
+    """Bytes received in the interval."""
+    sent: int
+    """Bytes sent in the interval."""
+
+
+def _interface_counters() -> Dict[str, Tuple[int, int, int]]:
+    """Each interface's flags, and the bytes it received and sent since the Mac started."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.sysctl.argtypes = (
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_uint,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_size_t),
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+    )
+    libc.sysctl.restype = ctypes.c_int
+    found = {}
+    for index, name in socket.if_nameindex():
+        mib = (ctypes.c_int * 6)(*_IFMIB_IFDATA, index, _IFDATA_GENERAL)
+        size = ctypes.c_size_t(512)
+        data = ctypes.create_string_buffer(size.value)
+        if libc.sysctl(mib, 6, data, ctypes.byref(size), None, 0) != 0 or size.value < _IFMD_SENT + 8:
+            continue  # gone since it was listed
+        flags = int.from_bytes(data.raw[_IFMD_FLAGS:_IFMD_FLAGS + 4], sys.byteorder) & 0xFFFF  # a short, widened
+        received = int.from_bytes(data.raw[_IFMD_RECEIVED:_IFMD_RECEIVED + 8], sys.byteorder)
+        sent = int.from_bytes(data.raw[_IFMD_SENT:_IFMD_SENT + 8], sys.byteorder)
+        found[name] = (flags, received, sent)
+    return found
+
+
+def _bandwidth(
+    before: Dict[str, Tuple[int, int, int]], after: Dict[str, Tuple[int, int, int]], seconds: float, names: Dict[str, str]
+) -> List[Bandwidth]:
+    found = []
+    for name, (flags, received, sent) in after.items():
+        if name not in before or not flags & _IFF_UP or flags & _IFF_LOOPBACK or not received + sent:
+            continue  # gone, down, the loopback, or never used (the Mac has many idle virtual ones)
+        # A counter that went back was reset (the interface came back): count from zero.
+        got = received - before[name][1] if received >= before[name][1] else received
+        gave = sent - before[name][2] if sent >= before[name][2] else sent
+        found.append(
+            Bandwidth(
+                interface=name,
+                display_name=names.get(name),
+                download=round(got * 8 / seconds / 1e6, 2),
+                upload=round(gave * 8 / seconds / 1e6, 2),
+                received=got,
+                sent=gave,
+            )
+        )
+    return sorted(found, key=lambda use: (-(use.received + use.sent), use.interface))
+
+
+def bandwidth(interval: float = 1.0) -> List[Bandwidth]:
+    """
+    How fast data is going through each network interface now, the busiest first.
+
+    ::
+
+        for use in macos.network.bandwidth():
+            print(use.display_name or use.interface, use.download, use.upload)   # Wi-Fi 42.1 3.5
+
+    Measures for ``interval`` seconds: ``download`` and ``upload`` are in
+    megabits per second, like an internet plan's speed; ``received`` and
+    ``sent`` are the bytes in that time. The interfaces that are up and have
+    carried data since the Mac started are listed, idle ones at 0; the
+    loopback (``lo0``) is left out. For which process
+    moves the data, see :func:`macos.system.network_usage`; for how fast the
+    connection can go, :func:`speed_test`.
+    """
+    if interval <= 0:
+        raise ValueError("interval must be positive, not {}".format(interval))
+    require_macos()
+    before, started = _interface_counters(), time.monotonic()
+    time.sleep(interval)
+    after, seconds = _interface_counters(), time.monotonic() - started
+    return _bandwidth(before, after, seconds, _display_names())
