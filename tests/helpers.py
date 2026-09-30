@@ -124,14 +124,19 @@ def pdf_with_images(images):
     return bytes(out)
 
 
-def pdf_with_text(lines, rotate=0):
-    """A one-page Letter PDF, written by hand, with each ``(text, x, y)`` in 18-point Helvetica."""
+def pdf_with_text(lines, rotate=0, crop=None):
+    """
+    A one-page Letter PDF, written by hand, with each ``(text, x, y)`` in 18-point Helvetica.
+
+    ``crop`` is a CropBox, ``(left, bottom, right, top)``: the part of the page that shows.
+    """
+    cropped = " /CropBox [{} {} {} {}]".format(*crop) if crop else ""
     drawing = " ".join("BT /F1 18 Tf {} {} Td ({}) Tj ET".format(x, y, text) for text, x, y in lines)
     objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Rotate {} "
-        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".format(rotate),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]{} /Rotate {} "
+        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".format(cropped, rotate),
         "<< /Length {} >>\nstream\n{}\nendstream".format(len(drawing), drawing),
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]

@@ -1638,6 +1638,7 @@ class _NSRange(ctypes.Structure):
     _fields_ = [("location", NSUInteger), ("length", NSUInteger)]
 
 
+_CROP_BOX = 1  # kPDFDisplayBoxCropBox: the part of the page that shows
 _REDACTION_SCALE = 3.0  # 216 dots per inch: sharp enough to read and print the rest of the page
 _REDACTION_LONGEST = 6000  # pixels, for huge pages
 _BLOCK = "\u2588"  # █, what redacted text becomes in metadata and bookmarks
@@ -1677,7 +1678,8 @@ def _utf16(text: str, index: int) -> int:
 
 
 def _seen_box(page: int, box: Any) -> Tuple[float, ...]:
-    bounds = _objc.send(page, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+    """``box`` (page coordinates) as the page is seen: from the corner of its visible part, turned as it's shown."""
+    bounds = _objc.send(page, "boundsForBox:", _CROP_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
     rotation = int(_objc.send(page, "rotation", restype=ctypes.c_long))
     own = (box.origin.x - bounds.origin.x, box.origin.y - bounds.origin.y, box.size.width, box.size.height)
     return _seen(own, bounds.size.width, bounds.size.height, rotation)
@@ -1715,7 +1717,12 @@ def _redactions(page: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], co
 
 
 def _flatten(document: int, number: int, boxes: Sequence[Tuple[float, ...]]) -> None:
-    """Replace page ``number`` with a picture of it, the ``boxes`` blacked out: its text is gone, not covered."""
+    """
+    Replace page ``number`` with a picture of it, the ``boxes`` blacked out: its text is gone, not covered.
+
+    The picture is of the page's visible part (its crop box), as it's seen: what was cropped away is gone
+    too, and the new page shows the same size.
+    """
     graphics = _graphics()
     graphics.CGColorSpaceCreateDeviceRGB.argtypes = ()
     graphics.CGColorSpaceCreateDeviceRGB.restype = ctypes.c_void_p
@@ -1739,7 +1746,7 @@ def _flatten(document: int, number: int, boxes: Sequence[Tuple[float, ...]]) -> 
     graphics.CGImageRelease.restype = None
 
     page = _page(document, number)
-    bounds = _objc.send(page, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+    bounds = _objc.send(page, "boundsForBox:", _CROP_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
     width, height = bounds.size.width, bounds.size.height
     if int(_objc.send(page, "rotation", restype=ctypes.c_long)) % 180:
         width, height = height, width  # drawn as it's seen, so the picture needs no turning
@@ -1755,7 +1762,9 @@ def _flatten(document: int, number: int, boxes: Sequence[Tuple[float, ...]]) -> 
         graphics.CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0)
         graphics.CGContextFillRect(context, _objc.CGRect(_objc.CGPoint(0, 0), _objc.CGSize(width, height)))
         graphics.CGContextSaveGState(context)
-        _objc.send(page, "drawWithBox:toContext:", _MEDIA_BOX, context, argtypes=(ctypes.c_long, ctypes.c_void_p), restype=None)
+        # Its annotations too (form fields, comments, stamps): the new page is a picture, it can't hold them.
+        _objc.send(page, "setDisplaysAnnotations:", True, argtypes=(BOOL,), restype=None)
+        _objc.send(page, "drawWithBox:toContext:", _CROP_BOX, context, argtypes=(ctypes.c_long, ctypes.c_void_p), restype=None)
         graphics.CGContextRestoreGState(context)
         graphics.CGContextSetRGBFillColor(context, 0.0, 0.0, 0.0, 1.0)
         for x, y, wide, tall in boxes:
@@ -1786,13 +1795,14 @@ def _flatten(document: int, number: int, boxes: Sequence[Tuple[float, ...]]) -> 
     _objc.send(document, "removePageAtIndex:", number, argtypes=(NSUInteger,), restype=None)
 
 
-def _scrub(text: str, patterns: Sequence[Tuple[str, "re.Pattern[str]"]]) -> str:
-    for _, pattern in patterns:
-        text = pattern.sub(lambda match: _BLOCK * len(match.group()), text)
+def _scrub(text: str, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], counts: List[int]) -> str:
+    for index, (_, pattern) in enumerate(patterns):
+        text, found = pattern.subn(lambda match: _BLOCK * len(match.group()), text)
+        counts[index] += found
     return text
 
 
-def _scrub_metadata(document: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]]) -> None:
+def _scrub_metadata(document: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], counts: List[int]) -> None:
     """Redact the title, author, subject, keywords and creator too: they travel with the file."""
     attributes = _objc.send(document, "documentAttributes")
     if not attributes:
@@ -1803,24 +1813,24 @@ def _scrub_metadata(document: int, patterns: Sequence[Tuple[str, "re.Pattern[str
         if not value:
             continue
         if _objc.send(value, "isKindOfClass:", _objc.cls("NSArray"), argtypes=(_objc.id,), restype=BOOL):
-            words = [_scrub(_objc.pystring(word) or "", patterns) for word in _objc.nsarray(value)]
+            words = [_scrub(_objc.pystring(word) or "", patterns, counts) for word in _objc.nsarray(value)]
             new = _objc.nsarray_of([_objc.nsstring(word) for word in words])
         elif _objc.send(value, "isKindOfClass:", _objc.cls("NSString"), argtypes=(_objc.id,), restype=BOOL):
-            new = _objc.nsstring(_scrub(_objc.pystring(value) or "", patterns))
+            new = _objc.nsstring(_scrub(_objc.pystring(value) or "", patterns, counts))
         else:
             continue
         _objc.send(changed, "setObject:forKey:", new, _objc.nsstring(key), argtypes=(_objc.id, _objc.id), restype=None)
     _objc.send(document, "setDocumentAttributes:", changed, argtypes=(_objc.id,), restype=None)
 
 
-def _scrub_outline(outline: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]]) -> None:
+def _scrub_outline(outline: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], counts: List[int]) -> None:
     for index in range(int(_objc.send(outline, "numberOfChildren", restype=NSUInteger))):
         child = _objc.send(outline, "childAtIndex:", index, argtypes=(NSUInteger,))
         label = _objc.pystring(_objc.send(child, "label")) or ""
-        scrubbed = _scrub(label, patterns)
+        scrubbed = _scrub(label, patterns, counts)
         if scrubbed != label:
             _objc.send(child, "setLabel:", _objc.nsstring(scrubbed), argtypes=(_objc.id,), restype=None)
-        _scrub_outline(child, patterns)
+        _scrub_outline(child, patterns, counts)
 
 
 @dataclass(frozen=True)
@@ -1830,7 +1840,10 @@ class Redaction:
     path: Path
     """The redacted PDF."""
     matches: Dict[str, int]
-    """How many times each target was found and blacked out, by the target as given (a pattern by its source)."""
+    """
+    How many times each target was found and blacked out, by the target as given (a pattern by its
+    source): on the pages, in form fields and comments, in the metadata and in the bookmarks.
+    """
     pages: Dict[int, int]
     """The pages redrawn, with how many matches each had: check them before sharing the PDF."""
 
@@ -1857,8 +1870,9 @@ def redact(
     ``targets`` are texts, matched as whole words, ignoring case and any
     spacing or line break between them ("Ana" doesn't black out "Banana"),
     or compiled :mod:`re` patterns, for what follows a shape (IDs, emails,
-    phone numbers). Each page with a match
-    is redrawn as a picture with black boxes over the matches, so there's
+    phone numbers). Each page with a match is redrawn as a picture of what
+    it shows (annotations included, crop kept) with black boxes over the
+    matches, so there's
     no text left under them to copy or search; the rest of that page stays
     visible, but its text can't be selected anymore (:func:`ocr` gives it
     back, boxes excluded). Pages without matches don't change.
@@ -1892,18 +1906,19 @@ def redact(
             if boxes:
                 flatten[number] = boxes
                 per_page[number] = sum(counts) - already
+        # In the document, not saved until every target is found: a miss writes nothing.
+        _scrub_metadata(document, patterns, counts)
+        root = _objc.send(document, "outlineRoot")
+        if root:
+            _scrub_outline(root, patterns, counts)
         missing = [repr(label) for (label, _), count in zip(patterns, counts) if not count]
         if missing:
             raise ValueError(
-                "{} isn't in the PDF's text, so nothing was written: check the spelling, "
+                "{} isn't in the PDF, so nothing was written: check the spelling, "
                 "or run macos.pdf.ocr() first on a scan".format(", ".join(missing))
             )
         for number, boxes in flatten.items():
             _flatten(document, number, boxes)
-        _scrub_metadata(document, patterns)
-        root = _objc.send(document, "outlineRoot")
-        if root:
-            _scrub_outline(root, patterns)
         saved = _save(document, output)
     matches: Dict[str, int] = {}
     for (label, _), count in zip(patterns, counts):

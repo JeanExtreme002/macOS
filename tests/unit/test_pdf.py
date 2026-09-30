@@ -291,9 +291,11 @@ def test_redact_targets():
     assert [m.group() for m in ana.finditer("Ana, Banana, Anapolis, ANA.")] == ["Ana", "ANA"]  # whole words only
     assert _patterns("-00")[0][1].search("789-00")  # an edge that isn't a letter or digit needs no word around it
     assert _patterns("Jose")[0][1].search("José") is None and _patterns("José")[0][1].search("JOSÉ.")
-    assert _scrub("Contrato de Ana Souza, CPF 123.456.789-00", [("", words), ("", cpf)]) == (
+    counts = [0, 0]
+    assert _scrub("Contrato de Ana Souza, CPF 123.456.789-00", [("", words), ("", cpf)], counts) == (
         "Contrato de " + "█" * 9 + ", CPF " + "█" * 14
     )
+    assert counts == [1, 1]
     assert _patterns("a.b")[0][1].search("a.b") and not _patterns("a.b")[0][1].search("axb")  # literal, not a pattern
     assert _utf16("💡 CPF", 2) == 3  # PDFKit counts an emoji as two
 

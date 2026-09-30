@@ -1,6 +1,8 @@
 """Tests of :mod:`macos.pdf` against the real system. Skipped outside macOS."""
 
 
+import ctypes
+
 import pytest
 
 import macos
@@ -249,7 +251,8 @@ def test_redact_removes_the_text(tmp_path):
     done = macos.pdf.redact(source, ["ana souza", cpf], tmp_path / "out.pdf")
     output = done.path
 
-    assert done.matches == {"ana souza": 1, cpf.pattern: 1} and done.pages == {1: 2}
+    assert done.matches == {"ana souza": 2, cpf.pattern: 1}  # the name: on the page, and in the bookmark
+    assert done.pages == {1: 2}
 
     assert macos.pdf.page_count(output) == 2
     assert macos.pdf.text(output, [1]).strip() == ""  # the redacted page is a picture now
@@ -267,7 +270,7 @@ def test_redact_writes_nothing_when_a_target_is_missing(tmp_path):
 
     source = tmp_path / "in.pdf"
     source.write_bytes(pdf_with_text([("Contrato de Ana Souza", 72, 700)]))
-    with pytest.raises(ValueError, match="'Maria' isn't in the PDF's text, so nothing was written"):
+    with pytest.raises(ValueError, match="'Maria' isn't in the PDF, so nothing was written"):
         macos.pdf.redact(source, ["Ana Souza", "Maria"], tmp_path / "out.pdf")
     assert not (tmp_path / "out.pdf").exists()
 
@@ -286,3 +289,55 @@ def test_redact_a_rotated_page_and_a_form_field(tmp_path):
     filled = macos.pdf.fill_form(form, {"Full name": "Ana Souza"}, tmp_path / "filled.pdf")
     output = macos.pdf.redact(filled, "Ana Souza", tmp_path / "form-out.pdf").path
     assert macos.pdf.form_fields(output) == [] and b"Souza" not in _raw_text(output)
+
+
+def _crop(path):
+    from macos import pdf
+
+    with pdf._open(path) as document:
+        box = _objc.send(pdf._page(document, 1), "boundsForBox:", 1, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+        return box.size.width, box.size.height
+
+
+def test_redact_keeps_the_crop_and_drops_what_it_hides(tmp_path):
+    from tests.helpers import pdf_with_text
+
+    source = tmp_path / "cropped.pdf"
+    source.write_bytes(pdf_with_text([("Ana Souza", 100, 500), ("Hidden margin note", 400, 50)], crop=(50, 300, 450, 700)))
+    output = macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf").path
+    assert _crop(output) == _crop(source) == (400.0, 400.0)
+    assert b"Hidden margin" not in _raw_text(output)
+
+
+def test_redact_finds_a_target_only_in_the_metadata(tmp_path):
+    from macos import pdf
+    from tests.helpers import pdf_with_text
+
+    plain = tmp_path / "plain.pdf"
+    plain.write_bytes(pdf_with_text([("Nothing to hide here", 72, 700)]))
+    source = tmp_path / "titled.pdf"
+    with pdf._open(plain) as document:
+        attributes = _objc.send(_objc.send(_objc.send(document, "documentAttributes"), "mutableCopy"), "autorelease")
+        title, key = _objc.nsstring("Project Falcon report"), _objc.nsstring("Title")
+        _objc.send(attributes, "setObject:forKey:", title, key, argtypes=(_objc.id, _objc.id), restype=None)
+        _objc.send(document, "setDocumentAttributes:", attributes, argtypes=(_objc.id,), restype=None)
+        pdf._save(document, source)
+
+    done = macos.pdf.redact(source, "Project Falcon", tmp_path / "out.pdf")
+
+    assert done.matches == {"Project Falcon": 1} and done.pages == {}  # no page to redraw
+    assert macos.pdf.metadata(done.path).title == "\u2588" * 14 + " report"
+    assert macos.pdf.text(done.path) == "Nothing to hide here" and b"Falcon" not in _raw_text(done.path)
+
+
+def test_redact_keeps_the_other_annotations_in_the_picture(tmp_path):
+    from tests.helpers import pdf_with_text
+
+    source = tmp_path / "in.pdf"
+    source.write_bytes(pdf_with_text([("Signed by Ana Souza", 72, 700)]))
+    stamped = macos.pdf.add_text(source, "APPROVED", tmp_path / "stamped.pdf", page=1, position=(72, 400), size=36)
+
+    output = macos.pdf.redact(stamped, "Ana Souza", tmp_path / "out.pdf").path
+
+    seen = macos.vision.text(macos.pdf.render(output, 1, size=1600))
+    assert "APPROVED" in seen and "Signed by" in seen and "Souza" not in seen

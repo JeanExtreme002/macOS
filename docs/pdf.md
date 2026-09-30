@@ -281,8 +281,10 @@ out "Banana". A compiled {mod}`re` pattern catches what follows a shape: IDs,
 emails, phone numbers. The {class}`~macos.pdf.Redaction` it returns tells how
 many times each target was found, and on which pages.
 
-Each page with a match is redrawn as a picture, with black boxes over the
-matches: there's no text under them anymore. The rest of that page still
+Each page with a match is redrawn as a picture of what it shows, with black
+boxes over the matches: there's no text under them anymore, and what the
+page's crop hid is gone too. Its annotations (form fields, comments, stamps)
+become part of the picture. The rest of that page still
 shows, but its text can no longer be selected or searched; run
 {func}`~macos.pdf.ocr` on the result to get it back, without what was
 redacted. Pages without a match don't change.
@@ -292,7 +294,8 @@ What else in the file holds a match goes too:
 - form fields and comments: their page is flattened, with a box over them
   (its other fields become part of the picture);
 - the title, author, subject and keywords, and bookmark titles, where the
-  match becomes `█`.
+  match becomes `█`. These count in the {class}`~macos.pdf.Redaction` too: a
+  target found only in the title is redacted, not reported missing.
 
 When a target isn't found at all, {func}`~macos.pdf.redact` raises
 {class}`ValueError` and writes nothing: a redaction that missed would look
