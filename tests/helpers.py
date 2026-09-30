@@ -122,3 +122,26 @@ def pdf_with_images(images):
     out += b"".join("{:010d} 00000 n \n".format(offset).encode() for offset in offsets)
     out += "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n".format(len(objects) + 1, table).encode()
     return bytes(out)
+
+
+def pdf_with_text(lines, rotate=0):
+    """A one-page Letter PDF, written by hand, with each ``(text, x, y)`` in 18-point Helvetica."""
+    drawing = " ".join("BT /F1 18 Tf {} {} Td ({}) Tj ET".format(x, y, text) for text, x, y in lines)
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Rotate {} "
+        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".format(rotate),
+        "<< /Length {} >>\nstream\n{}\nendstream".format(len(drawing), drawing),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += "{} 0 obj\n{}\nendobj\n".format(number, body).encode("latin-1")
+    table = len(out)
+    out += "xref\n0 {}\n0000000000 65535 f \n".format(len(objects) + 1).encode()
+    out += b"".join("{:010d} 00000 n \n".format(offset).encode() for offset in offsets)
+    out += "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n".format(len(objects) + 1, table).encode()
+    return bytes(out)

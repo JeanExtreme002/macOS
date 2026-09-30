@@ -86,6 +86,23 @@ Walk around with it to find a room's dead spots, or tell a weak signal
 from a slow internet. It needs no permission; the network's name, which
 macOS keeps behind the Location permission, isn't part of it.
 
+## Interfaces, DNS and proxies
+
+```python
+for found in macos.network.interfaces():
+    if found.active:
+        print(found.display_name or found.name, found.ipv4, found.mac)   # Wi-Fi ('192.168.0.8',) a4:83:...
+
+macos.network.dns_servers()   # ['192.168.0.1', '8.8.8.8']
+macos.network.proxies()       # Proxies(http=None, https='proxy.example.com:8080', socks=None, ...)
+```
+
+{func}`~macos.network.interfaces` lists every interface (Wi-Fi, Ethernet,
+Thunderbolt, VPN tunnels) with its addresses; an interface is `active` when
+it has an address to talk with. {func}`~macos.network.dns_servers` and
+{func}`~macos.network.proxies` are the ones in use now, whether set in
+System Settings, by the network or by a VPN or a profile.
+
 ## Reference
 
 - {func}`macos.network.is_online`
@@ -97,3 +114,8 @@ macOS keeps behind the Location permission, isn't part of it.
 - {class}`macos.network.SpeedTest`
 - {class}`macos.network.WiFiSignal`
 - {func}`macos.network.wifi_signal`
+- {class}`macos.network.NetworkInterface`
+- {func}`macos.network.interfaces`
+- {func}`macos.network.dns_servers`
+- {class}`macos.network.Proxies`
+- {func}`macos.network.proxies`

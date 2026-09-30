@@ -225,3 +225,55 @@ def test_images_come_in_name_order(tmp_path):
     assert [path.name for path in found] == ["page1-{}.png".format(number) for number in range(1, 13)]
     assert [int(macos.image.dominant_colors(path, 1)[0][1:3], 16) for path in found] == [index * 20 for index in range(12)]
     assert macos.pdf._natural(b"Im10") > macos.pdf._natural(b"Im2")
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_seen_and_unrotated_are_inverses(rotation):
+    box = (72.0, 200.0, 120.0, 40.0)
+    assert macos.pdf._unrotated(macos.pdf._seen(box, 612, 792, rotation), 612, 792, rotation) == box
+
+
+def test_next_to():
+    anchor = (72.0, 200.0, 90.0, 20.0)  # a word as the page is seen
+    assert macos.pdf._next_to(anchor, 100, 40, "right", 8) == (170.0, 190.0)  # centered on the line
+    assert macos.pdf._next_to(anchor, 100, 40, "left", 8) == (-36.0, 190.0)
+    assert macos.pdf._next_to(anchor, 100, 40, "above", 8) == (72.0, 228.0)
+    assert macos.pdf._next_to(anchor, 100, 40, "below", 8) == (72.0, 152.0)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="finds text and draws with PDFKit")
+def test_sign_and_add_text_near_a_text(tmp_path):
+    from macos import _objc
+    from tests.helpers import pdf_with_text, rgb_png
+
+    form = tmp_path / "form.pdf"
+    form.write_bytes(pdf_with_text([("Name:", 72, 700), ("Signature:", 72, 200)]))
+    signature = tmp_path / "signature.png"
+    signature.write_bytes(rgb_png(300, 100, lambda x, y: (20, 40, 160)))
+
+    signed = macos.pdf.sign(form, signature, tmp_path / "signed.pdf", near="signature:", width=120)  # any case
+    # "Signature:" ends near x=155 points, its line centered near y=206: the picture (120 x 40 points) sits just
+    # right of it, which the 700-pixel render (0.884 pixels a point) shows around pixels 145-250 by 500-535.
+    assert _color_at(signed, tmp_path, (180, 505, 40, 20)) == "signature"
+    assert _color_at(signed, tmp_path, (160, 440, 40, 20)) == "page"  # not on the line above
+
+    named = macos.pdf.add_text(form, "Ana Souza", tmp_path / "named.pdf", near="Name:")
+    with macos.pdf._open(named) as document:
+        note = list(_objc.nsarray(_objc.send(macos.pdf._page(document, 1), "annotations")))[0]
+        bounds = _objc.send(note, "bounds", restype=_objc.CGRect)
+    assert 115 < bounds.origin.x < 135 and 690 < bounds.origin.y < 710  # right after "Name:", on its line
+
+    below = macos.pdf.add_text(form, "Ana Souza", tmp_path / "below.pdf", near="Name:", side="below")
+    with macos.pdf._open(below) as document:
+        note = list(_objc.nsarray(_objc.send(macos.pdf._page(document, 1), "annotations")))[0]
+        bounds = _objc.send(note, "bounds", restype=_objc.CGRect)
+    assert 70 <= bounds.origin.x < 75 and bounds.origin.y + bounds.size.height < 700  # under it
+
+    with pytest.raises(ValueError, match="isn't on the PDF"):
+        macos.pdf.sign(form, signature, tmp_path / "never.pdf", near="Witness:")
+    with pytest.raises(ValueError, match="isn't on page 1"):
+        macos.pdf.add_text(form, "x", tmp_path / "never.pdf", near="Witness:", page=1)
+    with pytest.raises(ValueError, match="position or near, not both"):
+        macos.pdf.add_text(form, "x", tmp_path / "never.pdf", near="Name:", position="top_left")
+    with pytest.raises(ValueError, match="side must be one of"):
+        macos.pdf.sign(form, signature, tmp_path / "never.pdf", near="Name:", side="up")
