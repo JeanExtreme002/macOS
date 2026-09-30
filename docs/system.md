@@ -321,6 +321,28 @@ gives each physical disk's SMART status, which warns when a disk is about
 to fail: `"verified"`, `"failing"`, or `None` for disks that don't report
 one, as most USB disks.
 
+## Crashes and the system log
+
+{func}`~macos.system.crash_reports` lists the crashes macOS recorded, the
+latest first, and {func}`~macos.system.logs` reads the system log that
+Console shows:
+
+```python
+from datetime import datetime, timedelta
+
+for crash in macos.system.crash_reports(since=datetime.now() - timedelta(days=7)):
+    print(crash.date, crash.app, crash.reason)   # 2026-09-29 13:55 Safari EXC_BAD_ACCESS (SIGSEGV)
+
+for entry in macos.system.logs(process="Safari", level="error", last="1h"):
+    print(entry.date, entry.message)
+```
+
+Crash reports keep each report's `path`, to read it whole or send it to the
+app's developers. The log is large, thousands of messages a minute: filter
+it by `process`, `subsystem`, text (`contains`) or `level`, and `limit`
+stops at that many messages (1000 by default). Some messages hide private
+data as `<private>`.
+
 ## Reference
 
 - {func}`macos.system.version`
@@ -395,3 +417,7 @@ one, as most USB disks.
 - {func}`macos.system.gpu_usage`
 - {class}`macos.system.DiskHealth`
 - {func}`macos.system.disk_health`
+- {class}`macos.system.CrashReport`
+- {func}`macos.system.crash_reports`
+- {class}`macos.system.LogEntry`
+- {func}`macos.system.logs`

@@ -69,6 +69,23 @@ metered connection. `sequential=True` measures download and upload one
 after the other, which reads each more exactly. It goes through
 `networkQuality`, which comes with macOS.
 
+## Wi-Fi signal
+
+{func}`~macos.network.wifi_signal` tells how good the Wi-Fi connection is, or
+`None` when not on Wi-Fi:
+
+```python
+signal = macos.network.wifi_signal()
+signal.rssi, signal.quality       # (-62, 'good'): -50 is excellent, below -80 poor
+signal.snr                        # 33 dB above the noise
+signal.band, signal.channel       # ('5GHz', 157)
+signal.transmit_rate              # 866.0 Mbit/s: the link's speed, not the internet's
+```
+
+Walk around with it to find a room's dead spots, or tell a weak signal
+from a slow internet. It needs no permission; the network's name, which
+macOS keeps behind the Location permission, isn't part of it.
+
 ## Reference
 
 - {func}`macos.network.is_online`
@@ -78,3 +95,5 @@ after the other, which reads each more exactly. It goes through
 - {func}`macos.network.set_wifi_power`
 - {func}`macos.network.speed_test`
 - {class}`macos.network.SpeedTest`
+- {class}`macos.network.WiFiSignal`
+- {func}`macos.network.wifi_signal`

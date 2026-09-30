@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Dict, Optional
 
-from . import _cf
+from . import _cf, _objc
 from ._system import framework, require_macos, run as _run
 from .errors import CommandError, MacOSError, NotSupportedError
 
@@ -34,6 +34,8 @@ __all__ = [
     "set_wifi_power",
     "SpeedTest",
     "speed_test",
+    "WiFiSignal",
+    "wifi_signal",
 ]
 
 _REACHABLE = 1 << 1  # kSCNetworkReachabilityFlagsReachable
@@ -184,3 +186,102 @@ def speed_test(*, sequential: bool = False) -> SpeedTest:
         return _speed(json.loads(output))
     except ValueError:
         raise MacOSError("networkQuality gave an answer that isn't JSON: {!r}".format(output[:200])) from None
+
+
+# --- Wi-Fi signal -------------------------------------------------------------------
+
+_BANDS = {1: "2.4GHz", 2: "5GHz", 3: "6GHz"}  # CWChannelBand
+_WIDTHS = {1: 20, 2: 40, 3: 80, 4: 160}  # CWChannelWidth, in MHz
+_SECURITY = {  # CWSecurity
+    0: "none",
+    1: "wep",
+    2: "wpa_personal",
+    3: "wpa_personal",
+    4: "wpa2_personal",
+    5: "personal",
+    6: "dynamic_wep",
+    7: "wpa_enterprise",
+    8: "wpa_enterprise",
+    9: "wpa2_enterprise",
+    10: "enterprise",
+    11: "wpa3_personal",
+    12: "wpa3_enterprise",
+    13: "wpa3_transition",
+    14: "owe",
+    15: "owe_transition",
+}
+
+
+@dataclass(frozen=True)
+class WiFiSignal:
+    """How good the Wi-Fi connection is right now."""
+
+    rssi: int
+    """Signal strength, in dBm: -50 is excellent, -70 fair, below -80 poor."""
+    noise: int
+    """Background noise, in dBm: the lower, the better."""
+    transmit_rate: float
+    """The speed the link runs at, in megabits per second: an upper bound, not the internet's speed."""
+    channel: Optional[int]
+    band: Optional[str]
+    """``'2.4GHz'``, ``'5GHz'`` or ``'6GHz'``."""
+    channel_width: Optional[int]
+    """In MHz: 20, 40, 80 or 160."""
+    security: Optional[str]
+    """Such as ``'wpa2_personal'`` or ``'wpa3_personal'``."""
+
+    @property
+    def snr(self) -> int:
+        """Signal-to-noise ratio, in dB: above 25 is good, below 15 unreliable."""
+        return self.rssi - self.noise
+
+    @property
+    def quality(self) -> str:
+        """``'excellent'``, ``'good'``, ``'fair'`` or ``'poor'``, from the signal strength."""
+        if self.rssi >= -55:
+            return "excellent"
+        if self.rssi >= -67:
+            return "good"
+        if self.rssi >= -75:
+            return "fair"
+        return "poor"
+
+
+def wifi_signal() -> Optional[WiFiSignal]:
+    """
+    The current Wi-Fi connection's signal, noise, speed and channel; ``None`` when not connected to Wi-Fi.
+
+    ::
+
+        signal = macos.network.wifi_signal()
+        signal.rssi, signal.quality      # (-62, 'good')
+        signal.band, signal.channel      # ('5GHz', 157)
+
+    Handy to find the room's dead spots, or tell a weak signal from a slow
+    internet. It needs no permission; the network's name, which macOS keeps
+    behind the Location permission, isn't part of it.
+    """
+    framework("CoreWLAN")
+    with _objc.autorelease_pool():
+        client = _objc.send(_objc.cls("CWWiFiClient"), "sharedWiFiClient")
+        interface = _objc.send(client, "interface")
+        if not interface or not _objc.send(interface, "powerOn", restype=_objc.BOOL):
+            return None
+        rssi = int(_objc.send(interface, "rssiValue", restype=ctypes.c_long))
+        if rssi == 0:
+            return None  # powered on, but not connected
+        channel = _objc.send(interface, "wlanChannel")
+
+        def number(selector: str) -> Optional[int]:
+            return int(_objc.send(channel, selector, restype=ctypes.c_long)) if channel else None
+
+        security = int(_objc.send(interface, "security", restype=ctypes.c_long))
+        return WiFiSignal(
+            rssi=rssi,
+            noise=int(_objc.send(interface, "noiseMeasurement", restype=ctypes.c_long)),
+            transmit_rate=float(_objc.send(interface, "transmitRate", restype=ctypes.c_double)),
+            channel=number("channelNumber") or None,
+            band=_BANDS.get(number("channelBand") or 0),
+            channel_width=_WIDTHS.get(number("channelWidth") or 0),
+            security=_SECURITY.get(security),
+        )

@@ -53,6 +53,10 @@ __all__ = [
     "fill_form",
     "sign",
     "add_text",
+    "Bookmark",
+    "bookmarks",
+    "set_bookmarks",
+    "images",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -1188,3 +1192,294 @@ def add_text(
         _objc.send(note, "setBorder:", border, argtypes=(_objc.id,), restype=None)
         _objc.send(target, "addAnnotation:", note, argtypes=(_objc.id,), restype=None)
         return _save(document, output)
+
+
+# --- Bookmarks ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Bookmark:
+    """An entry of a PDF's table of contents (its outline), as the sidebar shows it."""
+
+    title: str
+    page: int
+    """The page it opens, from 1; 0 when it points nowhere in the document."""
+    level: int = 0
+    """How deep it sits: 0 for a chapter, 1 for its sections, and so on."""
+
+
+def bookmarks(path: PathLike, *, password: Optional[str] = None) -> List[Bookmark]:
+    """
+    A PDF's table of contents, in order, sections under their chapter: ``[]`` when it has none.
+
+    ::
+
+        for mark in macos.pdf.bookmarks("book.pdf"):
+            print("  " * mark.level + mark.title, mark.page)
+    """
+    found: List[Bookmark] = []
+
+    def walk(outline: int, level: int, document: int) -> None:
+        for index in range(int(_objc.send(outline, "numberOfChildren", restype=NSUInteger))):
+            child = _objc.send(outline, "childAtIndex:", index, argtypes=(NSUInteger,))
+            destination = _objc.send(child, "destination")
+            target = _objc.send(destination, "page") if destination else None
+            number = 0
+            if target:
+                number = int(_objc.send(document, "indexForPage:", target, argtypes=(_objc.id,), restype=NSUInteger)) + 1
+            found.append(Bookmark(_objc.pystring(_objc.send(child, "label")) or "", number, level))
+            walk(child, level + 1, document)
+
+    with _open(path, password) as document:
+        root = _objc.send(document, "outlineRoot")
+        if root:
+            walk(root, 0, document)
+    return found
+
+
+def set_bookmarks(
+    path: PathLike,
+    marks: Sequence[Union[Bookmark, Tuple[str, int], Tuple[str, int, int]]],
+    output: PathLike,
+    *,
+    password: Optional[str] = None,
+) -> Path:
+    """
+    Give a PDF a table of contents, in place of the one it has, and save it to ``output``.
+
+    ::
+
+        macos.pdf.set_bookmarks("book.pdf", [
+            ("Introduction", 1),
+            ("Chapter 1", 3),
+            ("1.1 Getting started", 4, 1),     # (title, page, level): a section of Chapter 1
+            ("Chapter 2", 12),
+        ], "book-with-contents.pdf")
+
+    Each entry is ``(title, page)``, ``(title, page, level)`` or a
+    :class:`Bookmark`; pages are from 1, and a level may go at most one
+    deeper than the entry before it. An empty list takes the contents away.
+    """
+    entries = [mark if isinstance(mark, Bookmark) else Bookmark(*mark) for mark in marks]
+    previous = -1
+    for entry in entries:
+        if not entry.title.strip():
+            raise ValueError("a bookmark's title must not be empty")
+        if entry.level < 0 or entry.level > previous + 1:
+            raise ValueError("{!r} is at level {}, deeper than the entry before it allows".format(entry.title, entry.level))
+        previous = entry.level
+    with _open(path, password) as document:
+        pages = [_page(document, entry.page) for entry in entries]  # checks every number first
+        root = _objc.send(_objc.send(_objc.cls("PDFOutline"), "alloc"), "init")
+        _objc.send(root, "autorelease")
+        parents = [root]
+        for entry, page in zip(entries, pages):
+            del parents[entry.level + 1:]
+            outline = _objc.send(_objc.send(_objc.cls("PDFOutline"), "alloc"), "init")
+            _objc.send(outline, "autorelease")
+            _objc.send(outline, "setLabel:", _objc.nsstring(entry.title), argtypes=(_objc.id,), restype=None)
+            bounds = _objc.send(page, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+            top = _objc.CGPoint(0, bounds.size.height)  # opens at the page's top
+            destination = _objc.send(
+                _objc.send(_objc.cls("PDFDestination"), "alloc"),
+                "initWithPage:atPoint:",
+                page,
+                top,
+                argtypes=(_objc.id, _objc.CGPoint),
+            )
+            _objc.send(destination, "autorelease")
+            _objc.send(outline, "setDestination:", destination, argtypes=(_objc.id,), restype=None)
+            parent = parents[-1]
+            count = int(_objc.send(parent, "numberOfChildren", restype=NSUInteger))
+            _objc.send(parent, "insertChild:atIndex:", outline, count, argtypes=(_objc.id, NSUInteger), restype=None)
+            parents.append(outline)
+        # An empty root, not nil: PDFKit keeps the old outline when given nil.
+        _objc.send(document, "setOutlineRoot:", root, argtypes=(_objc.id,), restype=None)
+        return _save(document, output)
+
+
+# --- Embedded images ----------------------------------------------------------------
+
+_STREAM = 9  # kCGPDFObjectTypeStream
+_RAW, _JPEG, _JPEG2000 = 0, 1, 2  # CGPDFDataFormat
+_COMPONENTS = {b"DeviceRGB": 3, b"DeviceGray": 1, b"DeviceCMYK": 4, b"CalRGB": 3, b"CalGray": 1}
+_Visitor = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p)
+
+
+@lru_cache(maxsize=None)
+def _pdf_objects() -> ctypes.CDLL:
+    graphics = _graphics()
+    pointer = ctypes.c_void_p
+    signatures = {
+        "CGPDFPageGetDictionary": ((pointer,), pointer),
+        "CGPDFDictionaryGetDictionary": ((pointer, ctypes.c_char_p, ctypes.POINTER(pointer)), ctypes.c_bool),
+        "CGPDFDictionaryGetName": ((pointer, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p)), ctypes.c_bool),
+        "CGPDFDictionaryGetInteger": ((pointer, ctypes.c_char_p, ctypes.POINTER(ctypes.c_long)), ctypes.c_bool),
+        "CGPDFDictionaryGetArray": ((pointer, ctypes.c_char_p, ctypes.POINTER(pointer)), ctypes.c_bool),
+        "CGPDFArrayGetName": ((pointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_char_p)), ctypes.c_bool),
+        "CGPDFArrayGetStream": ((pointer, ctypes.c_size_t, ctypes.POINTER(pointer)), ctypes.c_bool),
+        "CGPDFDictionaryApplyFunction": ((pointer, _Visitor, pointer), None),
+        "CGPDFObjectGetValue": ((pointer, ctypes.c_int, pointer), ctypes.c_bool),
+        "CGPDFStreamGetDictionary": ((pointer,), pointer),
+        "CGPDFStreamCopyData": ((pointer, ctypes.POINTER(ctypes.c_int)), pointer),
+        "CGDataProviderCreateWithCFData": ((pointer,), pointer),
+        "CGDataProviderRelease": ((pointer,), None),
+        "CGColorSpaceCreateDeviceRGB": ((), pointer),
+        "CGColorSpaceCreateDeviceGray": ((), pointer),
+        "CGColorSpaceCreateDeviceCMYK": ((), pointer),
+        "CGColorSpaceRelease": ((pointer,), None),
+        "CGImageCreate": (
+            (ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t, pointer, ctypes.c_uint32,
+             pointer, pointer, ctypes.c_bool, ctypes.c_int),
+            pointer,
+        ),
+        "CGImageRelease": ((pointer,), None),
+    }
+    for name, (argtypes, restype) in signatures.items():
+        function = getattr(graphics, name)
+        function.argtypes = argtypes
+        function.restype = restype
+    return graphics
+
+
+def _components(graphics: ctypes.CDLL, info: int) -> Optional[int]:
+    """How many color components an image has, for the color spaces it can rebuild; ``None`` for the others."""
+    name = ctypes.c_char_p()
+    if graphics.CGPDFDictionaryGetName(info, b"ColorSpace", ctypes.byref(name)):
+        return _COMPONENTS.get(name.value or b"")
+    array = ctypes.c_void_p()
+    if graphics.CGPDFDictionaryGetArray(info, b"ColorSpace", ctypes.byref(array)):
+        kind = ctypes.c_char_p()
+        profile = ctypes.c_void_p()
+        if (
+            graphics.CGPDFArrayGetName(array, 0, ctypes.byref(kind))
+            and kind.value == b"ICCBased"
+            and graphics.CGPDFArrayGetStream(array, 1, ctypes.byref(profile))
+        ):
+            count = ctypes.c_long()
+            if graphics.CGPDFDictionaryGetInteger(graphics.CGPDFStreamGetDictionary(profile), b"N", ctypes.byref(count)):
+                return int(count.value) if count.value in (1, 3, 4) else None
+    return None
+
+
+def _save_image(graphics: ctypes.CDLL, stream: int, target: Path) -> Optional[Path]:
+    """Write an image XObject's picture to ``target`` (its suffix set here), or ``None`` for a kind it can't rebuild."""
+    from . import image as images
+
+    kind = ctypes.c_int()
+    data = graphics.CGPDFStreamCopyData(stream, ctypes.byref(kind))
+    if not data:
+        return None
+    with _cf.owned(data):
+        if kind.value in (_JPEG, _JPEG2000):
+            path = target.with_suffix(".jpg" if kind.value == _JPEG else ".jp2")
+            path.write_bytes(_cf.to_bytes(data))  # as embedded, without compressing it again
+            return path
+        info = graphics.CGPDFStreamGetDictionary(stream)
+        numbers = {}
+        for key in (b"Width", b"Height", b"BitsPerComponent"):
+            value = ctypes.c_long()
+            if not graphics.CGPDFDictionaryGetInteger(info, key, ctypes.byref(value)):
+                return None
+            numbers[key] = int(value.value)
+        components = _components(graphics, info)
+        width, height, bits = numbers[b"Width"], numbers[b"Height"], numbers[b"BitsPerComponent"]
+        if components is None or bits != 8 or width <= 0 or height <= 0:
+            return None  # an indexed palette, a mask...: kinds it doesn't rebuild
+        if _cf.lib().CFDataGetLength(data) < width * height * components:
+            return None
+        create = {1: "CGColorSpaceCreateDeviceGray", 3: "CGColorSpaceCreateDeviceRGB", 4: "CGColorSpaceCreateDeviceCMYK"}
+        space = getattr(graphics, create[components])()
+        provider = graphics.CGDataProviderCreateWithCFData(data)
+        try:
+            picture = graphics.CGImageCreate(
+                width, height, 8, 8 * components, width * components, space, 0, provider, None, False, 0
+            )
+        finally:
+            graphics.CGDataProviderRelease(provider)
+            graphics.CGColorSpaceRelease(space)
+        if not picture:
+            return None
+        try:
+            # PNG has no CMYK: those go to TIFF, which keeps them as they are.
+            path = target.with_suffix(".tiff" if components == 4 else ".png")
+            kind_name = "public.tiff" if components == 4 else "public.png"
+            io = images._io()
+            return images._write(path, kind_name, lambda destination: io.CGImageDestinationAddImage(destination, picture, None))
+        finally:
+            graphics.CGImageRelease(picture)
+
+
+def images(
+    path: PathLike,
+    folder: PathLike,
+    *,
+    pages: Optional[Iterable[int]] = None,
+    password: Optional[str] = None,
+) -> List[Path]:
+    """
+    Save the pictures embedded in a PDF into ``folder``, and return their paths, page by page.
+
+    ::
+
+        macos.pdf.images("brochure.pdf", "brochure-images")   # [PosixPath('brochure-images/page1-1.jpg'), ...]
+
+    JPEG and JPEG 2000 pictures are saved as they're embedded, without
+    compressing them again; the others become PNG (or TIFF, for CMYK). A
+    picture used on several pages is saved once. Pictures in rare
+    encodings (indexed colors, 1-bit masks...) are skipped. To save
+    whole pages as images, see :func:`render`.
+    """
+    source = Path(path).expanduser().absolute()
+    if not source.exists():
+        raise FileNotFoundError(str(source))
+    target = Path(folder).expanduser().absolute()
+    target.mkdir(parents=True, exist_ok=True)
+    graphics = _pdf_objects()
+    document = _open_for_drawing(source, password)
+    saved: List[Path] = []
+    try:
+        count = graphics.CGPDFDocumentGetNumberOfPages(document)
+        wanted = list(pages) if pages is not None else list(range(1, count + 1))
+        for number in wanted:
+            if isinstance(number, bool) or not isinstance(number, int) or not 1 <= number <= count:
+                raise ValueError("page {!r} is out of range: the PDF has {} page(s), numbered from 1".format(number, count))
+        seen = set()
+        for number in wanted:
+            found: List[int] = []  # this page's image streams, forms opened
+
+            def collect(dictionary: int) -> None:
+                resources, objects = ctypes.c_void_p(), ctypes.c_void_p()
+                if not graphics.CGPDFDictionaryGetDictionary(dictionary, b"Resources", ctypes.byref(resources)):
+                    return
+                if not graphics.CGPDFDictionaryGetDictionary(resources, b"XObject", ctypes.byref(objects)):
+                    return
+                streams: List[int] = []
+
+                def visit(key: bytes, value: int, info: int) -> None:
+                    stream = ctypes.c_void_p()
+                    if graphics.CGPDFObjectGetValue(value, _STREAM, ctypes.byref(stream)) and stream.value:
+                        streams.append(stream.value)
+
+                visitor = _Visitor(visit)
+                graphics.CGPDFDictionaryApplyFunction(objects, visitor, None)
+                for stream in streams:
+                    if stream in seen:
+                        continue
+                    seen.add(stream)
+                    info = graphics.CGPDFStreamGetDictionary(stream)
+                    subtype = ctypes.c_char_p()
+                    graphics.CGPDFDictionaryGetName(info, b"Subtype", ctypes.byref(subtype))
+                    if subtype.value == b"Image":
+                        found.append(stream)
+                    elif subtype.value == b"Form":
+                        collect(info)  # a group of drawings, which may hold pictures of its own
+
+            collect(graphics.CGPDFPageGetDictionary(graphics.CGPDFDocumentGetPage(document, number)))
+            for index, stream in enumerate(found, start=1):
+                written = _save_image(graphics, stream, target / "page{}-{}".format(number, index))
+                if written:
+                    saved.append(written)
+    finally:
+        graphics.CGPDFDocumentRelease(document)
+    return saved

@@ -158,3 +158,41 @@ def test_add_text_on_a_rotated_page(tmp_path, angle, corner):
     assert inked(horizontal, vertical)  # where asked, upright and whole
     opposite = ("right" if horizontal == "left" else "left", "bottom" if vertical == "top" else "top")
     assert not inked(*opposite)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads and writes outlines with PDFKit")
+def test_bookmarks(tmp_path):
+    from tests.helpers import small_png
+
+    picture = tmp_path / "page.png"
+    picture.write_bytes(small_png(100, 100))
+    book = macos.pdf.from_images([picture] * 3, tmp_path / "book.pdf")
+    assert macos.pdf.bookmarks(book) == []
+    contents = [("Intro", 1), ("Chapter 1", 2), ("1.1", 2, 1), ("1.1.1", 3, 2), ("Chapter 2", 3)]
+    marked = macos.pdf.set_bookmarks(book, contents, tmp_path / "marked.pdf")
+    assert [(mark.title, mark.page, mark.level) for mark in macos.pdf.bookmarks(marked)] == [
+        ("Intro", 1, 0), ("Chapter 1", 2, 0), ("1.1", 2, 1), ("1.1.1", 3, 2), ("Chapter 2", 3, 0)
+    ]  # fmt: skip
+    assert macos.pdf.bookmarks(macos.pdf.set_bookmarks(marked, [], tmp_path / "cleared.pdf")) == []
+    for wrong, message in (([("Deep", 1, 1)], "deeper than"), ([("x", 9)], "out of range"), ([(" ", 1)], "must not be empty")):
+        with pytest.raises(ValueError, match=message):
+            macos.pdf.set_bookmarks(book, wrong, tmp_path / "never.pdf")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads PDFs with CoreGraphics")
+def test_images(tmp_path):
+    from tests.helpers import rgb_png
+
+    stripes = tmp_path / "stripes.png"
+    stripes.write_bytes(rgb_png(120, 80, lambda x, y: (200, 30, 30) if x < 60 else (30, 30, 200)))
+    photo = macos.image.convert(stripes, tmp_path / "photo.jpg")
+    document = macos.pdf.from_images([photo, stripes, photo], tmp_path / "pictures.pdf")
+
+    found = macos.pdf.images(document, tmp_path / "out")
+    assert [path.name for path in found] == ["page1-1.jpg", "page2-1.png"]  # the photo used twice, saved once
+    assert found[0].read_bytes()[:2] == b"\xff\xd8"  # the JPEG as embedded
+    for path in found:
+        assert (macos.image.info(path).width, macos.image.info(path).height) == (120, 80)
+    assert [path.name for path in macos.pdf.images(document, tmp_path / "two", pages=[2])] == ["page2-1.png"]
+    with pytest.raises(ValueError, match="out of range"):
+        macos.pdf.images(document, tmp_path / "never", pages=[4])

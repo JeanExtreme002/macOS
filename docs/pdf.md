@@ -206,6 +206,38 @@ the text's bottom-left corner in points from the page's bottom-left.
 `size` is in points; `font` a font's name, such as `"Helvetica-Bold"`;
 `color` a hex color. It adds to the page: its own text can't be edited.
 
+## Table of contents
+
+{func}`~macos.pdf.bookmarks` reads a PDF's table of contents (the sidebar's
+outline), and {func}`~macos.pdf.set_bookmarks` gives it one:
+
+```python
+for mark in macos.pdf.bookmarks("book.pdf"):
+    print("  " * mark.level + mark.title, mark.page)
+
+macos.pdf.set_bookmarks("book.pdf", [
+    ("Introduction", 1),
+    ("Chapter 1", 3),
+    ("1.1 Getting started", 4, 1),     # (title, page, level): a section of Chapter 1
+    ("Chapter 2", 12),
+], "book-with-contents.pdf")
+```
+
+An empty list takes the table of contents away.
+
+## Embedded images
+
+{func}`~macos.pdf.images` saves the pictures a PDF holds into a folder:
+
+```python
+macos.pdf.images("brochure.pdf", "brochure-images")   # [PosixPath('brochure-images/page1-1.jpg'), ...]
+```
+
+JPEG pictures are saved as they're embedded, without compressing them
+again; the others become PNG (or TIFF, for CMYK). A picture used on several
+pages is saved once, and rare encodings (indexed colors, 1-bit masks) are
+skipped. To save whole pages as images, see {func}`~macos.pdf.render`.
+
 ## Reference
 
 - {func}`macos.pdf.page_count`
@@ -227,3 +259,7 @@ the text's bottom-left corner in points from the page's bottom-left.
 - {func}`macos.pdf.fill_form`
 - {func}`macos.pdf.sign`
 - {func}`macos.pdf.add_text`
+- {class}`macos.pdf.Bookmark`
+- {func}`macos.pdf.bookmarks`
+- {func}`macos.pdf.set_bookmarks`
+- {func}`macos.pdf.images`
