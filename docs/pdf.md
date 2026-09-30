@@ -181,10 +181,24 @@ macos.pdf.sign("filled.pdf", "signature.png", "signed.pdf")                     
 macos.pdf.sign("filled.pdf", "signature.png", "signed.pdf", page=1, position=(72, 120), width=180)
 ```
 
-`position` is a corner (`"bottom_right"`, `"bottom_left"`, `"top_right"`,
-`"top_left"`) or the `(x, y)` of the image's bottom-left corner, in points
-from the page's bottom-left; `width` is in points (72 per inch). A PNG
-with a transparent background looks best.
+The easiest is to put it beside a text of the page, such as the line where
+it goes:
+
+```python
+macos.pdf.sign("contract.pdf", "signature.png", "signed.pdf", near="Signature:")
+macos.pdf.sign("contract.pdf", "signature.png", "signed.pdf", near="Witness", side="below", gap=4)
+```
+
+`near` finds the text as {func}`~macos.pdf.text` reads it (case doesn't
+matter), on `page` when given, else anywhere in the PDF, and takes the first
+match; `side` is `"right"` (the default), `"left"`, `"above"` or `"below"`,
+and `gap` the room between them, in points.
+
+Without `near`, `position` is a corner (`"bottom_right"`, `"bottom_left"`,
+`"top_right"`, `"top_left"`) or the `(x, y)` of the image's bottom-left
+corner, in points from the page's bottom-left (72 points make an inch,
+2.54 cm). `width` is in points too. A PNG with a transparent background
+looks best.
 
 It's an image, not a cryptographic signature. The pages are redrawn as
 they look, filled-in fields included, so they're no longer editable:
@@ -201,8 +215,13 @@ macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", page=2, position=(120,
 macos.pdf.add_text("draft.pdf", "Checked\nby Ana", "notes.pdf", position="top_right", color="#c00000")
 ```
 
-`position` works as for {func}`~macos.pdf.sign`: a corner, or the `(x, y)` of
-the text's bottom-left corner in points from the page's bottom-left.
+It goes where {func}`~macos.pdf.sign` puts a signature: beside a text of
+the page, such as a form's label, or in a corner, or at a point:
+
+```python
+macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", near="Name:")
+```
+
 `size` is in points; `font` a font's name, such as `"Helvetica-Bold"`;
 `color` a hex color. It adds to the page: its own text can't be edited.
 

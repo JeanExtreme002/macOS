@@ -991,6 +991,68 @@ def _unrotated(box: Tuple[float, float, float, float], width: float, height: flo
     return x, y, w, h
 
 
+def _seen(box: Tuple[float, float, float, float], width: float, height: float, rotation: int) -> Tuple[float, ...]:
+    """The inverse of :func:`_unrotated`: a box in the page's own coordinates, as the page is seen."""
+    x, y, w, h = box
+    turn = rotation % 360
+    if turn == 90:
+        return y, width - x - w, h, w
+    if turn == 180:
+        return width - x - w, height - y - h, w, h
+    if turn == 270:
+        return height - y - h, x, h, w
+    return x, y, w, h
+
+
+_SIDES = ("right", "left", "above", "below")
+_CASE_INSENSITIVE = 1  # NSCaseInsensitiveSearch
+
+
+def _find(document: int, text: str, page: Optional[int]) -> Tuple[int, Tuple[float, ...]]:
+    """
+    Where ``text`` first shows, on ``page`` or anywhere: its page number, and its box as the page is seen.
+    """
+    if not text.strip():
+        raise ValueError("near must not be empty")
+    count = _count(document)
+    if page is not None:
+        _page(document, page)  # checks the number
+    found = _objc.send(
+        document, "findString:withOptions:", _objc.nsstring(text), _CASE_INSENSITIVE, argtypes=(_objc.id, NSUInteger)
+    )
+    for selection in _objc.nsarray(found) if found else []:
+        for candidate in _objc.nsarray(_objc.send(selection, "pages")):
+            number = int(_objc.send(document, "indexForPage:", candidate, argtypes=(_objc.id,), restype=NSUInteger)) + 1
+            if not 1 <= number <= count or (page is not None and number != page):
+                continue
+            box = _objc.send(selection, "boundsForPage:", candidate, argtypes=(_objc.id,), restype=_objc.CGRect)
+            bounds = _objc.send(candidate, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+            rotation = int(_objc.send(candidate, "rotation", restype=ctypes.c_long))
+            own = (box.origin.x - bounds.origin.x, box.origin.y - bounds.origin.y, box.size.width, box.size.height)
+            return number, _seen(own, bounds.size.width, bounds.size.height, rotation)
+    where = "page {}".format(page) if page is not None else "the PDF"
+    raise ValueError("{!r} isn't on {}: see macos.pdf.text() for what it holds".format(text, where))
+
+
+def _next_to(anchor: Tuple[float, ...], width: float, height: float, side: str, gap: float) -> Tuple[float, float]:
+    """Where a box of ``width`` × ``height`` goes beside ``anchor`` (a box as the page is seen), ``gap`` points away."""
+    x, y, w, h = anchor
+    if side == "right":
+        return x + w + gap, y + (h - height) / 2
+    if side == "left":
+        return x - gap - width, y + (h - height) / 2
+    if side == "above":
+        return x, y + h + gap
+    return x, y - gap - height  # below
+
+
+def _check_near(near: Optional[str], position: Optional[Position], side: str) -> None:
+    if near is not None and position is not None:
+        raise ValueError("give position or near, not both")
+    if side not in _SIDES:
+        raise ValueError("side must be one of {}, not {!r}".format(", ".join(_SIDES), side))
+
+
 def _origin(
     position: Position, width: float, height: float, page_width: float, page_height: float, margin: float
 ) -> Tuple[float, float]:
@@ -1008,7 +1070,10 @@ def sign(
     output: PathLike,
     *,
     page: Optional[int] = None,
-    position: Position = "bottom_right",
+    position: Optional[Position] = None,
+    near: Optional[str] = None,
+    side: str = "right",
+    gap: float = 8,
     width: float = 150,
     margin: float = 36,
     password: Optional[str] = None,
@@ -1020,6 +1085,12 @@ def sign(
 
         macos.pdf.sign("contract.pdf", "signature.png", "signed.pdf")                   # last page, bottom right
         macos.pdf.sign("form.pdf", "signature.png", "signed.pdf", page=1, position=(72, 120), width=180)
+        macos.pdf.sign("contract.pdf", "signature.png", "signed.pdf", near="Signature:")   # beside that text
+
+    ``near`` puts it beside a text of the page, found as :func:`text`
+    reads it (case doesn't matter): to its ``side``, ``"right"``, ``"left"``,
+    ``"above"`` or ``"below"``, ``gap`` points away. It searches ``page``
+    when given, else the whole PDF, and takes the first match.
 
     ``page`` is from 1; the last one by default. ``position`` is a corner
     (``"bottom_right"``, ``"bottom_left"``, ``"top_right"``, ``"top_left"``,
@@ -1036,7 +1107,9 @@ def sign(
 
     if width <= 0:
         raise ValueError("width must be positive, not {}".format(width))
-    _check_position(position)
+    _check_near(near, position, side)
+    corner: Position = position if position is not None else "bottom_right"
+    _check_position(corner)
     source, _ = _image_source(image)
     with _cf.owned(source):
         picture = images._io().CGImageSourceCreateImageAtIndex(source, 0, None)
@@ -1046,8 +1119,12 @@ def sign(
     try:
         with _open(path, password) as document:
             count = _count(document)
-            target = count if page is None else page
-            _page(document, target)  # checks the number
+            anchor: Optional[Tuple[float, ...]] = None
+            if near is not None:
+                target, anchor = _find(document, near, page)
+            else:
+                target = count if page is None else page
+                _page(document, target)  # checks the number
             aspect = graphics.CGImageGetHeight(picture) / max(graphics.CGImageGetWidth(picture), 1)
 
             def write(name: str) -> bool:
@@ -1076,7 +1153,10 @@ def sign(
                         )
                         if number == target:
                             size = _objc.CGSize(width, width * aspect)
-                            x, y = _origin(position, size.width, size.height, box.size.width, box.size.height, margin)
+                            if anchor is not None:
+                                x, y = _next_to(anchor, size.width, size.height, side, gap)
+                            else:
+                                x, y = _origin(corner, size.width, size.height, box.size.width, box.size.height, margin)
                             graphics.CGContextDrawImage(context, _objc.CGRect(_objc.CGPoint(x, y), size), picture)
                         graphics.CGContextEndPage(context)
                     graphics.CGPDFContextClose(context)
@@ -1097,8 +1177,11 @@ def add_text(
     text: str,
     output: PathLike,
     *,
-    page: int = 1,
-    position: Position = "top_left",
+    page: Optional[int] = None,
+    position: Optional[Position] = None,
+    near: Optional[str] = None,
+    side: str = "right",
+    gap: float = 6,
     size: float = 12,
     color: str = "#000000",
     font: Optional[str] = None,
@@ -1112,9 +1195,11 @@ def add_text(
 
         macos.pdf.add_text("contract.pdf", "Received on 29/09/2026", "stamped.pdf")            # page 1, top left
         macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", page=2, position=(120, 540), size=14)
+        macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", near="Name:")                  # right after that text
         macos.pdf.add_text("draft.pdf", "Checked\\nby Ana", "notes.pdf", position="top_right", color="#c00000")
 
-    ``position`` works as for :func:`sign`: a corner, ``margin`` points from
+    ``page`` is from 1; the first one by default. ``position``, ``near``,
+    ``side`` and ``gap`` work as for :func:`sign`: a corner, ``margin`` points from
     the edges, or the ``(x, y)`` of the text's bottom-left corner, in points
     from the page's bottom-left. ``size`` is in points; ``font`` a font's
     name, such as ``"Helvetica-Bold"`` (the system font by default); ``color``
@@ -1125,11 +1210,18 @@ def add_text(
         raise ValueError("text must not be empty")
     if size <= 0:
         raise ValueError("size must be positive, not {}".format(size))
-    _check_position(position)
+    _check_near(near, position, side)
+    corner: Position = position if position is not None else "top_left"
+    _check_position(corner)
     red, green, blue = _color(color)
     framework("AppKit")
     with _open(path, password) as document:
-        target = _page(document, page)
+        anchor: Optional[Tuple[float, ...]] = None
+        if near is not None:
+            number, anchor = _find(document, near, page)
+        else:
+            number = 1 if page is None else page
+        target = _page(document, number)
         if font is None:
             typeface = _objc.send(_objc.cls("NSFont"), "systemFontOfSize:", float(size), argtypes=(ctypes.c_double,))
         else:
@@ -1169,7 +1261,10 @@ def add_text(
         # Place it on the page as it's seen: a rotated page's corners aren't its unrotated ones.
         rotation = int(_objc.send(target, "rotation", restype=ctypes.c_long))
         seen = (bounds.size.height, bounds.size.width) if rotation % 180 else (bounds.size.width, bounds.size.height)
-        x, y = _origin(position, width, height, seen[0], seen[1], margin)
+        if anchor is not None:
+            x, y = _next_to(anchor, width, height, side, gap)
+        else:
+            x, y = _origin(corner, width, height, seen[0], seen[1], margin)
         # PDFKit keeps a text box's text upright as the page is seen: give it the box in page coordinates.
         left, bottom, across, up = _unrotated((x, y, width, height), bounds.size.width, bounds.size.height, rotation)
         box = _objc.CGRect(_objc.CGPoint(bounds.origin.x + left, bounds.origin.y + bottom), _objc.CGSize(across, up))
