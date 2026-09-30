@@ -9,14 +9,15 @@ from macos import _media, _objc
 from tests.helpers import WALLPAPER_MOVIE, rgb_png
 
 
-@pytest.fixture
-def movie(tmp_path):
+@pytest.fixture(scope="module")
+def movie(tmp_path_factory):
     """A video wallpaper, or else a short screen recording (CI runners have no video wallpapers)."""
     if WALLPAPER_MOVIE.exists():
         return WALLPAPER_MOVIE
     if not macos.screen.has_permission():
         pytest.skip("no video wallpaper, and no Screen Recording permission to make a video")
-    return macos.screen.record(tmp_path / "screen.mov", 3, region=(0, 0, 320, 200))
+    # Recorded once for the module: each recording is a few seconds, and screencapture has hung on CI.
+    return macos.screen.record(tmp_path_factory.mktemp("movie") / "screen.mov", 3, region=(0, 0, 320, 200))
 
 
 def test_video_info_frame_and_convert(movie, tmp_path):

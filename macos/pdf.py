@@ -26,7 +26,7 @@ from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import _cf, _objc
 from ._objc import BOOL, NSUInteger
@@ -48,6 +48,11 @@ __all__ = [
     "render",
     "from_images",
     "Metadata",
+    "FormField",
+    "form_fields",
+    "fill_form",
+    "sign",
+    "add_text",
 ]
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -817,3 +822,347 @@ def from_images(images: Sequence[Union[PathLike, bytes]], output: PathLike) -> P
     finally:
         for picture, _ in pictures:
             _cf.release(picture)
+
+
+# --- Forms ----------------------------------------------------------------------
+
+_FIELD_KINDS = {"/Tx": "text", "/Ch": "choice", "/Sig": "signature"}
+_BUTTON_KINDS = {0: "button", 1: "radio", 2: "checkbox"}  # PDFWidgetControlType
+
+
+@dataclass(frozen=True)
+class FormField:
+    """A field of a PDF form."""
+
+    name: str
+    kind: str
+    """``'text'``, ``'checkbox'``, ``'radio'``, ``'choice'`` (a list or a menu), ``'button'`` or ``'signature'``."""
+    value: Union[str, bool, None]
+    """The text or choice filled in, whether a checkbox is ticked, the radio button chosen; ``None`` when empty."""
+    options: Tuple[str, ...]
+    """What a choice or a group of radio buttons offers; ``()`` for the others."""
+    page: int
+    """The page it's on, from 1."""
+
+
+def _widgets(document: int) -> Iterator[Tuple[int, int]]:
+    """``(page number, widget annotation)`` for every form field's widget, in page order."""
+    for number in range(1, _count(document) + 1):
+        page = _page(document, number)
+        for annotation in _objc.nsarray(_objc.send(page, "annotations")):
+            kind = _objc.pystring(_objc.send(annotation, "type")) or ""
+            name = _objc.pystring(_objc.send(annotation, "fieldName"))
+            if kind == "Widget" and name:
+                yield number, annotation
+
+
+def _kind(widget: int) -> str:
+    field_type = _objc.pystring(_objc.send(widget, "widgetFieldType")) or ""
+    if field_type == "/Btn":
+        return _BUTTON_KINDS.get(int(_objc.send(widget, "widgetControlType", restype=ctypes.c_long)), "button")
+    return _FIELD_KINDS.get(field_type, "text")
+
+
+def _state(widget: int) -> bool:
+    return bool(_objc.send(widget, "buttonWidgetState", restype=ctypes.c_long))
+
+
+def _on_value(widget: int) -> str:
+    """The value a radio button stands for (its "on" state's name)."""
+    return _objc.pystring(_objc.send(widget, "buttonWidgetStateString")) or ""
+
+
+def form_fields(path: PathLike, *, password: Optional[str] = None) -> List[FormField]:
+    """
+    The fields of a PDF form, in page order, with what's filled in.
+
+    ::
+
+        for field in macos.pdf.form_fields("application.pdf"):
+            print(field.name, field.kind, field.value)   # "Full name" text None, "Agree" checkbox False, ...
+
+    Fill them with :func:`fill_form`.
+    """
+    fields: Dict[str, FormField] = {}
+    with _open(path, password) as document:
+        for number, widget in _widgets(document):
+            name = _objc.pystring(_objc.send(widget, "fieldName")) or ""
+            kind = _kind(widget)
+            if kind == "radio":
+                # The buttons of a group share its name: the field's value is the one chosen.
+                known = fields.get(name)
+                group = (known.options if known else ()) + (_on_value(widget),)
+                chosen = _on_value(widget) if _state(widget) else (known.value if known else None)
+                fields[name] = FormField(name, kind, chosen, group, known.page if known else number)
+                continue
+            if name in fields:
+                continue  # the same field shown again, on another page
+            if kind == "checkbox":
+                value: Union[str, bool, None] = _state(widget)
+            elif kind in ("button", "signature"):
+                value = None
+            else:
+                value = _objc.pystring(_objc.send(widget, "widgetStringValue")) or None
+            options: Tuple[str, ...] = ()
+            if kind == "choice":
+                options = tuple(_objc.pystring(item) or "" for item in _objc.nsarray(_objc.send(widget, "choices")))
+            fields[name] = FormField(name, kind, value, options, number)
+    return list(fields.values())
+
+
+def fill_form(
+    path: PathLike,
+    values: Mapping[str, Union[str, bool]],
+    output: PathLike,
+    *,
+    password: Optional[str] = None,
+) -> Path:
+    """
+    Fill in a PDF form's fields by name, and save it to ``output``; the fields stay editable.
+
+    ::
+
+        macos.pdf.fill_form("application.pdf", {"Full name": "Ana Souza", "Agree": True, "Plan": "Pro"}, "filled.pdf")
+
+    Text fields and choices take text; checkboxes ``True`` or ``False``; a
+    group of radio buttons the option to choose. The names are those
+    :func:`form_fields` gives; an unknown one, or an option a field doesn't
+    offer, raises :class:`ValueError` before anything is written.
+    """
+    known = {field.name: field for field in form_fields(path, password=password)}
+    for name, value in values.items():
+        field = known.get(name)
+        if field is None:
+            raise ValueError("the form has no field named {!r}; see macos.pdf.form_fields()".format(name))
+        if field.kind == "checkbox" and not isinstance(value, bool):
+            raise ValueError("{!r} is a checkbox: pass True or False, not {!r}".format(name, value))
+        if field.kind in ("text", "choice", "radio") and not isinstance(value, str):
+            raise ValueError("{!r} takes text, not {!r}".format(name, value))
+        if field.kind in ("radio", "choice") and field.options and value not in field.options:
+            raise ValueError("{!r} offers {}, not {!r}".format(name, ", ".join(field.options), value))
+        if field.kind in ("button", "signature"):
+            raise ValueError("{!r} is a {} field: it can't be filled in".format(name, field.kind))
+    with _open(path, password) as document:
+        for _, widget in _widgets(document):
+            name = _objc.pystring(_objc.send(widget, "fieldName")) or ""
+            if name not in values:
+                continue
+            value, kind = values[name], known[name].kind
+            if kind == "checkbox":
+                _objc.send(widget, "setButtonWidgetState:", 1 if value else 0, argtypes=(ctypes.c_long,), restype=None)
+            elif kind == "radio":
+                chosen = 1 if _on_value(widget) == value else 0
+                _objc.send(widget, "setButtonWidgetState:", chosen, argtypes=(ctypes.c_long,), restype=None)
+            else:
+                _objc.send(widget, "setWidgetStringValue:", _objc.nsstring(str(value)), argtypes=(_objc.id,), restype=None)
+        return _save(document, output)
+
+
+# --- Signing --------------------------------------------------------------------
+
+_CORNERS = ("bottom_right", "bottom_left", "top_right", "top_left")
+Position = Union[str, Tuple[float, float]]
+
+
+def _check_position(position: Position) -> None:
+    if isinstance(position, str) and position not in _CORNERS:
+        raise ValueError("position must be one of {} or (x, y), not {!r}".format(", ".join(_CORNERS), position))
+
+
+def _origin(
+    position: Position, width: float, height: float, page_width: float, page_height: float, margin: float
+) -> Tuple[float, float]:
+    """Where a box of ``width`` × ``height`` goes: its bottom-left corner, in points from the page's bottom-left."""
+    if isinstance(position, tuple):
+        return float(position[0]), float(position[1])
+    x = margin if position.endswith("left") else page_width - margin - width
+    y = margin if position.startswith("bottom") else page_height - margin - height
+    return x, y
+
+
+def sign(
+    path: PathLike,
+    image: PathLike,
+    output: PathLike,
+    *,
+    page: Optional[int] = None,
+    position: Position = "bottom_right",
+    width: float = 150,
+    margin: float = 36,
+    password: Optional[str] = None,
+) -> Path:
+    """
+    Put an image of a signature (or a stamp, a logo) on a page, and save the result to ``output``.
+
+    ::
+
+        macos.pdf.sign("contract.pdf", "signature.png", "signed.pdf")                   # last page, bottom right
+        macos.pdf.sign("form.pdf", "signature.png", "signed.pdf", page=1, position=(72, 120), width=180)
+
+    ``page`` is from 1; the last one by default. ``position`` is a corner
+    (``"bottom_right"``, ``"bottom_left"``, ``"top_right"``, ``"top_left"``,
+    ``margin`` points from the edges) or the ``(x, y)`` of the image's
+    bottom-left corner, in points from the page's bottom-left. ``width`` is
+    in points (72 per inch); the height keeps the image's proportions. A PNG
+    with a transparent background looks best.
+
+    It's an image, not a cryptographic signature. The pages are redrawn
+    as they look, filled-in form fields included, so they're no longer
+    editable, and links go: fill the form first, with :func:`fill_form`.
+    """
+    from . import image as images
+
+    if width <= 0:
+        raise ValueError("width must be positive, not {}".format(width))
+    _check_position(position)
+    source, _ = _image_source(image)
+    with _cf.owned(source):
+        picture = images._io().CGImageSourceCreateImageAtIndex(source, 0, None)
+    if not picture:
+        raise ValueError("{} is not an image macOS can read".format(image))
+    graphics = _graphics()
+    try:
+        with _open(path, password) as document:
+            count = _count(document)
+            target = count if page is None else page
+            _page(document, target)  # checks the number
+            aspect = graphics.CGImageGetHeight(picture) / max(graphics.CGImageGetWidth(picture), 1)
+
+            def write(name: str) -> bool:
+                with _cf.owned(_cf.file_url(name)) as url:
+                    context = graphics.CGPDFContextCreateWithURL(url, None, None)
+                if not context:
+                    return False
+                try:
+                    for number in range(1, count + 1):
+                        current = _page(document, number)
+                        bounds = _objc.send(
+                            current, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect
+                        )
+                        if _objc.send(current, "rotation", restype=ctypes.c_long) % 180:
+                            bounds = _objc.CGRect(bounds.origin, _objc.CGSize(bounds.size.height, bounds.size.width))
+                        box = _objc.CGRect(_objc.CGPoint(0, 0), bounds.size)
+                        graphics.CGContextBeginPage(context, ctypes.byref(box))
+                        # PDFKit draws the page as it looks, rotation and form fields included.
+                        _objc.send(
+                            current,
+                            "drawWithBox:toContext:",
+                            _MEDIA_BOX,
+                            context,
+                            argtypes=(ctypes.c_long, _objc.id),
+                            restype=None,
+                        )
+                        if number == target:
+                            size = _objc.CGSize(width, width * aspect)
+                            x, y = _origin(position, size.width, size.height, box.size.width, box.size.height, margin)
+                            graphics.CGContextDrawImage(context, _objc.CGRect(_objc.CGPoint(x, y), size), picture)
+                        graphics.CGContextEndPage(context)
+                    graphics.CGPDFContextClose(context)
+                finally:
+                    graphics.CGContextRelease(context)
+                return True
+
+            return _write_atomically(output, write)
+    finally:
+        _cf.release(picture)
+
+
+# --- Adding text --------------------------------------------------------------
+
+
+def add_text(
+    path: PathLike,
+    text: str,
+    output: PathLike,
+    *,
+    page: int = 1,
+    position: Position = "top_left",
+    size: float = 12,
+    color: str = "#000000",
+    font: Optional[str] = None,
+    margin: float = 36,
+    password: Optional[str] = None,
+) -> Path:
+    """
+    Write ``text`` on a page, as a text box you can still edit or move in Preview, and save the result to ``output``.
+
+    ::
+
+        macos.pdf.add_text("contract.pdf", "Received on 29/09/2026", "stamped.pdf")            # page 1, top left
+        macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", page=2, position=(120, 540), size=14)
+        macos.pdf.add_text("draft.pdf", "Checked\\nby Ana", "notes.pdf", position="top_right", color="#c00000")
+
+    ``position`` works as for :func:`sign`: a corner, ``margin`` points from
+    the edges, or the ``(x, y)`` of the text's bottom-left corner, in points
+    from the page's bottom-left. ``size`` is in points; ``font`` a font's
+    name, such as ``"Helvetica-Bold"`` (the system font by default); ``color``
+    a hex color. Lines break at ``\\n``. The page's own text is left as it
+    is: this adds to it.
+    """
+    if not text.strip():
+        raise ValueError("text must not be empty")
+    if size <= 0:
+        raise ValueError("size must be positive, not {}".format(size))
+    _check_position(position)
+    red, green, blue = _color(color)
+    framework("AppKit")
+    with _open(path, password) as document:
+        target = _page(document, page)
+        if font is None:
+            typeface = _objc.send(_objc.cls("NSFont"), "systemFontOfSize:", float(size), argtypes=(ctypes.c_double,))
+        else:
+            typeface = _objc.send(
+                _objc.cls("NSFont"), "fontWithName:size:", _objc.nsstring(font), float(size), argtypes=(_objc.id, ctypes.c_double)
+            )
+            if not typeface:
+                raise ValueError("no font is named {!r}; see macos.system.fonts()".format(font))
+        ink = _objc.send(
+            _objc.cls("NSColor"),
+            "colorWithSRGBRed:green:blue:alpha:",
+            red,
+            green,
+            blue,
+            1.0,
+            argtypes=(ctypes.c_double,) * 4,
+        )
+        # Measure the text as it will be drawn, to size the box around it.
+        attributes = _objc.send(
+            _objc.cls("NSDictionary"),
+            "dictionaryWithObject:forKey:",
+            typeface,
+            _objc.nsstring("NSFont"),
+            argtypes=(_objc.id, _objc.id),
+        )
+        measured = _objc.send(
+            _objc.send(_objc.cls("NSAttributedString"), "alloc"),
+            "initWithString:attributes:",
+            _objc.nsstring(text),
+            attributes,
+            argtypes=(_objc.id, _objc.id),
+        )
+        _objc.send(measured, "autorelease")
+        extent = _objc.send(measured, "size", restype=_objc.CGSize)
+        width, height = extent.width + 8, extent.height + 4  # a little room: FreeText boxes pad their text
+        bounds = _objc.send(target, "boundsForBox:", _MEDIA_BOX, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+        x, y = _origin(position, width, height, bounds.size.width, bounds.size.height, margin)
+        box = _objc.CGRect(_objc.CGPoint(bounds.origin.x + x, bounds.origin.y + y), _objc.CGSize(width, height))
+        note = _objc.send(
+            _objc.send(_objc.cls("PDFAnnotation"), "alloc"),
+            "initWithBounds:forType:withProperties:",
+            box,
+            _objc.nsstring("FreeText"),
+            None,
+            argtypes=(_objc.CGRect, _objc.id, _objc.id),
+        )
+        _objc.send(note, "autorelease")
+        _objc.send(note, "setContents:", _objc.nsstring(text), argtypes=(_objc.id,), restype=None)
+        _objc.send(note, "setFont:", typeface, argtypes=(_objc.id,), restype=None)
+        _objc.send(note, "setFontColor:", ink, argtypes=(_objc.id,), restype=None)
+        clear = _objc.send(_objc.cls("NSColor"), "clearColor")
+        _objc.send(note, "setColor:", clear, argtypes=(_objc.id,), restype=None)  # no background
+        border = _objc.send(_objc.send(_objc.cls("PDFBorder"), "alloc"), "init")
+        _objc.send(border, "autorelease")
+        _objc.send(border, "setLineWidth:", 0.0, argtypes=(ctypes.c_double,), restype=None)
+        _objc.send(note, "setBorder:", border, argtypes=(_objc.id,), restype=None)
+        _objc.send(target, "addAnnotation:", note, argtypes=(_objc.id,), restype=None)
+        return _save(document, output)

@@ -42,3 +42,49 @@ CAPTURE = pytest.mark.skipif(
     not os.environ.get("PYMACOS_CAPTURE_TESTS"),
     reason="turns the camera or the microphone on: set PYMACOS_CAPTURE_TESTS=1 to run",
 )
+
+
+def pdf_form(path):
+    """Write a one-page PDF form to ``path``: a text field, a checkbox, a choice and two radio buttons."""
+    import ctypes
+
+    from macos import _objc, pdf
+    from macos._objc import CGPoint, CGRect, CGSize
+
+    blank = str(path) + ".png"
+    with open(blank, "wb") as file:
+        file.write(small_png(612, 792))
+    pdf.from_images([blank], path)
+    with pdf._open(path) as document:
+        page = pdf._page(document, 1)
+
+        def widget(name, field_type, x, y, control=None, on=None, choices=None):
+            annotation = _objc.send(
+                _objc.send(_objc.cls("PDFAnnotation"), "alloc"),
+                "initWithBounds:forType:withProperties:",
+                CGRect(CGPoint(x, y), CGSize(160, 24)),
+                _objc.nsstring("Widget"),
+                None,
+                argtypes=(CGRect, _objc.id, _objc.id),
+            )
+            _objc.send(annotation, "setWidgetFieldType:", _objc.nsstring(field_type), argtypes=(_objc.id,), restype=None)
+            if control is not None:
+                _objc.send(annotation, "setWidgetControlType:", control, argtypes=(ctypes.c_long,), restype=None)
+            if on is not None:
+                _objc.send(annotation, "setButtonWidgetStateString:", _objc.nsstring(on), argtypes=(_objc.id,), restype=None)
+            if choices is not None:
+                array = _objc.send(_objc.cls("NSMutableArray"), "array")
+                for choice in choices:
+                    _objc.send(array, "addObject:", _objc.nsstring(choice), argtypes=(_objc.id,), restype=None)
+                _objc.send(annotation, "setChoices:", array, argtypes=(_objc.id,), restype=None)
+            _objc.send(annotation, "setFieldName:", _objc.nsstring(name), argtypes=(_objc.id,), restype=None)
+            _objc.send(page, "addAnnotation:", annotation, argtypes=(_objc.id,), restype=None)
+            _objc.send(annotation, "release", restype=None)
+
+        widget("Full name", "/Tx", 72, 700)
+        widget("Agree", "/Btn", 72, 650, control=2)
+        widget("Plan", "/Ch", 72, 600, choices=["Free", "Pro"])
+        widget("Size", "/Btn", 72, 550, control=1, on="Small")
+        widget("Size", "/Btn", 250, 550, control=1, on="Large")
+        pdf._save(document, path)
+    return path

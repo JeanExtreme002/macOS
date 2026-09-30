@@ -15,16 +15,26 @@ the Location permission.
 """
 
 import ctypes
+import json
 import re
 import socket
+from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from . import _cf
-from ._system import framework, run as _run
-from .errors import CommandError, NotSupportedError
+from ._system import framework, require_macos, run as _run
+from .errors import CommandError, MacOSError, NotSupportedError
 
-__all__ = ["is_online", "ip", "interface", "wifi_power", "set_wifi_power"]
+__all__ = [
+    "is_online",
+    "ip",
+    "interface",
+    "wifi_power",
+    "set_wifi_power",
+    "SpeedTest",
+    "speed_test",
+]
 
 _REACHABLE = 1 << 1  # kSCNetworkReachabilityFlagsReachable
 _CONNECTION_REQUIRED = 1 << 2  # kSCNetworkReachabilityFlagsConnectionRequired
@@ -110,3 +120,67 @@ def wifi_power() -> bool:
 def set_wifi_power(on: bool) -> None:
     """Turn Wi-Fi on or off, like the switch in Control Center."""
     _run(["networksetup", "-setairportpower", _wifi_device(), "on" if on else "off"])
+
+
+# --- Speed test -------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SpeedTest:
+    """How fast the internet connection is, as :func:`speed_test` measured it."""
+
+    download: float
+    """In megabits per second, as internet plans are sold."""
+    upload: float
+    latency: Optional[float]
+    """Round trip to the test server when idle, in milliseconds."""
+    loaded_latency: Optional[float]
+    """Round trip while the connection is busy, in milliseconds: how laggy calls and games get under load."""
+    responsiveness: Optional[float]
+    """The same under load as a score, in round trips per minute (RPM): the higher, the better."""
+    interface: Optional[str]
+    """The network interface measured, such as ``'en0'``."""
+    server: Optional[str]
+    """Apple's test server that answered."""
+
+
+def _speed(result: Dict[str, Any]) -> SpeedTest:
+    def megabits(key: str) -> float:
+        return round(float(result.get(key) or 0) / 1e6, 2)
+
+    idle = result.get("base_rtt")
+    # "responsiveness" is a score in round trips per minute, not a time: 60,000 ms / RPM.
+    rpm = float(result["responsiveness"]) if result.get("responsiveness") else None
+    return SpeedTest(
+        download=megabits("dl_throughput"),  # bits per second, as its text summary's Mbps show
+        upload=megabits("ul_throughput"),
+        latency=round(float(idle), 1) if idle is not None else None,
+        loaded_latency=round(60000 / rpm, 1) if rpm else None,
+        responsiveness=round(rpm, 1) if rpm else None,
+        interface=result.get("interface_name"),
+        server=result.get("test_endpoint"),
+    )
+
+
+def speed_test(*, sequential: bool = False) -> SpeedTest:
+    """
+    Measure the internet connection's download and upload speed, and its latency, against Apple's servers.
+
+    ::
+
+        result = macos.network.speed_test()
+        result.download, result.upload   # (43.61, 39.42): megabits per second
+        result.latency                   # 54.6 ms, idle
+        result.loaded_latency            # 1126.6 ms while busy: calls lag
+
+    It takes 15 to 60 seconds and moves a few hundred megabytes: mind a
+    metered connection. ``sequential=True`` measures download and upload
+    one after the other instead of together, which reads each more exactly.
+    Goes through ``networkQuality``, which comes with macOS.
+    """
+    require_macos()
+    output = _run(["networkQuality", "-c", *(["-s"] if sequential else [])])
+    try:
+        return _speed(json.loads(output))
+    except ValueError:
+        raise MacOSError("networkQuality gave an answer that isn't JSON: {!r}".format(output[:200])) from None

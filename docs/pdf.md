@@ -154,6 +154,58 @@ macos.pdf.encrypt("statement.pdf", "locked.pdf", "1234")
 macos.pdf.encrypt("locked.pdf", "relocked.pdf", "new-pass", current_password="1234")
 ```
 
+## Forms
+
+{func}`~macos.pdf.form_fields` lists a PDF form's fields and what's filled
+in, and {func}`~macos.pdf.fill_form` fills them in by name; the fields stay
+editable:
+
+```python
+for field in macos.pdf.form_fields("application.pdf"):
+    print(field.name, field.kind, field.value)   # Full name text None
+
+macos.pdf.fill_form("application.pdf", {"Full name": "Ana Souza", "Agree": True, "Plan": "Pro"}, "filled.pdf")
+```
+
+Text fields and choices take text; checkboxes `True` or `False`; a group of
+radio buttons the option to choose. An unknown name, or an option a field
+doesn't offer, raises `ValueError` before anything is written.
+
+## Signing
+
+{func}`~macos.pdf.sign` puts an image of a signature (or a stamp, a logo) on
+a page, the last one by default:
+
+```python
+macos.pdf.sign("filled.pdf", "signature.png", "signed.pdf")                     # bottom right
+macos.pdf.sign("filled.pdf", "signature.png", "signed.pdf", page=1, position=(72, 120), width=180)
+```
+
+`position` is a corner (`"bottom_right"`, `"bottom_left"`, `"top_right"`,
+`"top_left"`) or the `(x, y)` of the image's bottom-left corner, in points
+from the page's bottom-left; `width` is in points (72 per inch). A PNG
+with a transparent background looks best.
+
+It's an image, not a cryptographic signature. The pages are redrawn as
+they look, filled-in fields included, so they're no longer editable:
+fill the form first.
+
+## Adding text
+
+{func}`~macos.pdf.add_text` writes text on a page, as a text box you can still
+edit or move in Preview:
+
+```python
+macos.pdf.add_text("contract.pdf", "Received on 29/09/2026", "stamped.pdf")      # page 1, top left
+macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", page=2, position=(120, 540), size=14)
+macos.pdf.add_text("draft.pdf", "Checked\nby Ana", "notes.pdf", position="top_right", color="#c00000")
+```
+
+`position` works as for {func}`~macos.pdf.sign`: a corner, or the `(x, y)` of
+the text's bottom-left corner in points from the page's bottom-left.
+`size` is in points; `font` a font's name, such as `"Helvetica-Bold"`;
+`color` a hex color. It adds to the page: its own text can't be edited.
+
 ## Reference
 
 - {func}`macos.pdf.page_count`
@@ -170,3 +222,8 @@ macos.pdf.encrypt("locked.pdf", "relocked.pdf", "new-pass", current_password="12
 - {func}`macos.pdf.from_images`
 - {class}`macos.pdf.Metadata`
 - {func}`macos.pdf.ocr`
+- {class}`macos.pdf.FormField`
+- {func}`macos.pdf.form_fields`
+- {func}`macos.pdf.fill_form`
+- {func}`macos.pdf.sign`
+- {func}`macos.pdf.add_text`
