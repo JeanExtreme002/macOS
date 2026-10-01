@@ -1,5 +1,5 @@
 # Codecov is used for *visibility* only: the enforced coverage gate lives in
-# CI as pytest's `--cov-fail-under` (see .github/workflows/python-package.yml),
+# CI as pytest's `--cov-fail-under` (see .github/workflows/test.yml),
 # which is deterministic and needs no external service. Marking Codecov's status
 # checks informational keeps a flaky upload or a transient dip from blocking the
 # merge button while still showing the trend and per-PR diff coverage.

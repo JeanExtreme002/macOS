@@ -23,9 +23,12 @@ Control your whole Mac from Python: apps, notifications, input, screen, camera, 
     <tr>
         <th>tests</th>
         <td>
-            <a href="https://github.com/JeanExtreme002/pymacos/actions/workflows/python-package.yml"><img
-                alt="GitHub Actions build status (lint, tests on macOS and Linux, docs)"
-                src="https://github.com/JeanExtreme002/pymacos/actions/workflows/python-package.yml/badge.svg"></a>
+            <a href="https://github.com/JeanExtreme002/pymacos/actions/workflows/lint.yml"><img
+                alt="GitHub Actions build status (Lint)"
+                src="https://github.com/JeanExtreme002/pymacos/actions/workflows/lint.yml/badge.svg"></a>
+            <a href="https://github.com/JeanExtreme002/pymacos/actions/workflows/test.yml"><img
+                alt="GitHub Actions build status (Test on macOS and Linux)"
+                src="https://github.com/JeanExtreme002/pymacos/actions/workflows/test.yml/badge.svg"></a>
             <a href="https://app.codecov.io/gh/JeanExtreme002/pymacos"><img
                 alt="Code coverage"
                 src="https://codecov.io/gh/JeanExtreme002/pymacos/branch/main/graph/badge.svg"></a>
