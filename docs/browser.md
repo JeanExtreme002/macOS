@@ -14,8 +14,9 @@ macos.browser.open("https://macos.readthedocs.io")
 ```
 
 The first time, macOS asks whether the app running Python may control the
-browser ([Automation](permissions.md#automation)). Firefox and Arc can't be
-scripted this way: they raise {class}`~macos.NotSupportedError`.
+browser ([Automation](permissions.md#automation)). Firefox, Arc, Opera and
+a few others can't be scripted this way: naming one with `app=` raises
+{class}`~macos.NotSupportedError`, and by default they're passed over.
 
 ## Tabs
 
@@ -58,7 +59,8 @@ when none is running.
 ## Running JavaScript
 
 {func}`~macos.browser.run_js` runs JavaScript in the current tab and returns
-its result as text:
+its result as text (`None` for `undefined`). With no browser running, it raises
+{class}`~macos.MacOSError`:
 
 ```python
 macos.browser.run_js("document.title")

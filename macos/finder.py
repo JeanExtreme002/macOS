@@ -1069,10 +1069,14 @@ def set_desktop_view(
         macos.finder.set_desktop_view(icon_size=48, grid_spacing=30, sort="kind")
 
     ``icon_size`` is from 16 to 128 points, ``grid_spacing`` from 1 to 100,
-    ``text_size`` from 10 to 16. ``sort`` keeps them in order:
+    and ``text_size``, the size of the names under the icons, from 10 to 16
+    points. ``sort`` keeps them in order:
     ``"snap_to_grid"``, ``"name"``, ``"kind"``, ``"date_added"``,
     ``"date_modified"``, ``"date_created"``, ``"date_last_opened"``,
-    ``"size"``, ``"tags"``, or ``None`` to place them freely. Relaunches Finder.
+    ``"size"``, ``"tags"``, or ``None`` to place them freely.
+    ``show_item_info`` adds a line under each name (a disk's free space, a
+    folder's item count, an image's size), and ``labels_on_bottom=False``
+    puts the names to the right of the icons instead of below. Relaunches Finder.
     """
     from . import defaults
 

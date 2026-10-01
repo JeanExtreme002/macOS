@@ -29,12 +29,15 @@ have no volume control of their own. For them, {func}`~macos.volume.get` and
 
 ```python
 level = macos.volume.get()
-macos.volume.set(10)
 
-try:
+if level is None:   # a device without volume control
     macos.say("Quiet announcement")
-finally:
-    macos.volume.set(level)
+else:
+    macos.volume.set(10)
+    try:
+        macos.say("Quiet announcement")
+    finally:
+        macos.volume.set(level)
 ```
 
 ## Reference

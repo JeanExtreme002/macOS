@@ -37,7 +37,7 @@ Tags show up in Finder's sidebar and are searchable in Spotlight. Finder's
 default tags are named after colors (`"Red"`, `"Orange"`, `"Yellow"`,
 `"Green"`, `"Blue"`, `"Purple"`, `"Gray"`).
 
-All functions raise `FileNotFoundError` when the path doesn't exist.
+The tag functions raise `FileNotFoundError` when the path doesn't exist.
 
 ## Aliases
 
@@ -62,6 +62,8 @@ every path. It raises `FileNotFoundError` when the original was deleted.
 macos.finder.make_alias("report.pdf")                 # report.pdf alias
 macos.finder.make_alias("report.pdf", "~/Desktop")    # ~/Desktop/report.pdf alias
 ```
+
+It raises `FileExistsError` when something already has the alias's path.
 
 ## Thumbnails
 
@@ -101,7 +103,9 @@ event = macos.finder.wait_for_change("~/Downloads", timeout=60)
 ```
 
 It uses FSEvents, like Spotlight and Time Machine. Paths come with symbolic
-links resolved (`/private/tmp/...` for `/tmp/...`).
+links resolved (`/private/tmp/...` for `/tmp/...`). No permission is needed,
+except that the Desktop, Documents and Downloads folders ask for access the
+first time, like any access to them.
 
 ## The selection
 
@@ -167,12 +171,14 @@ for path, size in macos.finder.largest("~", count=10):
 ```
 
 Files under `at_least` bytes (1 MB) are left out. Folders Spotlight doesn't
-index, such as hidden ones or `~/Library`, are walked instead, which is slower.
+index, hidden ones and `~/Library`, are walked instead, which is slower, when
+they're the folder or right under it; hidden folders deeper in (a project's
+`.git`) aren't searched.
 
 ## Finder settings
 
 The settings people change most, each with its reader: they apply at once, as
-Finder is relaunched.
+Finder is relaunched ({func}`~macos.finder.restart` relaunches it yourself).
 
 | Read | Change | Shows |
 |---|---|---|
@@ -225,9 +231,13 @@ macos.finder.set_desktop_view(icon_size=48, grid_spacing=30, sort="kind")
 macos.finder.desktop_view()   # {'icon_size': 48, 'grid_spacing': 30, 'sort': 'kind', ...}
 ```
 
-`sort` keeps the icons in order (`"snap_to_grid"`, `"name"`, `"kind"`,
-`"date_added"`, `"date_modified"`, `"size"`, `"tags"`...), or `None` lets
-them be placed freely.
+`icon_size` is from 16 to 128 points, `grid_spacing` from 1 to 100, and
+`text_size`, the size of the names, from 10 to 16. `sort` keeps the icons in
+order (`"snap_to_grid"`, `"name"`, `"kind"`, `"date_added"`,
+`"date_modified"`, `"size"`, `"tags"`...), or `None` lets them be placed
+freely. `show_item_info=True` adds a line under each name (a disk's free
+space, a folder's item count), and `labels_on_bottom=False` puts the names to
+the right of the icons.
 
 ## Reference
 

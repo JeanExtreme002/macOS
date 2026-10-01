@@ -167,6 +167,8 @@ def geocode(address: str, *, timeout: float = 15) -> List[Place]:
     Any address works, whole or in part, in any language; names come back
     in the system's language. The service guesses rather than give up, so
     check the place's ``country_code`` or ``city`` for vague addresses.
+    Raises :class:`TimeoutError` if the service doesn't answer within
+    ``timeout`` seconds.
     """
     if not address.strip():
         raise ValueError("address must not be empty")
@@ -179,7 +181,8 @@ def reverse_geocode(latitude: float, longitude: float, *, timeout: float = 15) -
     """
     The address at ``latitude``, ``longitude``, or ``None`` when macOS finds nothing there.
 
-    Out at sea it's the ocean's name, without an address.
+    Out at sea it's the ocean's name, without an address. ``timeout`` works
+    as in :func:`geocode`.
 
     ::
 

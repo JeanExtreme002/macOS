@@ -195,7 +195,8 @@ match; `side` is `"right"` (the default), `"left"`, `"above"` or `"below"`,
 and `gap` the room between them, in points.
 
 Without `near`, `position` is a corner (`"bottom_right"`, `"bottom_left"`,
-`"top_right"`, `"top_left"`) or the `(x, y)` of the image's bottom-left
+`"top_right"`, `"top_left"`, `margin` points from the edges, 36 by default)
+or the `(x, y)` of the image's bottom-left
 corner, in points from the page's bottom-left (72 points make an inch,
 2.54 cm). `width` is in points too. A PNG with a transparent background
 looks best.
@@ -252,8 +253,9 @@ An empty list takes the table of contents away.
 macos.pdf.images("brochure.pdf", "brochure-images")   # [PosixPath('brochure-images/page1-1.jpg'), ...]
 ```
 
-JPEG pictures are saved as they're embedded, without compressing them
-again; the others become PNG (or TIFF, for CMYK). A picture used on several
+`pages` keeps only some pages' pictures (numbered from 1). JPEG (and JPEG
+2000) pictures are saved as they're embedded, without compressing them again;
+the others become PNG (or TIFF, for CMYK). A picture used on several
 pages is saved once, and rare encodings (indexed colors, 1-bit masks) are
 skipped. To save whole pages as images, see {func}`~macos.pdf.render`.
 

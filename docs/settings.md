@@ -15,9 +15,10 @@ macos.settings.apply(json.load(open("my-mac.json")))
 
 ## Exporting
 
-{func}`~macos.settings.export` reads the keyboard, trackpad, mouse, Dock,
-Finder, windows, appearance, screenshots, sounds and system settings this
-package knows, by section:
+{func}`~macos.settings.export` reads the settings this package knows, by
+section: `keyboard`, `trackpad`, `mouse`, `dock`, `finder`,
+`windows`, `appearance`, `screen` (screenshots, screen saver and Night Shift),
+`sound` and `system`:
 
 ```text
 {
@@ -44,7 +45,8 @@ macos.settings.apply({"dock": {"autohide": True, "size": 48}, "finder": {"show_e
 
 It only changes the settings that differ, restarts the Dock and Finder once
 at the end, and returns the names of those it changed. An unknown name
-raises `ValueError` before anything changes. Some settings wait for the
+raises `ValueError` before anything changes; settings this Mac doesn't have are
+skipped. Some settings wait for the
 next login, as their own pages say.
 
 ## Reference

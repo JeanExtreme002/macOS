@@ -74,8 +74,10 @@ counts it:
 ```python
 macos.system.cpu_usage()            # 0.23
 memory = macos.system.memory_usage()
-print(memory.percent, memory.used // 2**30, "GB used of", memory.total // 2**30)
+print("{:.0%} used:".format(memory.percent), memory.used // 2**30, "GB of", memory.total // 2**30)
 ```
+
+`percent` is a fraction, from 0.0 to 1.0, like {func}`~macos.system.cpu_usage`.
 
 ## Fonts
 
@@ -90,7 +92,7 @@ font = "Avenir" if "Avenir" in families else "Helvetica"
 ## Heat and lid
 
 ```python
-macos.system.thermal_state()   # 'nominal', 'fair', 'serious' or 'critical'
+macos.system.thermal_state()   # 'nominal', 'fair', 'serious' or 'critical' ('unknown' if macOS adds a state)
 macos.system.lid_closed()      # True in clamshell mode
 ```
 
@@ -154,6 +156,8 @@ run_heavy_job()
 macos.system.wait_for_activity()
 macos.say("Welcome back")
 ```
+
+Both wait as long as it takes, or return `False` once `timeout` seconds pass.
 
 ## System settings
 
@@ -257,8 +261,9 @@ if owner:
     owner.kill()   # free the port
 ```
 
-Like `lsof -i` without `sudo`, other users' processes, the system's
-included, are left out.
+{func}`~macos.system.port_owner` looks at TCP ports, or UDP ones with
+`protocol="udp"`. Like `lsof -i` without `sudo`, other users' processes,
+the system's included, are left out.
 
 {func}`~macos.system.connections` lists the connections in progress: which
 address and port each process is talking to. Servers waiting for
@@ -340,7 +345,9 @@ for entry in macos.system.logs(process="Safari", level="error", last="1h"):
 Crash reports keep each report's `path`, to read it whole or send it to the
 app's developers. The log is large, thousands of messages a minute: filter
 it by `process`, `subsystem`, text (`contains`) or `level`, and `limit`
-stops at that many messages (1000 by default). Some messages hide private
+stops at that many messages (1000 by default). `last` is how far back it
+reads: the last 10 minutes by default, or `"30s"`, `"2h"`, `"1d"` or a
+{class}`~datetime.timedelta`. Some messages hide private
 data as `<private>`.
 
 ## Startup items and USB devices
@@ -360,7 +367,8 @@ It leaves out Apple's own, in `/System`. For the apps opened at login, see
 {func}`macos.apps.login_items`.
 
 {func}`~macos.system.usb_devices` lists the devices connected over USB, with
-their maker, IDs and speed (`"high"` is USB 2, `"super"` USB 3):
+their maker, IDs and speed (`"low"` and `"full"` are USB 1, `"high"` USB 2,
+`"super"` and `"super_plus"` USB 3):
 
 ```python
 [(device.name, device.speed) for device in macos.system.usb_devices()]   # [('Portable SSD T7', 'super')]

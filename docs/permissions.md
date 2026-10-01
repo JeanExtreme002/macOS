@@ -10,7 +10,7 @@ itself, so a script can work in one terminal and not in another.
 | {func}`macos.notify` | Notifications for *Script Editor* | System Settings › Notifications › Script Editor |
 | {mod}`macos.keyboard` typing and keys, {mod}`macos.mouse` moving, clicking and scrolling | Accessibility | System Settings › Privacy & Security › Accessibility |
 | {func}`macos.camera.photo`, {func}`macos.camera.record` | Camera (asked the first time) | System Settings › Privacy & Security › Camera |
-| {func}`macos.audio.record`, {func}`~macos.audio.input_level`, videos with sound | Microphone (asked the first time) | System Settings › Privacy & Security › Microphone |
+| {func}`macos.audio.record`, {func}`~macos.audio.record_until_silence`, {func}`~macos.audio.input_level`, videos with sound | Microphone (asked the first time) | System Settings › Privacy & Security › Microphone |
 | {mod}`macos.windows` | Accessibility | System Settings › Privacy & Security › Accessibility |
 | {mod}`macos.hotkeys` | Input Monitoring, and Accessibility to keep shortcuts from the app in front | System Settings › Privacy & Security › Input Monitoring |
 | {func}`macos.screen.record` | Screen Recording (and Microphone with `audio=True`) | System Settings › Privacy & Security › Screen & System Audio Recording |
@@ -22,11 +22,12 @@ itself, so a script can work in one terminal and not in another.
 | {func}`macos.time_machine.last_backup` | may need Full Disk Access | System Settings › Privacy & Security › Full Disk Access |
 | {mod}`macos.music` | Automation of Music or Spotify (asked the first time) | System Settings › Privacy & Security › Automation |
 | {mod}`macos.browser` | Automation of the browser (asked the first time); {func}`~macos.browser.run_js` also needs the browser's *Allow JavaScript from Apple Events* | System Settings › Privacy & Security › Automation |
+| {func}`macos.screen.set_night_shift_schedule` with `"sunset"` | Location Services | System Settings › Privacy & Security › Location Services |
 | {func}`macos.appearance.set_mode` | Automation of *System Events* (asked the first time) | System Settings › Privacy & Security › Automation |
-| {func}`macos.bluetooth.connect`, {func}`~macos.bluetooth.disconnect` | Bluetooth (asked the first time) | System Settings › Privacy & Security › Bluetooth |
+| {func}`macos.bluetooth.connect`, {func}`~macos.bluetooth.disconnect`, {func}`~macos.bluetooth.set_power` | Bluetooth (may be asked the first time) | System Settings › Privacy & Security › Bluetooth |
 
 The other features (clipboard, appearance, apps, Keychain, speech, power,
-Shortcuts, Finder, volume, Spotlight, dialogs, system info, Vision, images,
+Shortcuts, Finder, volume, Spotlight, geocoding, dialogs, system info, Vision, images,
 PDFs, language, audio devices, sounds, network, brightness, the keyboard
 backlight, the mouse position, listing Bluetooth devices, Caps Lock, microphone
 volume, camera and microphone use, locking the screen, system events, scheduling
@@ -61,7 +62,8 @@ macos.audio.has_permission()        # the microphone
 macos.audio.request_permission()
 ```
 
-If the user denies it, {mod}`macos.camera` and {func}`macos.audio.record` raise
+If the user denies it, {mod}`macos.camera`, {func}`macos.audio.record`,
+{func}`~macos.audio.record_until_silence` and {func}`~macos.audio.input_level` raise
 {class}`~macos.PermissionDeniedError`; allow it again in System Settings ›
 Privacy & Security, then restart the app running Python.
 
@@ -82,8 +84,9 @@ As with Screen Recording, **restart the app running Python** after allowing it.
 ## Input Monitoring
 
 {mod}`macos.hotkeys` listens to the keyboard for its shortcuts, which macOS
-treats as Input Monitoring. Without the permission, {func}`~macos.hotkeys.run`
-and {func}`~macos.hotkeys.wait` raise {class}`~macos.PermissionDeniedError`.
+treats as Input Monitoring; keeping a shortcut from the app in front also
+needs Accessibility. Without them, {func}`~macos.hotkeys.run` and
+{func}`~macos.hotkeys.wait` raise {class}`~macos.PermissionDeniedError`.
 
 ```python
 macos.hotkeys.has_permission()       # check without prompting
@@ -95,9 +98,11 @@ Restart the app running Python after allowing it.
 ## Automation
 
 {func}`macos.appearance.set_mode` asks System Events to switch the
-appearance, {mod}`macos.music` asks Music or Spotify to play, and
-{mod}`macos.browser` asks the browser for its tabs, so the first
-time macOS asks whether the app running Python may control them. If that's denied, it raises
+appearance, {func}`macos.apps.login_items` asks it for the login items,
+{func}`macos.finder.selection` asks Finder for the selected files,
+{mod}`macos.music` asks Music or Spotify to play, and {mod}`macos.browser`
+asks the browser for its tabs, so the first time macOS asks whether the app
+running Python may control them. If that's denied, it raises
 {class}`~macos.PermissionDeniedError`; allow it again in System Settings ›
 Privacy & Security › Automation.
 

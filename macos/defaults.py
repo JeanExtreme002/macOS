@@ -110,7 +110,9 @@ def read(domain: str, key: Optional[str] = None, *, default: Any = None, current
     """
     The value of ``key`` in ``domain`` (an app's bundle ID, or :data:`GLOBAL`), or ``default`` when it isn't set.
 
-    Without ``key``, returns all the domain's values, as a ``dict``.
+    As apps see it, a key an app's domain doesn't set falls back to the
+    global domain's value (``defaults read`` doesn't). Without ``key``,
+    returns all the domain's own values, as a ``dict``.
     ``current_host=True`` reads the settings kept for this Mac only, like
     ``defaults -currentHost``.
     """
@@ -124,6 +126,20 @@ def read(domain: str, key: Optional[str] = None, *, default: Any = None, current
         else:
             copied = cf.CFPreferencesCopyAppValue(wanted, name)
         with _cf.owned(copied) as value:
+            return _cf.to_python(value) if value else default
+
+
+def _own(domain: str, key: str, default: Any, current_host: bool) -> Any:
+    """
+    The value ``domain`` itself sets for ``key``, or ``default``.
+
+    Unlike :func:`read`, an app's domain doesn't fall back to the global
+    domain's value: this tells whether the key is set there, to delete or
+    restore it.
+    """
+    cf = _preferences()
+    with _cf.owned(_domain(domain)) as name, _cf.owned(_cf.string(key)) as wanted:
+        with _cf.owned(cf.CFPreferencesCopyValue(wanted, name, _user(), _host(current_host))) as value:
             return _cf.to_python(value) if value else default
 
 
@@ -144,7 +160,8 @@ def write(domain: str, key: str, value: Any, *, current_host: bool = False) -> N
 
 def delete(domain: str, key: str, *, current_host: bool = False) -> bool:
     """Remove ``key`` from ``domain``; return whether it was set."""
-    existed = read(domain, key, default=_MISSING, current_host=current_host) is not _MISSING
+    _check(domain)
+    existed = _own(domain, key, _MISSING, current_host) is not _MISSING
     _store(domain, key, None, current_host)
     return existed
 
@@ -176,7 +193,7 @@ def restored(*what: Union[str, Tuple[str, str]], current_host: bool = False) -> 
         else:
             domain, key = item
             _check(domain)
-            saved.append((domain, key, read(domain, key, default=missing, current_host=current_host)))
+            saved.append((domain, key, _own(domain, key, missing, current_host)))
     try:
         yield
     finally:
@@ -186,7 +203,8 @@ def restored(*what: Union[str, Tuple[str, str]], current_host: bool = False) -> 
                     if name not in value:
                         delete(domain, name, current_host=current_host)
                 for name, old in value.items():
-                    if read(domain, name, current_host=current_host) != old:
+                    # The domain's own value: one equal to the global fallback still has to be written back.
+                    if _own(domain, name, missing, current_host) != old:
                         write(domain, name, old, current_host=current_host)
             elif value is missing:
                 delete(domain, name_or_all, current_host=current_host)

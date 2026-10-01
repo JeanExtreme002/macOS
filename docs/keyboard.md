@@ -89,6 +89,10 @@ for key in macos.keyboard.watch():
     print(key.shortcut, repr(key.text))   # cmd+shift+k 'K'
 ```
 
+A {class}`~macos.keyboard.KeyPress` also has the `key`, its `modifiers`, the
+virtual key `code` and whether it's a `repeat` from holding the key down. It
+goes on until you `break` out of the loop, or `timeout` seconds pass.
+
 It only listens: the keys still reach the app in front. To take a shortcut for
 yourself, see [Hotkeys](hotkeys.md). It needs the [Input Monitoring
 permission](permissions.md#input-monitoring), and macOS hides what's typed in
@@ -165,8 +169,8 @@ macos.keyboard.set_press_and_hold(False)           # hold j in Vim to move down
 macos.keyboard.set_smart_quotes(False)             # code pasted in Notes stays code
 ```
 
-The function keys apply at once. The key repeat waits for the next login;
-the other settings reach apps when they're reopened. No permission is needed.
+The function keys and what Fn does apply at once. The key repeat waits for
+the next login; the other settings reach apps when they're reopened. No permission is needed.
 
 ## Shortcuts for menu items
 
@@ -214,9 +218,9 @@ macos.keyboard.remap("caps_lock", None)       # Caps Lock again
 macos.keyboard.clear_remappings()
 ```
 
-Keys are named as for {func}`~macos.keyboard.press`: letters, digits, `f1` to
-`f20`, the modifiers (`cmd`, `right_cmd`, `option`, `right_option`, `ctrl`,
-`right_ctrl`, `shift`, `right_shift`, `fn`), `caps_lock`, `escape`, `enter`,
+Keys are named as for {func}`~macos.keyboard.press`, plus the right-hand
+modifiers: letters, digits, `f1` to `f20`, the modifiers (`cmd`, `right_cmd`,
+`option`, `right_option`, `ctrl`, `right_ctrl`, `shift`, `right_shift`, `fn`), `caps_lock`, `escape`, `enter`,
 `tab`, `space`, `delete`, the arrows... It applies at once, with no
 permission, and lasts until the Mac restarts: to keep it, run it at login
 with [`macos.schedule`](schedule.md).

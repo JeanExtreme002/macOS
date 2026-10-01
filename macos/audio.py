@@ -616,7 +616,7 @@ def convert(source: PathLike, output: PathLike, *, quality: str = "high", lossle
     Convert an audio file to the format of ``output``'s extension, and return ``output``.
 
     Writes ``.m4a`` (AAC, or Apple Lossless with ``lossless=True``), ``.wav``,
-    ``.aiff`` and ``.caf``; reads anything macOS plays, MP3 and the sound of
+    ``.aiff`` and ``.caf`` (16-bit PCM); reads anything macOS plays, MP3 and the sound of
     videos included. ``quality`` (``"high"``, ``"medium"`` or ``"low"``)
     sets the AAC quality: lower is smaller::
 

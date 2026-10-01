@@ -61,7 +61,7 @@ data["kMDItemContentType"]                    # 'public.jpeg'
 data["kMDItemContentCreationDate"]            # datetime.datetime(2026, 9, 1, 14, 3, 12)
 ```
 
-Dates are {class}`datetime.datetime` objects. Files that Spotlight hasn't
+Dates are {class}`datetime.datetime` objects in UTC, without a time zone. Files that Spotlight hasn't
 indexed, such as those in folders it skips, only have the basic
 `kMDItemFS...` attributes (name, size, dates).
 

@@ -240,7 +240,8 @@ def convert(
     in HEVC (H.265), smaller than H.264 at the same quality. ``height``
     resizes it to fit 640×480, 960×540, 1280×720, 1920×1080 or 3840×2160
     (``height=480`` to ``2160``; only 1080 and 2160 with HEVC), keeping its
-    proportions: a 16:9 video at ``height=480`` becomes 640×360. ``start``
+    proportions: a 16:9 video at ``height=480`` becomes 640×360 (``quality``
+    is then ignored). ``start``
     and ``duration``, in seconds, keep only part of it::
 
         macos.video.convert("screen.mov", "share.mp4", quality="medium")

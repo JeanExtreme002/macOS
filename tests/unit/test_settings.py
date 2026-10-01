@@ -740,6 +740,7 @@ def test_defaults_restored(monkeypatch):
         return store.pop((domain, key), None) is not None
 
     monkeypatch.setattr(defaults, "read", read)
+    monkeypatch.setattr(defaults, "_own", lambda domain, key, default, current_host: store.get((domain, key), default))
     monkeypatch.setattr(defaults, "write", write)
     monkeypatch.setattr(defaults, "delete", delete)
     monkeypatch.setattr(defaults, "keys", lambda domain, *, current_host=False: sorted(k for d, k in store if d == domain))
@@ -788,3 +789,9 @@ def test_hardware_setting_checks():
         screen._clock_time("7h30")
     mode = screen.DisplayMode(width=1512, height=982, pixel_width=3024, pixel_height=1964, refresh_rate=120.0)
     assert mode.hidpi and not screen.DisplayMode(1920, 1080, 1920, 1080, 60.0).hidpi
+
+
+def test_defaults_delete_checks_the_domain(fake_run):
+    for domain in ("", "   "):
+        with pytest.raises(ValueError):
+            defaults.delete(domain, "key")

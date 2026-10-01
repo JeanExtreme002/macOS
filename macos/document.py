@@ -222,7 +222,7 @@ def convert(source: PathLike, output: PathLike, *, paper: Optional[str] = None, 
 
     It reads Word (``.docx``, ``.doc``), RTF (and ``.rtfd``), HTML,
     OpenDocument (``.odt``), web archives and plain text, and writes those
-    or a PDF. A PDF is laid out on ``paper`` (``'a4'``, ``'letter'`` or
+    (except ``.rtfd``) or a PDF. A PDF is laid out on ``paper`` (``'a4'``, ``'letter'`` or
     ``'legal'``; by default the region's, as in TextEdit), ``margin`` points
     from each edge (72 is an inch).
 

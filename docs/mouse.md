@@ -17,8 +17,9 @@ macos.mouse.scroll(5)                        # 5 lines down
 
 Positions are in points from the top-left corner of the main display, the
 same as {func}`macos.screenshot`'s `region` and {class}`macos.screen.Display`.
-Reading the position needs no permission; everything else needs the
-[Accessibility permission](permissions.md#accessibility).
+Moving, clicking, dragging and scrolling need the
+[Accessibility permission](permissions.md#accessibility); reading the position
+and the mouse settings needs none.
 
 ## Moving and clicking
 
@@ -39,8 +40,10 @@ with macos.keyboard.hold("cmd"):
 
 ## Clicking on text
 
-{func}`~macos.mouse.click_text` finds some text on the screen and clicks its
-middle, so a script doesn't depend on where a button is:
+{func}`~macos.mouse.click_text` finds some text on the screen, ignoring case,
+clicks the middle of the first match from the top, and returns it as a
+{class}`~macos.screen.TextMatch`, so a script doesn't depend on where a button
+is:
 
 ```python
 macos.mouse.click_text("Accept")
@@ -48,8 +51,10 @@ macos.mouse.click_text("Download", timeout=30)   # wait for it to show up first
 ```
 
 It raises {class}`~macos.MacOSError` when the text isn't on the screen. It needs
-the [Screen Recording permission](permissions.md#screen-recording) too. See
-{func}`macos.screen.find_text` for how the text is found.
+the [Screen Recording permission](permissions.md#screen-recording) too.
+`button` and `count` work as in {func}`~macos.mouse.click`; `region`, `display`
+and `languages` as in {func}`macos.screen.find_text`, which tells how the text
+is found.
 
 ## Dragging
 
@@ -103,7 +108,7 @@ macos.mouse.set_tracking_speed(0.8)
 macOS keeps it: 0.3125 by default, higher is faster; it too waits for the
 next login. {func}`~macos.mouse.set_double_click_speed` sets how many seconds
 apart two clicks can be and still count as a double click, 0.5 by default,
-for the mouse and the trackpad:
+for the mouse and the trackpad; apps pick it up when they're reopened:
 
 ```python
 macos.mouse.set_scroll_speed(1.0)
@@ -112,7 +117,8 @@ macos.mouse.set_double_click_speed(0.3)   # quicker clicks
 
 {func}`~macos.mouse.set_acceleration` turns pointer acceleration off, so the
 pointer moves in proportion to the mouse, as gamers and designers like, or
-on again. It applies at once, and stays after a restart:
+on again. It needs macOS 14 or later, applies at once, and stays after a
+restart:
 
 ```python
 macos.mouse.set_acceleration(False)

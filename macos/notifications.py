@@ -72,7 +72,7 @@ def notify(
     Post a notification.
 
     ``sound`` is the name of a system alert sound, such as ``"Glass"``,
-    ``"Ping"`` or ``"Basso"`` (see ``/System/Library/Sounds``).
+    ``"Ping"`` or ``"Basso"`` (see :func:`macos.sound.names`).
 
     Raises :class:`~macos.errors.PermissionDeniedError` when notifications are
     turned off for Script Editor, since macOS would silently drop them. Pass

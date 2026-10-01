@@ -19,7 +19,7 @@ permission, not even Location.
 
 {func}`~macos.maps.geocode` returns the places matching an address, the
 likeliest first, or `[]`. Any address works, whole or in part, in any
-language:
+language; names come back in the system's language:
 
 ```python
 for place in macos.maps.geocode("1 Infinite Loop, Cupertino"):
@@ -34,7 +34,8 @@ or `city`.
 
 ## From coordinates
 
-{func}`~macos.maps.reverse_geocode` returns the address at a point:
+{func}`~macos.maps.reverse_geocode` returns the address at a point, or `None`
+when macOS finds nothing there:
 
 ```python
 place = macos.maps.reverse_geocode(37.8199, -122.4783)
@@ -62,8 +63,10 @@ A place is an address, a {class}`~macos.maps.Place` or `(latitude, longitude)`;
 ## Limits
 
 Apple limits how many requests an app makes in a short time: space out
-large batches, or a request raises {class}`~macos.MacOSError`. Call these
-functions from the main thread, where the answers arrive.
+large batches, or a request raises {class}`~macos.MacOSError`. A request
+that gets no answer within `timeout` seconds (15 by default) raises
+`TimeoutError`. Call these functions from the main thread, where the answers
+arrive.
 
 ## Reference
 
