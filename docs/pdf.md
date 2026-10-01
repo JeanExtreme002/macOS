@@ -291,8 +291,10 @@ redacted. Pages without a match don't change.
 
 What else in the file holds a match goes too:
 
-- form fields and comments: their page is flattened, with a box over them
-  (its other fields become part of the picture);
+- form fields and comments, wherever they hold it: a value, a field's name
+  or choices, a comment or its author, a link's address. Their page is
+  flattened, with a box over them (its other fields become part of the
+  picture);
 - the title, author, subject, keywords and creator, and bookmark titles, where the
   match becomes `█`. These count in the {class}`~macos.pdf.Redaction` too: a
   target found only in the title is redacted, not reported missing.

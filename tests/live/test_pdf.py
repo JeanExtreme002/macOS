@@ -387,3 +387,39 @@ def test_redact_doesnt_join_an_annotations_properties(tmp_path):
     with pytest.raises(ValueError, match="'Ana Souza' isn't in the PDF"):
         macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf")
     assert macos.pdf.redact(source, "Souza", tmp_path / "out.pdf").matches == {"Souza": 1}
+
+
+def test_redact_searches_every_text_an_annotation_holds(tmp_path):
+    from macos import pdf
+    from macos._objc import CGPoint, CGRect, CGSize
+    from tests.helpers import pdf_form, pdf_with_text
+
+    # A choice option and a radio state, nowhere in the page's text.
+    form = tmp_path / "form.pdf"
+    pdf_form(form)
+    done = macos.pdf.redact(form, "Large", tmp_path / "form-out.pdf")
+    assert done.pages == {1: 1} and b"Large" not in _raw_text(done.path)
+
+    # A comment whose author is the name, on a page that doesn't show it, while another page does.
+    first, second = tmp_path / "1.pdf", tmp_path / "2.pdf"
+    first.write_bytes(pdf_with_text([("Signed by Ana Souza", 72, 700)]))
+    second.write_bytes(pdf_with_text([("Reviewed", 72, 700)]))
+    merged = macos.pdf.merge([first, second], tmp_path / "merged.pdf")
+    source = tmp_path / "noted.pdf"
+    with pdf._open(merged) as document:
+        note = _objc.send(
+            _objc.send(_objc.cls("PDFAnnotation"), "alloc"),
+            "initWithBounds:forType:withProperties:",
+            CGRect(CGPoint(72, 600), CGSize(20, 20)),
+            _objc.nsstring("Text"),
+            None,
+            argtypes=(CGRect, _objc.id, _objc.id),
+        )
+        _objc.send(note, "autorelease")
+        _objc.send(note, "setContents:", _objc.nsstring("Looks fine"), argtypes=(_objc.id,), restype=None)
+        _objc.send(note, "setUserName:", _objc.nsstring("Ana Souza"), argtypes=(_objc.id,), restype=None)
+        _objc.send(pdf._page(document, 2), "addAnnotation:", note, argtypes=(_objc.id,), restype=None)
+        pdf._save(document, source)
+
+    done = macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf")
+    assert done.pages == {1: 1, 2: 1} and b"Souza" not in _raw_text(done.path)

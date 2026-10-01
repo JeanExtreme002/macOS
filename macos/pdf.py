@@ -1698,6 +1698,53 @@ def _seen_box(page: int, box: Any) -> Tuple[float, ...]:
     return _seen(own, bounds.size.width, bounds.size.height, rotation)
 
 
+# Everything an annotation holds as text, and saves with it: a comment and its author, a form field's
+# value, name, default, choices and button states, a stamp's name, a link's address.
+_ANNOTATION_TEXTS = (
+    "contents",
+    "userName",
+    "widgetStringValue",
+    "widgetDefaultStringValue",
+    "fieldName",
+    "caption",
+    "buttonWidgetStateString",
+    "choices",
+    "values",
+    "stampName",
+    "toolTip",
+    "URL",
+    "action",
+)
+
+
+def _texts_of(value: Optional[int]) -> List[str]:
+    """The strings in an Objective-C value: a string, a URL, an array of them, or an action's URL."""
+    if not value:
+        return []
+
+    def kind(name: str) -> bool:
+        return bool(_objc.send(value, "isKindOfClass:", _objc.cls(name), argtypes=(_objc.id,), restype=BOOL))
+
+    if kind("NSString"):
+        return [_objc.pystring(value) or ""]
+    if kind("NSURL"):
+        return [_objc.pystring(_objc.send(value, "absoluteString")) or ""]
+    if kind("NSArray"):
+        return [text for item in _objc.nsarray(value) for text in _texts_of(item)]
+    if _objc.send(value, "respondsToSelector:", _objc.sel("URL"), argtypes=(_objc.SEL,), restype=BOOL):
+        return _texts_of(_objc.send(value, "URL"))  # a link's action
+    return []
+
+
+def _annotation_texts(annotation: int) -> List[str]:
+    found = []
+    for getter in _ANNOTATION_TEXTS:
+        if _objc.send(annotation, "respondsToSelector:", _objc.sel(getter), argtypes=(_objc.SEL,), restype=BOOL):
+            found += _texts_of(_objc.send(annotation, getter))
+    # Once each: a choice's label and value, or a field's name and tooltip, are often the same string.
+    return list(dict.fromkeys(text for text in found if text))
+
+
 def _redactions(
     page: int, number: int, patterns: Sequence[Tuple[str, "re.Pattern[str]"]], counts: List[int]
 ) -> Tuple[int, List[Tuple[float, ...]]]:
@@ -1731,7 +1778,7 @@ def _redactions(
                     boxes.append(_seen_box(page, box))
     for annotation in _objc.nsarray(_objc.send(page, "annotations")):
         # Each on its own: joined, "Ana" in one and "Souza" in the other would make a match that isn't there.
-        held = [_objc.pystring(_objc.send(annotation, getter)) or "" for getter in ("contents", "widgetStringValue")]
+        held = _annotation_texts(annotation)
         hits = 0
         for index, (_, pattern) in enumerate(patterns):
             times = sum(1 for text in held for match in pattern.finditer(text) if match.group())
@@ -1904,13 +1951,15 @@ def redact(
     or compiled :mod:`re` patterns, for what follows a shape (IDs, emails,
     phone numbers). Each page with a match is redrawn as a picture of what
     it shows (annotations included, crop kept) with black boxes over the
-    matches, so there's
-    no text left under them to copy or search; the rest of that page stays
-    visible, but its text can't be selected anymore (:func:`ocr` gives it
-    back, boxes excluded). Pages without matches don't change.
+    matches, so there's no text left under them to copy or search; the
+    rest of that page stays visible, but its text can't be selected
+    anymore (:func:`ocr` gives it back, boxes excluded). Pages without
+    matches don't change.
 
-    It also redacts form fields and comments that hold a match (their
-    page is flattened, with a box over them), and the matches in the
+    It also redacts form fields and comments that hold a match anywhere
+    (a value, a field's name or choices, a comment or its author, a
+    link's address): their page is flattened, with a box over them. And
+    the matches in the
     title, author, subject, keywords, creator and bookmarks, which become
     ``█``.
 
