@@ -29,6 +29,9 @@ Control your whole Mac from Python: apps, notifications, input, screen, camera, 
             <a href="https://github.com/JeanExtreme002/pymacos/actions/workflows/test.yml"><img
                 alt="GitHub Actions build status (Test on macOS and Linux)"
                 src="https://github.com/JeanExtreme002/pymacos/actions/workflows/test.yml/badge.svg"></a>
+            <a href="https://github.com/JeanExtreme002/pymacos/actions/workflows/build.yml"><img
+                alt="GitHub Actions build status (Build: the package built, installed and tested)"
+                src="https://github.com/JeanExtreme002/pymacos/actions/workflows/build.yml/badge.svg"></a>
             <a href="https://app.codecov.io/gh/JeanExtreme002/pymacos"><img
                 alt="Code coverage"
                 src="https://codecov.io/gh/JeanExtreme002/pymacos/branch/main/graph/badge.svg"></a>
