@@ -7,7 +7,7 @@ Run shortcuts from the Shortcuts app.
 
     macos.shortcuts.list()                           # ['Resize Image', ...]
     macos.shortcuts.run("Make GIF", input=["a.png", "b.png"])
-    macos.shortcuts.run("Translate", input="Olá")    # 'Hello'
+    macos.shortcuts.run("Translate", input="Hola")   # 'Hello'
 
 Uses the ``shortcuts`` command that ships with macOS 12 and later.
 """

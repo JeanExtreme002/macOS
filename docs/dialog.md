@@ -40,7 +40,7 @@ macos.dialog.confirm("Delete 3 files?", ok="Delete", cancel="Keep")
 cancels:
 
 ```python
-city = macos.dialog.prompt("City:", default="São Paulo")
+city = macos.dialog.prompt("City:", default="New York")
 password = macos.dialog.prompt("Password:", hidden=True)   # shows dots
 ```
 

@@ -21,7 +21,7 @@ Layouts and the backlight need none.
 whatever the keyboard layout. New lines press Enter and tabs press Tab:
 
 ```python
-macos.keyboard.type("Olá! 👋\nSecond line")
+macos.keyboard.type("Hello! 👋\nSecond line")
 ```
 
 Some apps (remote desktops, games, web forms with autocomplete) lose
@@ -105,8 +105,8 @@ Handy to warn before typing a password. It needs no permission.
 ## Keyboard layouts
 
 ```python
-macos.keyboard.layouts()          # ['ABC', 'Brazilian']
-macos.keyboard.layout()           # 'Brazilian'
+macos.keyboard.layouts()          # ['ABC', 'French']
+macos.keyboard.layout()           # 'French'
 macos.keyboard.set_layout("ABC")
 ```
 

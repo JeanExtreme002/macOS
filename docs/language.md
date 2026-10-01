@@ -6,7 +6,7 @@ Apple's NaturalLanguage framework. It runs on the Mac, offline.
 ```python
 import macos
 
-macos.language.detect("Olá, tudo bem?")      # 'pt'
+macos.language.detect("Hola, ¿cómo estás?")  # 'es'
 macos.language.sentiment("I love this!")     # 1.0
 ```
 
@@ -84,10 +84,10 @@ Only vectors from the same language can be compared.
 ## Names of people, places and organizations
 
 ```python
-macos.language.entities("Tim Cook, the CEO of Apple, visited São Paulo yesterday.")
+macos.language.entities("Tim Cook, the CEO of Apple, visited Paris yesterday.")
 # [Entity(text='Tim Cook', kind='person', start=0),
 #  Entity(text='Apple', kind='organization', start=21),
-#  Entity(text='São Paulo', kind='place', start=36)]
+#  Entity(text='Paris', kind='place', start=36)]
 ```
 
 `start` is where the name begins in the text. It's a statistical model: common

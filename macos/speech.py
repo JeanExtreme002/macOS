@@ -6,7 +6,7 @@ Text to speech with the system voices.
 ::
 
     macos.say("Hello from Python")
-    macos.say("Olá!", voice="Luciana", rate=180)
+    macos.say("Hello!", voice="Samantha", rate=180)
     [voice.name for voice in macos.speech.voices()]
 """
 
@@ -56,7 +56,7 @@ def say(
     (``.aiff``, ``.m4a``, ``.wav`` or ``.caf``) and its path is returned.
 
     An unknown ``voice`` is not an error: ``say`` falls back to the default
-    voice, matching names loosely (``"luciana"`` and ``"Eddy"`` both work).
+    voice, matching names loosely (``"samantha"`` and ``"Eddy"`` both work).
     """
     args = ["say"]
     if voice is not None:

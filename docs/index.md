@@ -50,7 +50,7 @@ macos.apps.open("Safari")                       # App(name='Safari', ...)
 macos.keychain.get("my-app", "alice")           # 's3cret'
 
 macos.power.battery()                           # Battery(percent=87, charging=True, ...)
-macos.shortcuts.run("Translate", input="Olá")   # 'Hello'
+macos.shortcuts.run("Translate", input="Hola")  # 'Hello'
 macos.finder.trash("old.log")                   # moved to the Trash
 ```
 

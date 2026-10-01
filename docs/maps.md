@@ -6,8 +6,8 @@ address, as the Maps app does.
 ```python
 import macos
 
-place = macos.maps.geocode("Avenida Paulista, 1578, São Paulo")[0]
-place.latitude, place.longitude              # (-23.561463, -46.655952)
+place = macos.maps.geocode("20 W 34th St, New York, NY")[0]
+place.latitude, place.longitude              # (40.748479, -73.985411)
 
 macos.maps.reverse_geocode(48.8584, 2.2945)  # Place(name='Eiffel Tower', city='Paris', ...)
 ```
@@ -37,8 +37,8 @@ or `city`.
 {func}`~macos.maps.reverse_geocode` returns the address at a point:
 
 ```python
-place = macos.maps.reverse_geocode(-22.9519, -43.2105)
-place.city, place.time_zone   # ('Rio de Janeiro', 'America/Sao_Paulo')
+place = macos.maps.reverse_geocode(37.8199, -122.4783)
+place.city, place.time_zone   # ('San Francisco', 'America/Los_Angeles')
 ```
 
 Out at sea, it's the ocean's name, without an address.
@@ -49,10 +49,10 @@ Out at sea, it's the ocean's name, without an address.
 {func}`~macos.maps.directions` opens it with the route:
 
 ```python
-macos.maps.open("Avenida Paulista, 1578, São Paulo")
+macos.maps.open("20 W 34th St, New York, NY")
 macos.maps.open(macos.maps.geocode("Eiffel Tower")[0])
 
-macos.maps.directions("Aeroporto de Congonhas", by="transit")   # from where the Mac is
+macos.maps.directions("JFK Airport", by="transit")   # from where the Mac is
 macos.maps.directions((48.8584, 2.2945), start="Gare du Nord, Paris", by="walk")
 ```
 

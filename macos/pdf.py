@@ -11,7 +11,7 @@ Read, merge, split, rotate, encrypt and redact PDFs, or make them from images.
     macos.pdf.merge(["a.pdf", "b.pdf"], "both.pdf")
     macos.pdf.extract("report.pdf", [1, 3], "summary.pdf")
     macos.pdf.encrypt("report.pdf", "locked.pdf", password="1234")
-    macos.pdf.redact("contract.pdf", ["Ana Souza"], "public.pdf")
+    macos.pdf.redact("contract.pdf", ["Jane Doe"], "public.pdf")
 
 Uses PDFKit, the framework behind Preview. Page numbers start at 1, like in
 Preview.
@@ -410,7 +410,7 @@ def ocr(
     searched, in Preview, Spotlight or :func:`text`. Pages that already have
     text aren't read again, unless ``redo=True``. As with :func:`watermark`,
     every page is redrawn into the new PDF, so links and form fields aren't kept. ``languages`` works as in
-    :func:`macos.vision.lines` (``["pt-BR", "en-US"]``). ``password`` opens an
+    :func:`macos.vision.lines` (``["fr-FR", "en-US"]``). ``password`` opens an
     encrypted PDF; the result isn't encrypted.
     """
     from . import _cf, vision
@@ -930,7 +930,7 @@ def fill_form(
 
     ::
 
-        macos.pdf.fill_form("application.pdf", {"Full name": "Ana Souza", "Agree": True, "Plan": "Pro"}, "filled.pdf")
+        macos.pdf.fill_form("application.pdf", {"Full name": "Jane Doe", "Agree": True, "Plan": "Pro"}, "filled.pdf")
 
     Text fields and choices take text; checkboxes ``True`` or ``False``; a
     group of radio buttons the option to choose. The names are those
@@ -1197,8 +1197,8 @@ def add_text(
     ::
 
         macos.pdf.add_text("contract.pdf", "Received on 29/09/2026", "stamped.pdf")            # page 1, top left
-        macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", page=2, position=(120, 540), size=14)
-        macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", near="Name:")                  # right after that text
+        macos.pdf.add_text("form.pdf", "Jane Doe", "filled.pdf", page=2, position=(120, 540), size=14)
+        macos.pdf.add_text("form.pdf", "Jane Doe", "filled.pdf", near="Name:")                  # right after that text
         macos.pdf.add_text("draft.pdf", "Checked\\nby Ana", "notes.pdf", position="top_right", color="#c00000")
 
     ``page`` is from 1; the first one by default. ``position``, ``near``,
@@ -1783,7 +1783,7 @@ def _redactions(
                 if box.size.width > 0 and box.size.height > 0:
                     boxes.append(_seen_box(page, box))
     for annotation in _objc.nsarray(_objc.send(page, "annotations")):
-        # Each on its own: joined, "Ana" in one and "Souza" in the other would make a match that isn't there.
+        # Each on its own: joined, "Jane" in one and "Doe" in the other would make a match that isn't there.
         held = _annotation_texts(annotation)
         hits = 0
         for index, (_, pattern) in enumerate(patterns):
@@ -1945,12 +1945,12 @@ def redact(
 
     ::
 
-        done = macos.pdf.redact("contract.pdf", ["Ana Souza", "123.456.789-00"], "public.pdf")
-        done.matches   # {'Ana Souza': 3, '123.456.789-00': 1}
+        done = macos.pdf.redact("contract.pdf", ["Jane Doe", "123-45-6789"], "public.pdf")
+        done.matches   # {'Jane Doe': 3, '123-45-6789': 1}
         done.pages     # {1: 2, 4: 2}: the pages to look over
 
-        cpf = re.compile(r"\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}")
-        macos.pdf.redact("list.pdf", [cpf], "public.pdf")      # every CPF
+        ssn = re.compile(r"\\b\\d{3}-\\d{2}-\\d{4}\\b")
+        macos.pdf.redact("list.pdf", [ssn], "public.pdf")      # every Social Security number
 
     ``targets`` are texts, matched as whole words, ignoring case and any
     spacing or line break between them ("Ana" doesn't black out "Banana"),

@@ -998,7 +998,7 @@ def reverse(source: PathLike, output: PathLike) -> Path:
         return add_audio(silent, backwards, target, replace=True)
 
 
-_LANGUAGE_TAG = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")  # "en", "pt-BR", "es-419"...
+_LANGUAGE_TAG = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")  # "en", "fr-CA", "es-419"...
 
 
 def _set_language(track: int, tag: str) -> None:
@@ -1020,11 +1020,11 @@ def add_language_track(
     Players that support it (QuickTime Player, the TV app, VLC...) offer the
     languages in their audio menu; the video's own sound stays the default.
     ``language`` and ``original_language`` are language tags such as ``"en"``,
-    ``"pt-BR"`` or ``"es-419"``; ``original_language`` labels the sound that's
+    ``"fr-CA"`` or ``"es-419"``; ``original_language`` labels the sound that's
     already there. Nothing is re-encoded but the added sound, turned into AAC
     if it isn't already::
 
-        macos.video.add_language_track("film.mov", "film-english.m4a", "film-dual.mov", "en", original_language="pt-BR")
+        macos.video.add_language_track("film.mov", "film-english.m4a", "film-dual.mov", "en", original_language="es")
 
     A sound longer than the video is cut at its end. To mix a sound into the
     video instead, see :func:`add_audio`.
@@ -1033,7 +1033,7 @@ def add_language_track(
 
     for label, tag in (("language", language), ("original_language", original_language)):
         if tag is not None and not _LANGUAGE_TAG.match(tag):
-            raise ValueError("{} must be a language tag such as 'en' or 'pt-BR', not {!r}".format(label, tag))
+            raise ValueError("{} must be a language tag such as 'en' or 'fr-CA', not {!r}".format(label, tag))
     target = _target(output)
     sound_path = _existing(audio)
     with tempfile.TemporaryDirectory() as folder:

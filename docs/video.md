@@ -113,10 +113,10 @@ its end. To use part of a song, {func}`macos.audio.trim` it first.
 instead, which players offer in their audio menu, next to the original:
 
 ```python
-macos.video.add_language_track("film.mov", "film-english.m4a", "film-dual.mov", "en", original_language="pt-BR")
+macos.video.add_language_track("film.mov", "film-english.m4a", "film-dual.mov", "en", original_language="es")
 ```
 
-Languages are tags such as `"en"`, `"pt-BR"` or `"es-419"`. The original
+Languages are tags such as `"en"`, `"fr-CA"` or `"es-419"`. The original
 sound stays the default, and the video isn't re-encoded.
 
 ## Frames and timelapses

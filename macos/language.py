@@ -5,8 +5,8 @@ Detect the language and the sentiment of a text, offline.
 
 ::
 
-    macos.language.detect("Olá, tudo bem?")        # 'pt'
-    macos.language.guess("Olá, tudo bem?")         # [('pt', 0.99), ('es', 0.004), ...]
+    macos.language.detect("Hola, ¿cómo estás?")    # 'es'
+    macos.language.guess("Hola, ¿cómo estás?")     # [('es', 1.0), ('pt', 0.0), ...]
     macos.language.sentiment("I love this!")       # 1.0
 
 Uses Apple's NaturalLanguage framework: nothing to install, no network and
@@ -223,10 +223,10 @@ def entities(text: str, *, language: Optional[str] = None) -> List[Entity]:
     """
     Find the names of people, places and organizations in a text::
 
-        macos.language.entities("Tim Cook, the CEO of Apple, visited São Paulo yesterday.")
+        macos.language.entities("Tim Cook, the CEO of Apple, visited Paris yesterday.")
         # [Entity(text='Tim Cook', kind='person', start=0),
         #  Entity(text='Apple', kind='organization', start=21),
-        #  Entity(text='São Paulo', kind='place', start=36)]
+        #  Entity(text='Paris', kind='place', start=36)]
 
     It's a statistical model: common names are found reliably, unusual ones
     can be missed or mislabelled. It relies on capital letters, so names typed

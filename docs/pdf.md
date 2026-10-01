@@ -126,7 +126,7 @@ macos.pdf.text("scan-searchable.pdf")   # the scan's text
 The pages look the same, and their text can be selected, copied and searched,
 in Preview and Spotlight too. Pages that already have text aren't read again,
 unless `redo=True`. Every page is redrawn into the new PDF, so links and form
-fields aren't kept. `languages` (`["pt-BR", "en-US"]`) helps Vision with
+fields aren't kept. `languages` (`["fr-FR", "en-US"]`) helps Vision with
 accents and words. To only read a page, render it and use OCR:
 
 ```python
@@ -164,7 +164,7 @@ editable:
 for field in macos.pdf.form_fields("application.pdf"):
     print(field.name, field.kind, field.value)   # Full name text None
 
-macos.pdf.fill_form("application.pdf", {"Full name": "Ana Souza", "Agree": True, "Plan": "Pro"}, "filled.pdf")
+macos.pdf.fill_form("application.pdf", {"Full name": "Jane Doe", "Agree": True, "Plan": "Pro"}, "filled.pdf")
 ```
 
 Text fields and choices take text; checkboxes `True` or `False`; a group of
@@ -211,7 +211,7 @@ edit or move in Preview:
 
 ```python
 macos.pdf.add_text("contract.pdf", "Received on 29/09/2026", "stamped.pdf")      # page 1, top left
-macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", page=2, position=(120, 540), size=14)
+macos.pdf.add_text("form.pdf", "Jane Doe", "filled.pdf", page=2, position=(120, 540), size=14)
 macos.pdf.add_text("draft.pdf", "Checked\nby Ana", "notes.pdf", position="top_right", color="#c00000")
 ```
 
@@ -219,7 +219,7 @@ It goes where {func}`~macos.pdf.sign` puts a signature: beside a text of
 the page, such as a form's label, or in a corner, or at a point:
 
 ```python
-macos.pdf.add_text("form.pdf", "Ana Souza", "filled.pdf", near="Name:")
+macos.pdf.add_text("form.pdf", "Jane Doe", "filled.pdf", near="Name:")
 ```
 
 `size` is in points; `font` a font's name, such as `"Helvetica-Bold"`;
@@ -266,13 +266,13 @@ it for good before blacking it out:
 ```python
 import re
 
-done = macos.pdf.redact("contract.pdf", ["Ana Souza", "123.456.789-00"], "contract-public.pdf")
-done.matches   # {'Ana Souza': 3, '123.456.789-00': 1}
+done = macos.pdf.redact("contract.pdf", ["Jane Doe", "123-45-6789"], "contract-public.pdf")
+done.matches   # {'Jane Doe': 3, '123-45-6789': 1}
 done.pages     # {1: 2, 4: 2}: the pages redrawn, with their matches
 
-cpf = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
+ssn = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 email = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
-macos.pdf.redact("list.pdf", [cpf, email], "list-public.pdf")
+macos.pdf.redact("list.pdf", [ssn, email], "list-public.pdf")
 ```
 
 A text matches as whole words, ignoring case and any spacing or line break
