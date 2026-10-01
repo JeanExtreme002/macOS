@@ -1731,13 +1731,19 @@ def _texts_of(value: Optional[int]) -> List[str]:
         return [_objc.pystring(_objc.send(value, "absoluteString")) or ""]
     if kind("NSArray"):
         return [text for item in _objc.nsarray(value) for text in _texts_of(item)]
+    if kind("NSDictionary"):
+        return [text for item in _objc.nsarray(_objc.send(value, "allValues")) for text in _texts_of(item)]
     if _objc.send(value, "respondsToSelector:", _objc.sel("URL"), argtypes=(_objc.SEL,), restype=BOOL):
         return _texts_of(_objc.send(value, "URL"))  # a link's action
     return []
 
 
 def _annotation_texts(annotation: int) -> List[str]:
-    found = []
+    """
+    Every string an annotation saves: each entry of its dictionary (``/Subj``, ``/RC``, ``/T``... and any
+    other), and what PDFKit reads out of them, like a link action's address.
+    """
+    found = _texts_of(_objc.send(annotation, "annotationKeyValues"))
     for getter in _ANNOTATION_TEXTS:
         if _objc.send(annotation, "respondsToSelector:", _objc.sel(getter), argtypes=(_objc.SEL,), restype=BOOL):
             found += _texts_of(_objc.send(annotation, getter))

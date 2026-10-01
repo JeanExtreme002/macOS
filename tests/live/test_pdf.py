@@ -423,3 +423,33 @@ def test_redact_searches_every_text_an_annotation_holds(tmp_path):
 
     done = macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf")
     assert done.pages == {1: 1, 2: 1} and b"Souza" not in _raw_text(done.path)
+
+
+def test_redact_reads_the_whole_annotation_dictionary(tmp_path):
+    from tests.helpers import pdf_with_text
+
+    # The name only in a comment's subject (/Subj), on a page that doesn't show it, while another page does.
+    first, second = tmp_path / "1.pdf", tmp_path / "2.pdf"
+    first.write_bytes(
+        pdf_with_text([("Report", 72, 700)], annotations=["/Subtype /Text /Rect [72 600 92 620] /Subj (Ana Souza review)"])
+    )
+    second.write_bytes(pdf_with_text([("Signed by Ana Souza", 72, 700)]))
+    merged = macos.pdf.merge([first, second], tmp_path / "merged.pdf")
+    done = macos.pdf.redact(merged, "Ana Souza", tmp_path / "out.pdf")
+    assert done.pages == {1: 1, 2: 1} and b"Souza" not in _raw_text(done.path)
+
+    # Rich-text contents (/RC), which PDFKit doesn't read: on a page left as it is, they must not stay behind.
+    # PDFKit doesn't write them back; should a macOS keep them, this fails, and they need reading.
+    # The name is found only in the title, so the page itself is left as it is.
+    rich = tmp_path / "rich.pdf"
+    rich.write_bytes(
+        pdf_with_text(
+            [("Report", 72, 700)],
+            annotations=["/Subtype /Text /Rect [72 400 92 420] /Contents (Fine) /RC (<body><p>Ask Ana Souza</p></body>)"],
+            title="Ana Souza report",
+        )
+    )
+    assert b"Ask Ana Souza" in rich.read_bytes() and macos.pdf.metadata(rich).title == "Ana Souza report"
+    done = macos.pdf.redact(rich, "Ana Souza", tmp_path / "rich-out.pdf")
+    assert done.matches == {"Ana Souza": 1} and done.pages == {}
+    assert b"Ask Ana" not in _raw_text(done.path) and b"Souza" not in _raw_text(done.path)

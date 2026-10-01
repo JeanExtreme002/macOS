@@ -124,26 +124,36 @@ def pdf_with_images(images):
     return bytes(out)
 
 
-def pdf_with_text(lines, rotate=0, crop=None, invisible=()):
+def pdf_with_text(lines, rotate=0, crop=None, invisible=(), annotations=(), title=None):
     """
     A one-page Letter PDF, written by hand, with each ``(text, x, y)`` in 18-point Helvetica.
 
     ``crop`` is a CropBox, ``(left, bottom, right, top)``: the part of the page that shows.
     The lines whose index is in ``invisible`` are drawn invisibly, as OCR adds its text.
+    ``annotations`` are the bodies of annotation dictionaries, written as they are, such as
+    ``"/Subtype /Text /Rect [72 600 92 620] /Subj (Review)"``. ``title`` goes in the document's information.
     """
     cropped = " /CropBox [{} {} {} {}]".format(*crop) if crop else ""
+    # The rendering mode outlives BT ... ET: set it on every line, or one invisible line hides the rest.
     drawing = " ".join(
-        "BT {}/F1 18 Tf {} {} Td ({}) Tj ET".format("3 Tr " if index in invisible else "", x, y, text)
+        "BT {} Tr /F1 18 Tf {} {} Td ({}) Tj ET".format(3 if index in invisible else 0, x, y, text)
         for index, (text, x, y) in enumerate(lines)
     )
+    first_annotation = 6
+    listed = " ".join("{} 0 R".format(first_annotation + index) for index in range(len(annotations)))
     objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]{} /Rotate {} "
-        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".format(cropped, rotate),
+        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R{} >>".format(
+            cropped, rotate, " /Annots [{}]".format(listed) if annotations else ""
+        ),
         "<< /Length {} >>\nstream\n{}\nendstream".format(len(drawing), drawing),
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        *("<< /Type /Annot {} >>".format(body) for body in annotations),
     ]
+    if title is not None:
+        objects.append("<< /Title ({}) >>".format(title))
     out = bytearray(b"%PDF-1.4\n")
     offsets = []
     for number, body in enumerate(objects, start=1):
@@ -152,7 +162,10 @@ def pdf_with_text(lines, rotate=0, crop=None, invisible=()):
     table = len(out)
     out += "xref\n0 {}\n0000000000 65535 f \n".format(len(objects) + 1).encode()
     out += b"".join("{:010d} 00000 n \n".format(offset).encode() for offset in offsets)
-    out += "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n".format(len(objects) + 1, table).encode()
+    information = " /Info {} 0 R".format(len(objects)) if title is not None else ""
+    out += "trailer\n<< /Size {} /Root 1 0 R{} >>\nstartxref\n{}\n%%EOF\n".format(
+        len(objects) + 1, information, table
+    ).encode()
     return bytes(out)
 
 
