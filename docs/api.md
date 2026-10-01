@@ -13,32 +13,6 @@ explain how to use each part.
 .. autofunction:: macos.screenshot
 ```
 
-## macos.clipboard
-
-```{eval-rst}
-.. module:: macos.clipboard
-
-.. autofunction:: macos.clipboard.copy
-.. autofunction:: macos.clipboard.paste
-.. autofunction:: macos.clipboard.clear
-.. autofunction:: macos.clipboard.change_count
-.. autofunction:: macos.clipboard.wait_for_change
-.. autofunction:: macos.clipboard.watch
-.. autofunction:: macos.clipboard.copy_files
-.. autofunction:: macos.clipboard.paste_files
-.. autofunction:: macos.clipboard.copy_image
-.. autofunction:: macos.clipboard.paste_image
-.. autofunction:: macos.clipboard.has_image
-```
-
-## macos.notifications
-
-```{eval-rst}
-.. module:: macos.notifications
-
-.. autofunction:: macos.notifications.is_allowed
-```
-
 ## macos.appearance
 
 ```{eval-rst}
@@ -88,157 +62,61 @@ explain how to use each part.
 .. autofunction:: macos.apps.uninstall
 ```
 
-## macos.keyboard
+## macos.audio
 
 ```{eval-rst}
-.. module:: macos.keyboard
+.. module:: macos.audio
 
-.. autofunction:: macos.keyboard.type
-.. autofunction:: macos.keyboard.press
-.. autofunction:: macos.keyboard.hold
-.. autofunction:: macos.keyboard.caps_lock
-.. autofunction:: macos.keyboard.watch
-.. autoclass:: macos.keyboard.KeyPress
-.. autofunction:: macos.keyboard.layouts
-.. autofunction:: macos.keyboard.layout
-.. autofunction:: macos.keyboard.set_layout
-.. autofunction:: macos.keyboard.has_permission
-.. autofunction:: macos.keyboard.request_permission
-.. autofunction:: macos.keyboard.brightness
-.. autofunction:: macos.keyboard.set_brightness
-.. autofunction:: macos.keyboard.auto_brightness
-.. autofunction:: macos.keyboard.set_auto_brightness
-.. autofunction:: macos.keyboard.key_repeat
-.. autofunction:: macos.keyboard.set_key_repeat
-.. autofunction:: macos.keyboard.press_and_hold
-.. autofunction:: macos.keyboard.set_press_and_hold
-.. autofunction:: macos.keyboard.standard_function_keys
-.. autofunction:: macos.keyboard.set_standard_function_keys
-.. autofunction:: macos.keyboard.autocorrect
-.. autofunction:: macos.keyboard.set_autocorrect
-.. autofunction:: macos.keyboard.smart_quotes
-.. autofunction:: macos.keyboard.set_smart_quotes
-.. autofunction:: macos.keyboard.smart_dashes
-.. autofunction:: macos.keyboard.set_smart_dashes
-.. autofunction:: macos.keyboard.auto_capitalization
-.. autofunction:: macos.keyboard.set_auto_capitalization
-.. autofunction:: macos.keyboard.double_space_period
-.. autofunction:: macos.keyboard.set_double_space_period
-.. autofunction:: macos.keyboard.full_keyboard_access
-.. autofunction:: macos.keyboard.set_full_keyboard_access
-.. autofunction:: macos.keyboard.remap
-.. autofunction:: macos.keyboard.remappings
-.. autofunction:: macos.keyboard.clear_remappings
-.. autofunction:: macos.keyboard.fn_key_action
-.. autofunction:: macos.keyboard.set_fn_key_action
-.. autofunction:: macos.keyboard.inline_predictions
-.. autofunction:: macos.keyboard.set_inline_predictions
-.. autofunction:: macos.keyboard.app_shortcuts
-.. autofunction:: macos.keyboard.set_app_shortcut
-.. autodata:: macos.keyboard.SYSTEM_SHORTCUTS
-.. autofunction:: macos.keyboard.system_shortcuts
-.. autofunction:: macos.keyboard.set_system_shortcut
-.. autofunction:: macos.keyboard.backlight_timeout
-.. autofunction:: macos.keyboard.set_backlight_timeout
+.. autofunction:: macos.audio.devices
+.. autofunction:: macos.audio.outputs
+.. autofunction:: macos.audio.inputs
+.. autofunction:: macos.audio.default_output
+.. autofunction:: macos.audio.default_input
+.. autofunction:: macos.audio.set_output
+.. autofunction:: macos.audio.set_input
+.. autofunction:: macos.audio.input_volume
+.. autofunction:: macos.audio.set_input_volume
+.. autofunction:: macos.audio.input_muted
+.. autofunction:: macos.audio.mute_input
+.. autofunction:: macos.audio.record
+.. autofunction:: macos.audio.input_level
+.. autofunction:: macos.audio.has_permission
+.. autofunction:: macos.audio.request_permission
+.. autofunction:: macos.audio.record_until_silence
+.. autofunction:: macos.audio.info
+.. autofunction:: macos.audio.convert
+.. autofunction:: macos.audio.trim
+.. autofunction:: macos.audio.concat
+.. autofunction:: macos.audio.fade
+.. autofunction:: macos.audio.gain
+.. autofunction:: macos.audio.reverse
+.. autofunction:: macos.audio.speed
+.. autofunction:: macos.audio.classify
+.. autoclass:: macos.audio.AudioInfo
+.. autoclass:: macos.audio.Device
 ```
 
-## macos.mouse
+## macos.auth
 
 ```{eval-rst}
-.. module:: macos.mouse
+.. module:: macos.auth
 
-.. autofunction:: macos.mouse.position
-.. autofunction:: macos.mouse.move
-.. autofunction:: macos.mouse.click
-.. autofunction:: macos.mouse.drag
-.. autofunction:: macos.mouse.scroll
-.. autofunction:: macos.mouse.click_text
-.. autofunction:: macos.mouse.watch
-.. autoclass:: macos.mouse.Click
-.. autofunction:: macos.mouse.has_permission
-.. autofunction:: macos.mouse.request_permission
-.. autofunction:: macos.mouse.tracking_speed
-.. autofunction:: macos.mouse.set_tracking_speed
-.. autofunction:: macos.mouse.scroll_speed
-.. autofunction:: macos.mouse.set_scroll_speed
-.. autofunction:: macos.mouse.double_click_speed
-.. autofunction:: macos.mouse.set_double_click_speed
-.. autofunction:: macos.mouse.acceleration
-.. autofunction:: macos.mouse.set_acceleration
+.. autofunction:: macos.auth.confirm
+.. autofunction:: macos.auth.is_available
+.. autofunction:: macos.auth.required
 ```
 
-## macos.windows
+## macos.bluetooth
 
 ```{eval-rst}
-.. module:: macos.windows
+.. module:: macos.bluetooth
 
-.. autofunction:: macos.windows.list
-.. autofunction:: macos.windows.focused
-.. autofunction:: macos.windows.wait_for
-.. autoclass:: macos.windows.Window
-   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, center, focus, minimize, restore, close, set_fullscreen, screenshot, snap
-.. autodata:: macos.windows.LAYOUTS
-   :no-value:
-.. autofunction:: macos.windows.tile
-.. autofunction:: macos.windows.tile_all
-.. autofunction:: macos.windows.has_permission
-.. autofunction:: macos.windows.request_permission
-.. autofunction:: macos.windows.double_click_title_bar
-.. autofunction:: macos.windows.set_double_click_title_bar
-.. autofunction:: macos.windows.tiling
-.. autofunction:: macos.windows.set_tiling
-.. autofunction:: macos.windows.click_wallpaper_to_show_desktop
-.. autofunction:: macos.windows.set_click_wallpaper_to_show_desktop
-.. autofunction:: macos.windows.animations
-.. autofunction:: macos.windows.set_animations
-```
-
-## macos.hotkeys
-
-```{eval-rst}
-.. module:: macos.hotkeys
-
-.. autofunction:: macos.hotkeys.register
-.. autofunction:: macos.hotkeys.unregister
-.. autofunction:: macos.hotkeys.run
-.. autofunction:: macos.hotkeys.stop
-.. autofunction:: macos.hotkeys.wait
-.. autoclass:: macos.hotkeys.Hotkey
-   :members: unregister
-.. autofunction:: macos.hotkeys.has_permission
-.. autofunction:: macos.hotkeys.request_permission
-```
-
-## macos.events
-
-```{eval-rst}
-.. module:: macos.events
-
-.. autofunction:: macos.events.on
-.. autofunction:: macos.events.off
-.. autofunction:: macos.events.run
-.. autofunction:: macos.events.stop
-.. autofunction:: macos.events.wait
-.. autoclass:: macos.events.Event
-.. autoclass:: macos.events.Handler
-   :members: remove
-.. autodata:: macos.events.NAMES
-   :no-value:
-```
-
-## macos.schedule
-
-```{eval-rst}
-.. module:: macos.schedule
-
-.. autofunction:: macos.schedule.add
-.. autofunction:: macos.schedule.remove
-.. autofunction:: macos.schedule.jobs
-.. autofunction:: macos.schedule.get
-.. autofunction:: macos.schedule.run_now
-.. autofunction:: macos.schedule.pause
-.. autofunction:: macos.schedule.resume
-.. autoclass:: macos.schedule.Job
+.. autofunction:: macos.bluetooth.power
+.. autofunction:: macos.bluetooth.set_power
+.. autofunction:: macos.bluetooth.devices
+.. autofunction:: macos.bluetooth.connect
+.. autofunction:: macos.bluetooth.disconnect
+.. autoclass:: macos.bluetooth.Device
 ```
 
 ## macos.browser
@@ -256,43 +134,35 @@ explain how to use each part.
    :no-value:
 ```
 
-## macos.maps
+## macos.camera
 
 ```{eval-rst}
-.. module:: macos.maps
+.. module:: macos.camera
 
-.. autofunction:: macos.maps.geocode
-.. autofunction:: macos.maps.reverse_geocode
-.. autoclass:: macos.maps.Place
-.. autofunction:: macos.maps.open
-.. autofunction:: macos.maps.directions
+.. autofunction:: macos.camera.devices
+.. autofunction:: macos.camera.photo
+.. autofunction:: macos.camera.record
+.. autoclass:: macos.camera.Camera
+.. autofunction:: macos.camera.has_permission
+.. autofunction:: macos.camera.request_permission
 ```
 
-## macos.music
+## macos.clipboard
 
 ```{eval-rst}
-.. module:: macos.music
+.. module:: macos.clipboard
 
-.. autofunction:: macos.music.now_playing
-.. autofunction:: macos.music.play
-.. autofunction:: macos.music.pause
-.. autofunction:: macos.music.play_pause
-.. autofunction:: macos.music.next
-.. autofunction:: macos.music.previous
-.. autofunction:: macos.music.volume
-.. autofunction:: macos.music.set_volume
-.. autofunction:: macos.music.seek
-.. autoclass:: macos.music.Track
-```
-
-## macos.auth
-
-```{eval-rst}
-.. module:: macos.auth
-
-.. autofunction:: macos.auth.confirm
-.. autofunction:: macos.auth.is_available
-.. autofunction:: macos.auth.required
+.. autofunction:: macos.clipboard.copy
+.. autofunction:: macos.clipboard.paste
+.. autofunction:: macos.clipboard.clear
+.. autofunction:: macos.clipboard.change_count
+.. autofunction:: macos.clipboard.wait_for_change
+.. autofunction:: macos.clipboard.watch
+.. autofunction:: macos.clipboard.copy_files
+.. autofunction:: macos.clipboard.paste_files
+.. autofunction:: macos.clipboard.copy_image
+.. autofunction:: macos.clipboard.paste_image
+.. autofunction:: macos.clipboard.has_image
 ```
 
 ## macos.defaults
@@ -306,6 +176,20 @@ explain how to use each part.
 .. autofunction:: macos.defaults.keys
 .. autodata:: macos.defaults.GLOBAL
 .. autofunction:: macos.defaults.restored
+```
+
+## macos.dialog
+
+```{eval-rst}
+.. module:: macos.dialog
+
+.. autofunction:: macos.dialog.alert
+.. autofunction:: macos.dialog.confirm
+.. autofunction:: macos.dialog.prompt
+.. autofunction:: macos.dialog.choose
+.. autofunction:: macos.dialog.choose_file
+.. autofunction:: macos.dialog.choose_files
+.. autofunction:: macos.dialog.choose_folder
 ```
 
 ## macos.dock
@@ -364,113 +248,30 @@ explain how to use each part.
 .. autofunction:: macos.dock.remove_folder
 ```
 
-## macos.trackpad
+## macos.document
 
 ```{eval-rst}
-.. module:: macos.trackpad
+.. module:: macos.document
 
-.. autofunction:: macos.trackpad.tap_to_click
-.. autofunction:: macos.trackpad.set_tap_to_click
-.. autofunction:: macos.trackpad.natural_scrolling
-.. autofunction:: macos.trackpad.set_natural_scrolling
-.. autofunction:: macos.trackpad.tracking_speed
-.. autofunction:: macos.trackpad.set_tracking_speed
-.. autofunction:: macos.trackpad.three_finger_drag
-.. autofunction:: macos.trackpad.set_three_finger_drag
-.. autofunction:: macos.trackpad.secondary_click
-.. autofunction:: macos.trackpad.set_secondary_click
-.. autofunction:: macos.trackpad.click_pressure
-.. autofunction:: macos.trackpad.set_click_pressure
-.. autodata:: macos.trackpad.GESTURES
-.. autofunction:: macos.trackpad.gestures
-.. autofunction:: macos.trackpad.set_gesture
+.. autofunction:: macos.document.convert
+.. autofunction:: macos.document.text
 ```
 
-## macos.printer
+## macos.events
 
 ```{eval-rst}
-.. module:: macos.printer
+.. module:: macos.events
 
-.. autofunction:: macos.printer.printers
-.. autofunction:: macos.printer.default
-.. autofunction:: macos.printer.set_default
-.. autofunction:: macos.printer.print_file
-.. autofunction:: macos.printer.jobs
-.. autofunction:: macos.printer.cancel
-.. autoclass:: macos.printer.Printer
-.. autoclass:: macos.printer.PrintJob
-```
-
-## macos.settings
-
-```{eval-rst}
-.. module:: macos.settings
-
-.. autofunction:: macos.settings.export
-.. autofunction:: macos.settings.apply
-.. autofunction:: macos.settings.names
-```
-
-## macos.time_machine
-
-```{eval-rst}
-.. module:: macos.time_machine
-
-.. autofunction:: macos.time_machine.destinations
-.. autofunction:: macos.time_machine.backup_now
-.. autofunction:: macos.time_machine.stop_backup
-.. autofunction:: macos.time_machine.is_backing_up
-.. autofunction:: macos.time_machine.progress
-.. autofunction:: macos.time_machine.last_backup
-.. autofunction:: macos.time_machine.exclude
-.. autofunction:: macos.time_machine.include
-.. autofunction:: macos.time_machine.is_excluded
-```
-
-## macos.keychain
-
-```{eval-rst}
-.. module:: macos.keychain
-
-.. autofunction:: macos.keychain.set
-.. autofunction:: macos.keychain.get
-.. autofunction:: macos.keychain.delete
-.. autofunction:: macos.keychain.accounts
-```
-
-## macos.speech
-
-```{eval-rst}
-.. module:: macos.speech
-
-.. autofunction:: macos.speech.voices
-.. autoclass:: macos.speech.Voice
-```
-
-## macos.power
-
-```{eval-rst}
-.. module:: macos.power
-
-.. autofunction:: macos.power.battery
-.. autofunction:: macos.power.low_power_mode
-.. autoclass:: macos.power.Battery
-.. autofunction:: macos.power.keep_awake
-.. autofunction:: macos.power.sleep_blockers
-.. autoclass:: macos.power.SleepBlocker
-.. autofunction:: macos.power.sleep
-.. autofunction:: macos.power.sleep_display
-.. autoclass:: macos.power.Adapter
-.. autofunction:: macos.power.adapter
-```
-
-## macos.shortcuts
-
-```{eval-rst}
-.. module:: macos.shortcuts
-
-.. autofunction:: macos.shortcuts.run
-.. autofunction:: macos.shortcuts.list
+.. autofunction:: macos.events.on
+.. autofunction:: macos.events.off
+.. autofunction:: macos.events.run
+.. autofunction:: macos.events.stop
+.. autofunction:: macos.events.wait
+.. autoclass:: macos.events.Event
+.. autoclass:: macos.events.Handler
+   :members: remove
+.. autodata:: macos.events.NAMES
+   :no-value:
 ```
 
 ## macos.finder
@@ -535,56 +336,20 @@ explain how to use each part.
 .. autofunction:: macos.finder.largest
 ```
 
-## macos.volume
+## macos.hotkeys
 
 ```{eval-rst}
-.. module:: macos.volume
+.. module:: macos.hotkeys
 
-.. autofunction:: macos.volume.get
-.. autofunction:: macos.volume.set
-.. autofunction:: macos.volume.mute
-.. autofunction:: macos.volume.unmute
-.. autofunction:: macos.volume.is_muted
-```
-
-## macos.spotlight
-
-```{eval-rst}
-.. module:: macos.spotlight
-
-.. autofunction:: macos.spotlight.search
-.. autofunction:: macos.spotlight.search_name
-.. autofunction:: macos.spotlight.metadata
-```
-
-## macos.vision
-
-```{eval-rst}
-.. module:: macos.vision
-
-.. autofunction:: macos.vision.text
-.. autofunction:: macos.vision.lines
-.. autofunction:: macos.vision.languages
-.. autoclass:: macos.vision.TextLine
-.. autofunction:: macos.vision.barcodes
-.. autoclass:: macos.vision.Barcode
-.. autofunction:: macos.vision.classify
-.. autofunction:: macos.vision.faces
-.. autofunction:: macos.vision.remove_background
-.. autofunction:: macos.vision.animals
-.. autofunction:: macos.vision.scan_document
-.. autofunction:: macos.vision.smart_crop
-.. autofunction:: macos.vision.image_distance
-.. autofunction:: macos.vision.duplicates
-.. autofunction:: macos.vision.best_shot
-.. autofunction:: macos.vision.horizon
-.. autofunction:: macos.vision.aesthetics
-.. autoclass:: macos.vision.Aesthetics
-.. autofunction:: macos.vision.body_pose
-.. autoclass:: macos.vision.Pose
-.. autofunction:: macos.vision.hand_pose
-.. autoclass:: macos.vision.Hand
-.. autoclass:: macos.vision.Animal
+.. autofunction:: macos.hotkeys.register
+.. autofunction:: macos.hotkeys.unregister
+.. autofunction:: macos.hotkeys.run
+.. autofunction:: macos.hotkeys.stop
+.. autofunction:: macos.hotkeys.wait
+.. autoclass:: macos.hotkeys.Hotkey
+   :members: unregister
+.. autofunction:: macos.hotkeys.has_permission
+.. autofunction:: macos.hotkeys.request_permission
 ```
 
 ## macos.image
@@ -615,6 +380,175 @@ explain how to use each part.
 .. autofunction:: macos.image.dominant_colors
 .. autofunction:: macos.image.qr_code
 .. autoclass:: macos.image.ImageInfo
+```
+
+## macos.keyboard
+
+```{eval-rst}
+.. module:: macos.keyboard
+
+.. autofunction:: macos.keyboard.type
+.. autofunction:: macos.keyboard.press
+.. autofunction:: macos.keyboard.hold
+.. autofunction:: macos.keyboard.caps_lock
+.. autofunction:: macos.keyboard.watch
+.. autoclass:: macos.keyboard.KeyPress
+.. autofunction:: macos.keyboard.layouts
+.. autofunction:: macos.keyboard.layout
+.. autofunction:: macos.keyboard.set_layout
+.. autofunction:: macos.keyboard.has_permission
+.. autofunction:: macos.keyboard.request_permission
+.. autofunction:: macos.keyboard.brightness
+.. autofunction:: macos.keyboard.set_brightness
+.. autofunction:: macos.keyboard.auto_brightness
+.. autofunction:: macos.keyboard.set_auto_brightness
+.. autofunction:: macos.keyboard.key_repeat
+.. autofunction:: macos.keyboard.set_key_repeat
+.. autofunction:: macos.keyboard.press_and_hold
+.. autofunction:: macos.keyboard.set_press_and_hold
+.. autofunction:: macos.keyboard.standard_function_keys
+.. autofunction:: macos.keyboard.set_standard_function_keys
+.. autofunction:: macos.keyboard.autocorrect
+.. autofunction:: macos.keyboard.set_autocorrect
+.. autofunction:: macos.keyboard.smart_quotes
+.. autofunction:: macos.keyboard.set_smart_quotes
+.. autofunction:: macos.keyboard.smart_dashes
+.. autofunction:: macos.keyboard.set_smart_dashes
+.. autofunction:: macos.keyboard.auto_capitalization
+.. autofunction:: macos.keyboard.set_auto_capitalization
+.. autofunction:: macos.keyboard.double_space_period
+.. autofunction:: macos.keyboard.set_double_space_period
+.. autofunction:: macos.keyboard.full_keyboard_access
+.. autofunction:: macos.keyboard.set_full_keyboard_access
+.. autofunction:: macos.keyboard.remap
+.. autofunction:: macos.keyboard.remappings
+.. autofunction:: macos.keyboard.clear_remappings
+.. autofunction:: macos.keyboard.fn_key_action
+.. autofunction:: macos.keyboard.set_fn_key_action
+.. autofunction:: macos.keyboard.inline_predictions
+.. autofunction:: macos.keyboard.set_inline_predictions
+.. autofunction:: macos.keyboard.app_shortcuts
+.. autofunction:: macos.keyboard.set_app_shortcut
+.. autodata:: macos.keyboard.SYSTEM_SHORTCUTS
+.. autofunction:: macos.keyboard.system_shortcuts
+.. autofunction:: macos.keyboard.set_system_shortcut
+.. autofunction:: macos.keyboard.backlight_timeout
+.. autofunction:: macos.keyboard.set_backlight_timeout
+```
+
+## macos.keychain
+
+```{eval-rst}
+.. module:: macos.keychain
+
+.. autofunction:: macos.keychain.set
+.. autofunction:: macos.keychain.get
+.. autofunction:: macos.keychain.delete
+.. autofunction:: macos.keychain.accounts
+```
+
+## macos.language
+
+```{eval-rst}
+.. module:: macos.language
+
+.. autofunction:: macos.language.detect
+.. autofunction:: macos.language.guess
+.. autofunction:: macos.language.sentiment
+.. autofunction:: macos.language.similarity
+.. autofunction:: macos.language.embedding
+.. autofunction:: macos.language.entities
+.. autofunction:: macos.language.keywords
+.. autoclass:: macos.language.Entity
+```
+
+## macos.maps
+
+```{eval-rst}
+.. module:: macos.maps
+
+.. autofunction:: macos.maps.geocode
+.. autofunction:: macos.maps.reverse_geocode
+.. autoclass:: macos.maps.Place
+.. autofunction:: macos.maps.open
+.. autofunction:: macos.maps.directions
+```
+
+## macos.mouse
+
+```{eval-rst}
+.. module:: macos.mouse
+
+.. autofunction:: macos.mouse.position
+.. autofunction:: macos.mouse.move
+.. autofunction:: macos.mouse.click
+.. autofunction:: macos.mouse.drag
+.. autofunction:: macos.mouse.scroll
+.. autofunction:: macos.mouse.click_text
+.. autofunction:: macos.mouse.watch
+.. autoclass:: macos.mouse.Click
+.. autofunction:: macos.mouse.has_permission
+.. autofunction:: macos.mouse.request_permission
+.. autofunction:: macos.mouse.tracking_speed
+.. autofunction:: macos.mouse.set_tracking_speed
+.. autofunction:: macos.mouse.scroll_speed
+.. autofunction:: macos.mouse.set_scroll_speed
+.. autofunction:: macos.mouse.double_click_speed
+.. autofunction:: macos.mouse.set_double_click_speed
+.. autofunction:: macos.mouse.acceleration
+.. autofunction:: macos.mouse.set_acceleration
+```
+
+## macos.music
+
+```{eval-rst}
+.. module:: macos.music
+
+.. autofunction:: macos.music.now_playing
+.. autofunction:: macos.music.play
+.. autofunction:: macos.music.pause
+.. autofunction:: macos.music.play_pause
+.. autofunction:: macos.music.next
+.. autofunction:: macos.music.previous
+.. autofunction:: macos.music.volume
+.. autofunction:: macos.music.set_volume
+.. autofunction:: macos.music.seek
+.. autoclass:: macos.music.Track
+```
+
+## macos.network
+
+```{eval-rst}
+.. module:: macos.network
+
+.. autofunction:: macos.network.is_online
+.. autofunction:: macos.network.ip
+.. autofunction:: macos.network.interface
+.. autofunction:: macos.network.wifi_power
+.. autofunction:: macos.network.set_wifi_power
+.. autoclass:: macos.network.SpeedTest
+.. autofunction:: macos.network.speed_test
+.. autoclass:: macos.network.WiFiSignal
+.. autofunction:: macos.network.wifi_signal
+.. autoclass:: macos.network.NetworkInterface
+.. autofunction:: macos.network.interfaces
+.. autofunction:: macos.network.dns_servers
+.. autoclass:: macos.network.Proxies
+.. autofunction:: macos.network.proxies
+.. autoclass:: macos.network.VPN
+.. autofunction:: macos.network.vpns
+.. autofunction:: macos.network.connect_vpn
+.. autofunction:: macos.network.disconnect_vpn
+.. autoclass:: macos.network.Bandwidth
+.. autofunction:: macos.network.bandwidth
+```
+
+## macos.notifications
+
+```{eval-rst}
+.. module:: macos.notifications
+
+.. autofunction:: macos.notifications.is_allowed
 ```
 
 ## macos.pdf
@@ -649,154 +583,51 @@ explain how to use each part.
 .. autoclass:: macos.pdf.Redaction
 ```
 
-## macos.document
+## macos.power
 
 ```{eval-rst}
-.. module:: macos.document
+.. module:: macos.power
 
-.. autofunction:: macos.document.convert
-.. autofunction:: macos.document.text
+.. autofunction:: macos.power.battery
+.. autofunction:: macos.power.low_power_mode
+.. autoclass:: macos.power.Battery
+.. autofunction:: macos.power.keep_awake
+.. autofunction:: macos.power.sleep_blockers
+.. autoclass:: macos.power.SleepBlocker
+.. autofunction:: macos.power.sleep
+.. autofunction:: macos.power.sleep_display
+.. autoclass:: macos.power.Adapter
+.. autofunction:: macos.power.adapter
 ```
 
-## macos.video
+## macos.printer
 
 ```{eval-rst}
-.. module:: macos.video
+.. module:: macos.printer
 
-.. autofunction:: macos.video.info
-.. autofunction:: macos.video.frame
-.. autofunction:: macos.video.convert
-.. autofunction:: macos.video.to_gif
-.. autofunction:: macos.video.frames
-.. autofunction:: macos.video.trim
-.. autofunction:: macos.video.concat
-.. autofunction:: macos.video.speed
-.. autofunction:: macos.video.rotate
-.. autofunction:: macos.video.crop
-.. autofunction:: macos.video.mute
-.. autofunction:: macos.video.reverse
-.. autofunction:: macos.video.add_audio
-.. autofunction:: macos.video.add_language_track
-.. autofunction:: macos.video.from_images
-.. autoclass:: macos.video.VideoInfo
+.. autofunction:: macos.printer.printers
+.. autofunction:: macos.printer.default
+.. autofunction:: macos.printer.set_default
+.. autofunction:: macos.printer.print_file
+.. autofunction:: macos.printer.jobs
+.. autofunction:: macos.printer.cancel
+.. autoclass:: macos.printer.Printer
+.. autoclass:: macos.printer.PrintJob
 ```
 
-## macos.language
+## macos.schedule
 
 ```{eval-rst}
-.. module:: macos.language
+.. module:: macos.schedule
 
-.. autofunction:: macos.language.detect
-.. autofunction:: macos.language.guess
-.. autofunction:: macos.language.sentiment
-.. autofunction:: macos.language.similarity
-.. autofunction:: macos.language.embedding
-.. autofunction:: macos.language.entities
-.. autofunction:: macos.language.keywords
-.. autoclass:: macos.language.Entity
-```
-
-## macos.audio
-
-```{eval-rst}
-.. module:: macos.audio
-
-.. autofunction:: macos.audio.devices
-.. autofunction:: macos.audio.outputs
-.. autofunction:: macos.audio.inputs
-.. autofunction:: macos.audio.default_output
-.. autofunction:: macos.audio.default_input
-.. autofunction:: macos.audio.set_output
-.. autofunction:: macos.audio.set_input
-.. autofunction:: macos.audio.input_volume
-.. autofunction:: macos.audio.set_input_volume
-.. autofunction:: macos.audio.input_muted
-.. autofunction:: macos.audio.mute_input
-.. autofunction:: macos.audio.record
-.. autofunction:: macos.audio.input_level
-.. autofunction:: macos.audio.has_permission
-.. autofunction:: macos.audio.request_permission
-.. autofunction:: macos.audio.record_until_silence
-.. autofunction:: macos.audio.info
-.. autofunction:: macos.audio.convert
-.. autofunction:: macos.audio.trim
-.. autofunction:: macos.audio.concat
-.. autofunction:: macos.audio.fade
-.. autofunction:: macos.audio.gain
-.. autofunction:: macos.audio.reverse
-.. autofunction:: macos.audio.speed
-.. autofunction:: macos.audio.classify
-.. autoclass:: macos.audio.AudioInfo
-.. autoclass:: macos.audio.Device
-```
-
-## macos.camera
-
-```{eval-rst}
-.. module:: macos.camera
-
-.. autofunction:: macos.camera.devices
-.. autofunction:: macos.camera.photo
-.. autofunction:: macos.camera.record
-.. autoclass:: macos.camera.Camera
-.. autofunction:: macos.camera.has_permission
-.. autofunction:: macos.camera.request_permission
-```
-
-## macos.bluetooth
-
-```{eval-rst}
-.. module:: macos.bluetooth
-
-.. autofunction:: macos.bluetooth.power
-.. autofunction:: macos.bluetooth.set_power
-.. autofunction:: macos.bluetooth.devices
-.. autofunction:: macos.bluetooth.connect
-.. autofunction:: macos.bluetooth.disconnect
-.. autoclass:: macos.bluetooth.Device
-```
-
-## macos.sound
-
-```{eval-rst}
-.. module:: macos.sound
-
-.. autofunction:: macos.sound.play
-.. autofunction:: macos.sound.beep
-.. autofunction:: macos.sound.names
-.. autofunction:: macos.sound.alert_sound
-.. autofunction:: macos.sound.set_alert_sound
-.. autofunction:: macos.sound.alert_volume
-.. autofunction:: macos.sound.set_alert_volume
-.. autofunction:: macos.sound.ui_sounds
-.. autofunction:: macos.sound.set_ui_sounds
-```
-
-## macos.network
-
-```{eval-rst}
-.. module:: macos.network
-
-.. autofunction:: macos.network.is_online
-.. autofunction:: macos.network.ip
-.. autofunction:: macos.network.interface
-.. autofunction:: macos.network.wifi_power
-.. autofunction:: macos.network.set_wifi_power
-.. autoclass:: macos.network.SpeedTest
-.. autofunction:: macos.network.speed_test
-.. autoclass:: macos.network.WiFiSignal
-.. autofunction:: macos.network.wifi_signal
-.. autoclass:: macos.network.NetworkInterface
-.. autofunction:: macos.network.interfaces
-.. autofunction:: macos.network.dns_servers
-.. autoclass:: macos.network.Proxies
-.. autofunction:: macos.network.proxies
-.. autoclass:: macos.network.VPN
-.. autofunction:: macos.network.vpns
-.. autofunction:: macos.network.connect_vpn
-.. autofunction:: macos.network.disconnect_vpn
-.. autoclass:: macos.network.Bandwidth
-.. autofunction:: macos.network.bandwidth
+.. autofunction:: macos.schedule.add
+.. autofunction:: macos.schedule.remove
+.. autofunction:: macos.schedule.jobs
+.. autofunction:: macos.schedule.get
+.. autofunction:: macos.schedule.run_now
+.. autofunction:: macos.schedule.pause
+.. autofunction:: macos.schedule.resume
+.. autoclass:: macos.schedule.Job
 ```
 
 ## macos.screen
@@ -854,18 +685,58 @@ explain how to use each part.
 .. autofunction:: macos.screen.stop_mirroring
 ```
 
-## macos.dialog
+## macos.settings
 
 ```{eval-rst}
-.. module:: macos.dialog
+.. module:: macos.settings
 
-.. autofunction:: macos.dialog.alert
-.. autofunction:: macos.dialog.confirm
-.. autofunction:: macos.dialog.prompt
-.. autofunction:: macos.dialog.choose
-.. autofunction:: macos.dialog.choose_file
-.. autofunction:: macos.dialog.choose_files
-.. autofunction:: macos.dialog.choose_folder
+.. autofunction:: macos.settings.export
+.. autofunction:: macos.settings.apply
+.. autofunction:: macos.settings.names
+```
+
+## macos.shortcuts
+
+```{eval-rst}
+.. module:: macos.shortcuts
+
+.. autofunction:: macos.shortcuts.run
+.. autofunction:: macos.shortcuts.list
+```
+
+## macos.sound
+
+```{eval-rst}
+.. module:: macos.sound
+
+.. autofunction:: macos.sound.play
+.. autofunction:: macos.sound.beep
+.. autofunction:: macos.sound.names
+.. autofunction:: macos.sound.alert_sound
+.. autofunction:: macos.sound.set_alert_sound
+.. autofunction:: macos.sound.alert_volume
+.. autofunction:: macos.sound.set_alert_volume
+.. autofunction:: macos.sound.ui_sounds
+.. autofunction:: macos.sound.set_ui_sounds
+```
+
+## macos.speech
+
+```{eval-rst}
+.. module:: macos.speech
+
+.. autofunction:: macos.speech.voices
+.. autoclass:: macos.speech.Voice
+```
+
+## macos.spotlight
+
+```{eval-rst}
+.. module:: macos.spotlight
+
+.. autofunction:: macos.spotlight.search
+.. autofunction:: macos.spotlight.search_name
+.. autofunction:: macos.spotlight.metadata
 ```
 
 ## macos.system
@@ -954,6 +825,135 @@ explain how to use each part.
 .. autofunction:: macos.system.startup_items
 .. autoclass:: macos.system.USBDevice
 .. autofunction:: macos.system.usb_devices
+```
+
+## macos.time_machine
+
+```{eval-rst}
+.. module:: macos.time_machine
+
+.. autofunction:: macos.time_machine.destinations
+.. autofunction:: macos.time_machine.backup_now
+.. autofunction:: macos.time_machine.stop_backup
+.. autofunction:: macos.time_machine.is_backing_up
+.. autofunction:: macos.time_machine.progress
+.. autofunction:: macos.time_machine.last_backup
+.. autofunction:: macos.time_machine.exclude
+.. autofunction:: macos.time_machine.include
+.. autofunction:: macos.time_machine.is_excluded
+```
+
+## macos.trackpad
+
+```{eval-rst}
+.. module:: macos.trackpad
+
+.. autofunction:: macos.trackpad.tap_to_click
+.. autofunction:: macos.trackpad.set_tap_to_click
+.. autofunction:: macos.trackpad.natural_scrolling
+.. autofunction:: macos.trackpad.set_natural_scrolling
+.. autofunction:: macos.trackpad.tracking_speed
+.. autofunction:: macos.trackpad.set_tracking_speed
+.. autofunction:: macos.trackpad.three_finger_drag
+.. autofunction:: macos.trackpad.set_three_finger_drag
+.. autofunction:: macos.trackpad.secondary_click
+.. autofunction:: macos.trackpad.set_secondary_click
+.. autofunction:: macos.trackpad.click_pressure
+.. autofunction:: macos.trackpad.set_click_pressure
+.. autodata:: macos.trackpad.GESTURES
+.. autofunction:: macos.trackpad.gestures
+.. autofunction:: macos.trackpad.set_gesture
+```
+
+## macos.video
+
+```{eval-rst}
+.. module:: macos.video
+
+.. autofunction:: macos.video.info
+.. autofunction:: macos.video.frame
+.. autofunction:: macos.video.convert
+.. autofunction:: macos.video.to_gif
+.. autofunction:: macos.video.frames
+.. autofunction:: macos.video.trim
+.. autofunction:: macos.video.concat
+.. autofunction:: macos.video.speed
+.. autofunction:: macos.video.rotate
+.. autofunction:: macos.video.crop
+.. autofunction:: macos.video.mute
+.. autofunction:: macos.video.reverse
+.. autofunction:: macos.video.add_audio
+.. autofunction:: macos.video.add_language_track
+.. autofunction:: macos.video.from_images
+.. autoclass:: macos.video.VideoInfo
+```
+
+## macos.vision
+
+```{eval-rst}
+.. module:: macos.vision
+
+.. autofunction:: macos.vision.text
+.. autofunction:: macos.vision.lines
+.. autofunction:: macos.vision.languages
+.. autoclass:: macos.vision.TextLine
+.. autofunction:: macos.vision.barcodes
+.. autoclass:: macos.vision.Barcode
+.. autofunction:: macos.vision.classify
+.. autofunction:: macos.vision.faces
+.. autofunction:: macos.vision.remove_background
+.. autofunction:: macos.vision.animals
+.. autofunction:: macos.vision.scan_document
+.. autofunction:: macos.vision.smart_crop
+.. autofunction:: macos.vision.image_distance
+.. autofunction:: macos.vision.duplicates
+.. autofunction:: macos.vision.best_shot
+.. autofunction:: macos.vision.horizon
+.. autofunction:: macos.vision.aesthetics
+.. autoclass:: macos.vision.Aesthetics
+.. autofunction:: macos.vision.body_pose
+.. autoclass:: macos.vision.Pose
+.. autofunction:: macos.vision.hand_pose
+.. autoclass:: macos.vision.Hand
+.. autoclass:: macos.vision.Animal
+```
+
+## macos.volume
+
+```{eval-rst}
+.. module:: macos.volume
+
+.. autofunction:: macos.volume.get
+.. autofunction:: macos.volume.set
+.. autofunction:: macos.volume.mute
+.. autofunction:: macos.volume.unmute
+.. autofunction:: macos.volume.is_muted
+```
+
+## macos.windows
+
+```{eval-rst}
+.. module:: macos.windows
+
+.. autofunction:: macos.windows.list
+.. autofunction:: macos.windows.focused
+.. autofunction:: macos.windows.wait_for
+.. autoclass:: macos.windows.Window
+   :members: title, position, size, frame, minimized, fullscreen, move, resize, set_frame, center, focus, minimize, restore, close, set_fullscreen, screenshot, snap
+.. autodata:: macos.windows.LAYOUTS
+   :no-value:
+.. autofunction:: macos.windows.tile
+.. autofunction:: macos.windows.tile_all
+.. autofunction:: macos.windows.has_permission
+.. autofunction:: macos.windows.request_permission
+.. autofunction:: macos.windows.double_click_title_bar
+.. autofunction:: macos.windows.set_double_click_title_bar
+.. autofunction:: macos.windows.tiling
+.. autofunction:: macos.windows.set_tiling
+.. autofunction:: macos.windows.click_wallpaper_to_show_desktop
+.. autofunction:: macos.windows.set_click_wallpaper_to_show_desktop
+.. autofunction:: macos.windows.animations
+.. autofunction:: macos.windows.set_animations
 ```
 
 ## Exceptions
