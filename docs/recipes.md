@@ -171,11 +171,12 @@ then run this to have its text on the clipboard:
 import macos
 
 # macOS marks every screenshot it takes: only those, not other images in the folder.
-folder = macos.screen.screenshot_folder()
-shots = macos.spotlight.search("kMDItemIsScreenCapture == 1", folder=folder)
+folder = macos.screen.screenshot_folder().resolve()
+found = macos.spotlight.search("kMDItemIsScreenCapture == 1", folder=folder)
+shots = [path for path in found if path.resolve().parent == folder]   # not in its subfolders
 
 if shots:
-    newest = max(shots, key=lambda path: path.stat().st_mtime)
+    newest = max(shots, key=lambda path: path.stat().st_birthtime)   # taken last, not edited last
     text = macos.vision.text(newest)
     macos.clipboard.copy(text)
     macos.notify(text[:80] or "No text found", title="Copied")
