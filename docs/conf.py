@@ -30,6 +30,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
     "sphinx_copybutton",
+    "sphinxext.opengraph",
 ]
 
 source_suffix = {
@@ -70,6 +71,16 @@ html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 
 # -- Extensions --------------------------------------------------------------
+
+# Link previews (Open Graph and Twitter cards): a page shared on social networks
+# or chat apps shows its title, its first paragraph and the project's card, the
+# same image as the GitHub repository's social preview.
+ogp_site_url = "https://macos.readthedocs.io/en/latest/"
+ogp_site_name = "pymacos"
+ogp_image = "_static/brand/social-preview.png"
+ogp_image_alt = "pymacos: Control your Mac from Python"
+ogp_social_cards = {"enable": False}  # one card for every page, not one drawn per page
+ogp_custom_meta_tags = ['<meta name="twitter:card" content="summary_large_image">']
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
