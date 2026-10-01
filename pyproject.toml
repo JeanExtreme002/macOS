@@ -1,7 +1,7 @@
 [project]
 name = "pymacos"
 dynamic = ["version"]
-description = "A Pythonic interface to macOS."
+description = "A Python library for automating and controlling macOS."
 authors = [
     { name = "Jean Loui Bernard Silva de Jesus", email = "contact@jeanloui.dev" },
 ]
@@ -57,10 +57,14 @@ keywords = [
     "appkit",
     "cocoa",
     "ctypes",
+    "python-library",
+    "desktop-automation",
+    "touch-id",
+    "pdf-redaction",
+    "window-manager",
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
-    "License :: OSI Approved :: MIT License",
     "Intended Audience :: Developers",
     "Operating System :: MacOS :: MacOS X",
     "Programming Language :: Python :: 3 :: Only",
@@ -69,6 +73,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Desktop Environment",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System",
