@@ -1,4 +1,7 @@
-name: Python Package
+name: Test
+
+# The test suite, on macOS across Python versions and on Linux. The jobs' names
+# (test-macos (3.x), test-linux) are required checks on main.
 
 on:
   push:
@@ -11,26 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v7
-    - uses: actions/setup-python@v7
-      with:
-        python-version: '3.12'
-    - name: Install dev deps
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
-    - name: Lint
-      run: flake8 macos tests
-    - name: Type-check
-      run: mypy macos
-
   # The live tests talk to the real system (NSWorkspace, the Keychain, the
   # pasteboard, screencapture), so the Python-version sweep runs on macOS.
   test-macos:
-    needs: lint
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:
@@ -66,7 +52,6 @@ jobs:
   # The package must import anywhere and fail with NotSupportedError, so the
   # unit tests also run on Linux (the live ones skip themselves there).
   test-linux:
-    needs: lint
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
@@ -89,21 +74,3 @@ jobs:
         flags: Linux-py3.12
         token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: false
-
-  # Warnings (including broken cross-references, via -n) fail the build, the
-  # same as on Read the Docs.
-  docs:
-    needs: lint
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v7
-    - uses: actions/setup-python@v7
-      with:
-        python-version: '3.11'
-    - name: Install docs dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r docs/requirements.txt
-        pip install -e .
-    - name: Build docs
-      run: python -m sphinx -n -W --keep-going -b html docs docs/_build/html

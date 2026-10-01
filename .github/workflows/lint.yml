@@ -1,0 +1,30 @@
+name: Lint
+
+# Style (flake8) and types (mypy). The job's name, lint, is a required check on main.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v7
+      with:
+        python-version: '3.12'
+    - name: Install dev deps
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    - name: Lint
+      run: flake8 macos tests
+    - name: Type-check
+      run: mypy macos
