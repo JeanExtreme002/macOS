@@ -3,8 +3,15 @@
 import datetime
 import os
 import subprocess
+from pathlib import Path
 
 import macos
+
+
+def _forget(domain):
+    """Delete a test domain, and the empty preferences file macOS keeps for it afterwards."""
+    subprocess.run(["defaults", "delete", domain], capture_output=True)
+    (Path.home() / "Library" / "Preferences" / (domain + ".plist")).unlink(missing_ok=True)
 
 
 def test_defaults_round_trip():
@@ -25,7 +32,7 @@ def test_defaults_round_trip():
     finally:
         for key in values:
             macos.defaults.delete(domain, key)
-        subprocess.run(["defaults", "delete", domain], capture_output=True)
+        _forget(domain)
     assert macos.defaults.read(macos.defaults.GLOBAL, "AppleLocale") == macos.defaults.read("-g", "AppleLocale")
 
 
@@ -39,3 +46,26 @@ def test_defaults_global_domain():
         assert subprocess.run(["defaults", "read", "-g", key], capture_output=True).returncode != 0
     finally:
         subprocess.run(["defaults", "delete", "-g", key], capture_output=True)
+
+
+def test_delete_and_restored_ignore_the_global_domain():
+    # AppleLocale is set in the global domain only: an app's own domain doesn't have it, although reading
+    # the app's value falls back to it.
+    domain = "com.github.pymacos.test-global-{}".format(os.getpid())
+    try:
+        assert macos.defaults.read(macos.defaults.GLOBAL, "AppleLocale") is not None
+        assert macos.defaults.read(domain, "AppleLocale") == macos.defaults.read(macos.defaults.GLOBAL, "AppleLocale")
+
+        assert macos.defaults.delete(domain, "AppleLocale") is False  # it was never set in this domain
+
+        with macos.defaults.restored((domain, "AppleLocale")):
+            macos.defaults.write(domain, "AppleLocale", "fr_FR")
+        assert macos.defaults.keys(domain) == []  # deleted again, not set to the global value
+
+        # The domain's own key, set to the same value as the global one, comes back after being deleted.
+        macos.defaults.write(domain, "AppleLocale", macos.defaults.read(macos.defaults.GLOBAL, "AppleLocale"))
+        with macos.defaults.restored(domain):
+            macos.defaults.delete(domain, "AppleLocale")
+        assert macos.defaults.keys(domain) == ["AppleLocale"]
+    finally:
+        _forget(domain)
