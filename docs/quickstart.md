@@ -39,7 +39,7 @@ macos.mouse.click_text("Submit")                     # wherever it shows on the 
 macos.windows.focused().set_frame(0, 25, 1280, 800)
 macos.windows.focused().snap("left")                 # the left half, like Rectangle
 
-macos.shortcuts.run("Translate", input="Olá")        # 'Hello'
+macos.shortcuts.run("Translate", input="Hola")       # 'Hello'
 macos.music.now_playing()                            # Track(title='Imagine', artist='John Lennon', ...)
 
 macos.browser.current_tab()                          # Tab(title='pymacos', url='https://github.com/...', ...)

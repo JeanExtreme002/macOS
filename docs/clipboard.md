@@ -18,8 +18,8 @@ for example after copying an image.
 Unicode round-trips correctly, whatever your terminal's locale is:
 
 ```python
-macos.clipboard.copy("olá 🍎")
-macos.clipboard.paste()        # 'olá 🍎'
+macos.clipboard.copy("café 🍎")
+macos.clipboard.paste()        # 'café 🍎'
 ```
 
 ## Images

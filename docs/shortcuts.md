@@ -7,7 +7,7 @@ anything they automate becomes available from Python.
 import macos
 
 macos.shortcuts.list()                 # ['Resize Image', 'Translate', ...]
-macos.shortcuts.run("Translate", input="Olá, mundo")   # 'Hello, world'
+macos.shortcuts.run("Translate", input="Hola, mundo")  # 'Hello, world'
 ```
 
 ## Input

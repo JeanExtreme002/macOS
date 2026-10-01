@@ -5,8 +5,8 @@ Read text in images (OCR) with Apple's Vision framework.
 
 ::
 
-    macos.vision.text("receipt.png")                    # 'Total: R$ 42,00\\n...'
-    macos.vision.text("scan.jpg", languages=["pt-BR"])
+    macos.vision.text("receipt.png")                    # 'Total: $42.00\\n...'
+    macos.vision.text("scan.jpg", languages=["fr-FR"])
     for line in macos.vision.lines("slide.png"):
         print(line.text, line.confidence)
 
@@ -193,7 +193,7 @@ def lines(image: Image, *, languages: Optional[Sequence[str]] = None, fast: bool
 
     ``image`` is a path or the image file's bytes, in any format macOS can
     open (PNG, JPEG, HEIC, TIFF, PDF...). ``languages`` lists the languages to
-    expect, most likely first (e.g. ``["pt-BR", "en-US"]``; see
+    expect, most likely first (e.g. ``["fr-FR", "en-US"]``; see
     :func:`languages`); by default Vision detects them. ``fast=True`` trades
     accuracy for speed.
     """
@@ -304,7 +304,7 @@ def text(image: Image, *, languages: Optional[Sequence[str]] = None, fast: bool 
 
 
 def languages(*, fast: bool = False) -> List[str]:
-    """The language codes that text recognition supports, e.g. ``['en-US', 'pt-BR', ...]`` (macOS 12+)."""
+    """The language codes that text recognition supports, e.g. ``['en-US', 'fr-FR', ...]`` (macOS 12+)."""
     _load()
     with _objc.autorelease_pool():
         request = _request(None, fast)

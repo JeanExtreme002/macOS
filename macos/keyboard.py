@@ -450,7 +450,7 @@ def _input_sources() -> Iterator[List[Tuple[int, str, str]]]:
 
 def layouts() -> List[str]:
     """
-    Return the keyboard layouts and input methods enabled in the menu bar's input menu: ``['ABC', 'Brazilian']``.
+    Return the keyboard layouts and input methods enabled in the menu bar's input menu: ``['ABC', 'French']``.
 
     Add more in System Settings › Keyboard › Text Input.
     """
@@ -459,7 +459,7 @@ def layouts() -> List[str]:
 
 
 def layout() -> str:
-    """Return the keyboard layout (input source) in use, such as ``'ABC'`` or ``'Brazilian'``."""
+    """Return the keyboard layout (input source) in use, such as ``'ABC'`` or ``'French'``."""
     carbon = _text_input()
     with _cf.owned(carbon.TISCopyCurrentKeyboardInputSource()) as source:
         if not source:

@@ -12,7 +12,7 @@ permission to grant.
 import macos
 
 macos.vision.text("receipt.png")
-# 'Coffee Shop\nTotal: R$ 42,00\nThank you!'
+# 'Coffee Shop\nTotal: $42.00\nThank you!'
 ```
 
 The image can be a path or the bytes of an image file, in any format macOS
@@ -30,7 +30,7 @@ By default Vision detects the language. When you know it, pass `languages`,
 most likely first. This improves accents and language-specific characters:
 
 ```python
-macos.vision.text("nota.jpg", languages=["pt-BR", "en-US"])
+macos.vision.text("menu.jpg", languages=["fr-FR", "en-US"])
 ```
 
 {func}`~macos.vision.languages` lists the supported codes:

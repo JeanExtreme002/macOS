@@ -5,7 +5,7 @@ Turn an address into coordinates, and coordinates into an address, as Maps does.
 
 ::
 
-    place = macos.maps.geocode("Avenida Paulista, 1578, São Paulo")[0]
+    place = macos.maps.geocode("20 W 34th St, New York, NY")[0]
     place.latitude, place.longitude          # (-23.5614, -46.6559)
     macos.maps.reverse_geocode(48.8584, 2.2945).city   # 'Paris'
 
@@ -48,7 +48,7 @@ class Place:
     name: Optional[str]
     """Such as ``'Eiffel Tower'`` or ``'1 Infinite Loop'``."""
     street: Optional[str]
-    """The street, with the number when there's one: ``'Avenida Paulista, 1578'``."""
+    """The street, with the number when there's one: ``'Unter den Linden 77'``."""
     city: Optional[str]
     state: Optional[str]
     postal_code: Optional[str]
@@ -74,7 +74,7 @@ def _text(placemark: int, key: str) -> Optional[str]:
 def _place(placemark: int) -> Place:
     location = _objc.send(placemark, "location")
     point = _objc.send(location, "coordinate", restype=_Coordinate)
-    # The postal address writes the street as each country does: "1 Infinite Loop", "Avenida Paulista, 1578".
+    # The postal address writes the street as each country does: "1 Infinite Loop", "Unter den Linden 77".
     address = _objc.send(placemark, "postalAddress")
     street = _objc.pystring(_objc.send(address, "street")) if address else None
     zone = _objc.send(placemark, "timeZone")
@@ -183,7 +183,7 @@ def reverse_geocode(latitude: float, longitude: float, *, timeout: float = 15) -
 
     ::
 
-        macos.maps.reverse_geocode(-22.9519, -43.2105).city   # 'Rio de Janeiro'
+        macos.maps.reverse_geocode(37.8199, -122.4783).city   # 'San Francisco'
     """
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         raise ValueError("latitude must be from -90 to 90 and longitude from -180 to 180, not {}, {}".format(latitude, longitude))
@@ -232,7 +232,7 @@ def open(place: Where) -> None:
 
     ::
 
-        macos.maps.open("Avenida Paulista, 1578, São Paulo")
+        macos.maps.open("20 W 34th St, New York, NY")
         macos.maps.open(macos.maps.geocode("Eiffel Tower")[0])
     """
     if isinstance(place, (Place, tuple)):

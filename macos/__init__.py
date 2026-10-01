@@ -29,7 +29,7 @@ videos, PDFs and language detection in one import, with no dependencies::
     macos.open_with("report.pdf", "Preview")
     macos.image.convert("IMG_0042.heic", "IMG_0042.jpg")
     macos.pdf.text("report.pdf")
-    macos.language.detect("Olá, tudo bem?")
+    macos.language.detect("Hola, ¿cómo estás?")
     macos.vision.remove_background("photo.jpg")
     macos.vision.scan_document("receipt.jpg")
     macos.audio.set_output("AirPods")

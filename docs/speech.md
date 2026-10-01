@@ -11,7 +11,7 @@ macos.say("Hello from Python")
 Choose a voice and a speed in words per minute (about 175 to 200 is normal):
 
 ```python
-macos.say("Olá, tudo bem?", voice="Luciana", rate=180)
+macos.say("Hello, how are you?", voice="Samantha", rate=180)
 ```
 
 By default `say` waits until the speech ends. Pass `wait=False` to return right
@@ -44,7 +44,7 @@ for voice in macos.speech.voices():
 
 ```text
 Albert en_US Hello! My name is Albert.
-Luciana pt_BR Olá, meu nome é Luciana.
+Thomas fr_FR Bonjour, je m’appelle Thomas.
 ...
 ```
 
@@ -52,7 +52,7 @@ More voices can be downloaded in System Settings › Accessibility › Spoken
 Content › System Voice › Manage Voices.
 
 An unknown voice name is not an error: macOS falls back to the default voice.
-Names are matched loosely, so `"luciana"` works too.
+Names are matched loosely, so `"samantha"` works too.
 
 ## Reference
 
