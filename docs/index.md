@@ -1,3 +1,10 @@
+---
+og:description: Control your whole Mac from Python. Apps, notifications, input, screen, camera, OCR, PDFs, Keychain, Touch ID and more, with one import and zero dependencies.
+myst:
+  html_meta:
+    description: "Control your whole Mac from Python. Apps, notifications, input, screen, camera, OCR, PDFs, Keychain, Touch ID and more, with one import and zero dependencies."
+---
+
 # pymacos
 
 <p class="wordmark"><img alt="pymacos" src="_static/brand/wordmark-light.svg" width="360"></p>
