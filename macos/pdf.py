@@ -1679,9 +1679,15 @@ def _patterns(targets: Union[Target, Sequence[Target]]) -> List[Tuple[str, "re.P
     return found
 
 
-def _utf16(text: str, index: int) -> int:
-    """Where Python's ``index`` falls in ``text`` counted as PDFKit counts: in UTF-16 units."""
-    return len(text[:index].encode("utf-16-le")) // 2
+def _utf16_offsets(text: str) -> List[int]:
+    """
+    Where each of Python's indexes in ``text`` falls counted as PDFKit counts, in UTF-16 units (one
+    past the end included): a character beyond the Basic Multilingual Plane, like an emoji, takes two.
+    """
+    offsets = [0]
+    for character in text:
+        offsets.append(offsets[-1] + (2 if ord(character) > 0xFFFF else 1))
+    return offsets
 
 
 def _seen_box(page: int, box: Any) -> Tuple[float, ...]:
@@ -1705,11 +1711,12 @@ def _redactions(
     boxes = []
     found = 0
     content = _objc.pystring(_objc.send(page, "string")) or ""
+    offsets = _utf16_offsets(content)  # once per page: per match, it would grow with the square of the page
     for index, (label, pattern) in enumerate(patterns):
         for match in pattern.finditer(content):
             if not match.group():
                 continue
-            start, end = _utf16(content, match.start()), _utf16(content, match.end())
+            start, end = offsets[match.start()], offsets[match.end()]
             selection = _objc.send(page, "selectionForRange:", _NSRange(start, end - start), argtypes=(_NSRange,))
             if not selection:
                 raise MacOSError(

@@ -282,7 +282,7 @@ def test_sign_and_add_text_near_a_text(tmp_path):
 def test_redact_targets():
     import re
 
-    from macos.pdf import _patterns, _scrub, _utf16
+    from macos.pdf import _patterns, _scrub, _utf16_offsets
 
     (label, words), (_, cpf) = _patterns(["Ana  Souza", re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")])
     assert label == "Ana  Souza"
@@ -307,7 +307,9 @@ def test_redact_targets():
     counts = [0]
     assert _scrub("secret plan", [("", re.compile(r"(?=secret)"))], counts) == "secret plan" and counts == [0]
     assert _patterns("a.b")[0][1].search("a.b") and not _patterns("a.b")[0][1].search("axb")  # literal, not a pattern
-    assert _utf16("💡 CPF", 2) == 3  # PDFKit counts an emoji as two
+    assert _utf16_offsets("💡 CPF") == [0, 2, 3, 4, 5, 6]  # PDFKit counts an emoji as two
+    text = "Ação 💡 relatório 𝒜 fim"
+    assert _utf16_offsets(text) == [len(text[:index].encode("utf-16-le")) // 2 for index in range(len(text) + 1)]
 
     with pytest.raises(ValueError, match="is for bytes"):
         _patterns([re.compile(b"secret")])
