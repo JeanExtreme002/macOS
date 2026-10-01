@@ -1,7 +1,7 @@
 # PDF
 
-{mod}`macos.pdf` reads, merges, splits, rotates and encrypts PDFs, and makes
-them from images, with PDFKit, the framework behind Preview. Pages are numbered from 1, like in Preview.
+{mod}`macos.pdf` reads, merges, splits, rotates, encrypts and redacts PDFs, and
+makes them from images, with PDFKit, the framework behind Preview. Pages are numbered from 1, like in Preview.
 
 ```python
 import macos
@@ -257,6 +257,69 @@ again; the others become PNG (or TIFF, for CMYK). A picture used on several
 pages is saved once, and rare encodings (indexed colors, 1-bit masks) are
 skipped. To save whole pages as images, see {func}`~macos.pdf.render`.
 
+## Redacting
+
+A black rectangle drawn over text in a PDF hides it only on screen: the text
+is still there, to copy, search or extract. {func}`~macos.pdf.redact` removes
+it for good before blacking it out:
+
+```python
+import re
+
+done = macos.pdf.redact("contract.pdf", ["Ana Souza", "123.456.789-00"], "contract-public.pdf")
+done.matches   # {'Ana Souza': 3, '123.456.789-00': 1}
+done.pages     # {1: 2, 4: 2}: the pages redrawn, with their matches
+
+cpf = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
+email = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+macos.pdf.redact("list.pdf", [cpf, email], "list-public.pdf")
+```
+
+A text matches as whole words, ignoring case and any spacing or line break
+between them: a name split over two lines is found, and `"Ana"` doesn't black
+out "Banana". A compiled {mod}`re` pattern catches what follows a shape: IDs,
+emails, phone numbers. The {class}`~macos.pdf.Redaction` it returns tells how
+many times each target was found, and on which pages.
+
+Each page with a match is redrawn as a picture of what it shows, with black
+boxes over the matches: there's no text under them anymore, and what the
+page's crop hid is gone too. Its annotations (form fields, comments, stamps)
+become part of the picture. The rest of that page still
+shows, but its text can no longer be selected or searched; run
+{func}`~macos.pdf.ocr` on the result to get it back, without what was
+redacted. Pages without a match don't change.
+
+What else in the file holds a match goes too:
+
+- form fields and comments, wherever they hold it: a value, a field's name
+  or choices, a comment or its author, a link's address. Their page is
+  flattened, with a box over them (its other fields become part of the
+  picture);
+- the title, author, subject, keywords and creator, and bookmark titles, where the
+  match becomes `█`. These count in the {class}`~macos.pdf.Redaction` too: a
+  target found only in the title is redacted, not reported missing.
+
+When a target isn't found at all, {func}`~macos.pdf.redact` raises
+{class}`ValueError` and writes nothing: a redaction that missed would look
+like it worked. A match found in the text but that can't be placed on the
+page raises {class}`~macos.MacOSError`, writing nothing too.
+
+```{warning}
+It finds only what the PDF holds as text. **Look over the result before
+sharing it**, and compare the counts with what you expect. These stay
+visible:
+
+- text in pictures: a scanned page, a screenshot, a logo, a signature;
+- text turned into shapes, as some design and print PDFs have;
+- fonts whose letters can't be read back (the text {func}`~macos.pdf.text`
+  returns looks garbled);
+- words split by a hyphen at the end of a line.
+
+A scanned page has no text to find: run {func}`~macos.pdf.ocr` first. On a
+scan made searchable that way, the boxes go where the OCR placed the words,
+which may be a little off the picture: check those pages closely.
+```
+
 ## Reference
 
 - {func}`macos.pdf.page_count`
@@ -282,3 +345,5 @@ skipped. To save whole pages as images, see {func}`~macos.pdf.render`.
 - {func}`macos.pdf.bookmarks`
 - {func}`macos.pdf.set_bookmarks`
 - {func}`macos.pdf.images`
+- {func}`macos.pdf.redact`
+- {class}`macos.pdf.Redaction`

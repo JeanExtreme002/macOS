@@ -292,6 +292,7 @@ def test_other_platforms_raise_not_supported(monkeypatch):
         lambda: macos.finder.compress(__file__),
         lambda: macos.finder.quick_look(__file__),
         lambda: macos.pdf.ocr(__file__, "out.pdf"),
+        lambda: macos.pdf.redact(__file__, "secret", "out.pdf"),
         lambda: macos.keyboard.key_repeat(),
         lambda: macos.keyboard.set_key_repeat(0.03),
         lambda: macos.keyboard.set_autocorrect(False),

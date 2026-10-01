@@ -277,3 +277,46 @@ def test_sign_and_add_text_near_a_text(tmp_path):
         macos.pdf.add_text(form, "x", tmp_path / "never.pdf", near="Name:", position="top_left")
     with pytest.raises(ValueError, match="side must be one of"):
         macos.pdf.sign(form, signature, tmp_path / "never.pdf", near="Name:", side="up")
+
+
+def test_redact_targets():
+    import re
+
+    from macos.pdf import _patterns, _scrub, _utf16_offsets
+
+    (label, words), (_, cpf) = _patterns(["Ana  Souza", re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")])
+    assert label == "Ana  Souza"
+    assert words.search("assinado por ANA\nsouza") and not words.search("Anasouza")  # any case and spacing
+    ana = _patterns("Ana")[0][1]
+    assert [m.group() for m in ana.finditer("Ana, Banana, Anapolis, ANA.")] == ["Ana", "ANA"]  # whole words only
+    assert _patterns("-00")[0][1].search("789-00")  # an edge that isn't a letter or digit needs no word around it
+    assert _patterns("Jose")[0][1].search("José") is None and _patterns("José")[0][1].search("JOSÉ.")
+    counts = [0, 0]
+    assert _scrub("Contrato de Ana Souza, CPF 123.456.789-00", [("", words), ("", cpf)], counts) == (
+        "Contrato de " + "█" * 9 + ", CPF " + "█" * 14
+    )
+    assert counts == [1, 1]
+    # Overlapping targets: each is searched in the original, so the longer one is covered whole.
+    counts = [0, 0]
+    both = _patterns(["Ana", "Ana Souza"])
+    assert _scrub("Report on Ana Souza", both, counts) == "Report on " + "█" * 9 and counts == [1, 1]
+    counts = [0, 0]  # the other order too: the shorter target is still found inside the longer one
+    assert _scrub("Report on Ana Souza", _patterns(["Ana Souza", "Souza"]), counts) == "Report on " + "█" * 9
+    assert counts == [1, 1]
+    # A pattern that only matches between characters never counts as found: it would black out nothing.
+    counts = [0]
+    assert _scrub("secret plan", [("", re.compile(r"(?=secret)"))], counts) == "secret plan" and counts == [0]
+    assert _patterns("a.b")[0][1].search("a.b") and not _patterns("a.b")[0][1].search("axb")  # literal, not a pattern
+    assert _utf16_offsets("💡 CPF") == [0, 2, 3, 4, 5, 6]  # PDFKit counts an emoji as two
+    text = "Ação 💡 relatório 𝒜 fim"
+    assert _utf16_offsets(text) == [len(text[:index].encode("utf-16-le")) // 2 for index in range(len(text) + 1)]
+
+    with pytest.raises(ValueError, match="is for bytes"):
+        _patterns([re.compile(b"secret")])
+    with pytest.raises(ValueError, match="each target once: 'Ana' is given more than once"):
+        _patterns(["Ana", re.compile("Ana")])  # a text and a pattern with the same source count as one
+    with pytest.raises(ValueError, match="each target once"):
+        _patterns(["Souza", "Souza"])
+    for bad, message in [([], "at least one"), (["  "], "takes texts"), ([3], "takes texts"), ([re.compile("x*")], "empty text")]:
+        with pytest.raises(ValueError, match=message):
+            _patterns(bad)

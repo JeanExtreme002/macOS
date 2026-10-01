@@ -1,11 +1,13 @@
 """Tests of :mod:`macos.pdf` against the real system. Skipped outside macOS."""
 
 
+import ctypes
+
 import pytest
 
 import macos
 from macos import _objc
-from tests.helpers import rgb_png, small_png
+from tests.helpers import png_size, rgb_png, small_png
 
 
 def _text_pdf(folder, pages):
@@ -216,3 +218,238 @@ def test_ocr_makes_a_scan_searchable(tmp_path):
     assert "ocean waves" in macos.pdf.text(searchable, [2])
     kept = macos.pdf.ocr(source, tmp_path / "kept.pdf")  # pages with text stay as they are
     assert macos.pdf.text(kept) == macos.pdf.text(source)
+
+
+def _raw_text(path):
+    """Everything the file holds, its compressed streams inflated: where redacted text could still hide."""
+    import re
+    import zlib
+
+    raw = path.read_bytes()
+    found = [raw]
+    for match in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.S):
+        try:
+            found.append(zlib.decompress(match.group(1)))
+        except zlib.error:
+            pass
+    return b"\n".join(found)
+
+
+def test_redact_removes_the_text(tmp_path):
+    import re
+
+    from tests.helpers import pdf_with_text
+
+    first, second = tmp_path / "1.pdf", tmp_path / "2.pdf"
+    first.write_bytes(pdf_with_text([("Contrato de Ana", 72, 700), ("Souza, CPF 123.456.789-00", 72, 680)]))
+    second.write_bytes(pdf_with_text([("Anexo sem dados", 72, 700)]))
+    merged = macos.pdf.merge([first, second], tmp_path / "merged.pdf")
+    source = macos.pdf.set_bookmarks(merged, [("Contrato de Ana Souza", 1), ("Anexo", 2)], tmp_path / "in.pdf")
+    before = macos.pdf.render(source, 2)
+
+    cpf = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
+    done = macos.pdf.redact(source, ["ana souza", cpf], tmp_path / "out.pdf")
+    output = done.path
+
+    assert done.matches == {"ana souza": 2, cpf.pattern: 1}  # the name: on the page, and in the bookmark
+    assert done.pages == {1: 2}
+
+    assert macos.pdf.page_count(output) == 2
+    assert macos.pdf.text(output, [1]).strip() == ""  # the redacted page is a picture now
+    assert macos.pdf.text(output, [2]) == "Anexo sem dados"  # the other page didn't change
+    assert macos.pdf.render(output, 2) == before
+    assert [(mark.title, mark.page) for mark in macos.pdf.bookmarks(output)] == [("Contrato de " + "█" * 9, 1), ("Anexo", 2)]
+    raw = _raw_text(output)
+    assert b"Souza" not in raw and b"123.456" not in raw and "Souza".encode("utf-16-be") not in raw
+
+    assert png_size(macos.pdf.render(output, 1, size=792)) == (612, 792)  # the page keeps its size
+
+
+def test_redact_writes_nothing_when_a_target_is_missing(tmp_path):
+    from tests.helpers import pdf_with_text
+
+    source = tmp_path / "in.pdf"
+    source.write_bytes(pdf_with_text([("Contrato de Ana Souza", 72, 700)]))
+    with pytest.raises(ValueError, match="'Maria' isn't in the PDF, so nothing was written"):
+        macos.pdf.redact(source, ["Ana Souza", "Maria"], tmp_path / "out.pdf")
+    assert not (tmp_path / "out.pdf").exists()
+
+
+def test_redact_a_rotated_page_and_a_form_field(tmp_path):
+    from tests.helpers import pdf_form, pdf_with_text
+
+    rotated = tmp_path / "rotated.pdf"
+    rotated.write_bytes(pdf_with_text([("CPF 123.456.789-00", 72, 700)], rotate=90))
+    output = macos.pdf.redact(rotated, "123.456.789-00", tmp_path / "rotated-out.pdf").path
+    assert b"123.456" not in _raw_text(output)
+    assert png_size(macos.pdf.render(output, 1, size=792)) == (792, 612)  # still turned as it was seen
+
+    form = tmp_path / "form.pdf"
+    pdf_form(form)
+    filled = macos.pdf.fill_form(form, {"Full name": "Ana Souza"}, tmp_path / "filled.pdf")
+    output = macos.pdf.redact(filled, "Ana Souza", tmp_path / "form-out.pdf").path
+    assert macos.pdf.form_fields(output) == [] and b"Souza" not in _raw_text(output)
+
+
+def _crop(path):
+    from macos import pdf
+
+    with pdf._open(path) as document:
+        box = _objc.send(pdf._page(document, 1), "boundsForBox:", 1, argtypes=(ctypes.c_long,), restype=_objc.CGRect)
+        return box.size.width, box.size.height
+
+
+def test_redact_keeps_the_crop_and_drops_what_it_hides(tmp_path):
+    from tests.helpers import pdf_with_text
+
+    source = tmp_path / "cropped.pdf"
+    source.write_bytes(pdf_with_text([("Ana Souza", 100, 500), ("Hidden margin note", 400, 50)], crop=(50, 300, 450, 700)))
+    output = macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf").path
+    assert _crop(output) == _crop(source) == (400.0, 400.0)
+    assert b"Hidden margin" not in _raw_text(output)
+
+
+def test_redact_finds_a_target_only_in_the_metadata(tmp_path):
+    from macos import pdf
+    from tests.helpers import pdf_with_text
+
+    plain = tmp_path / "plain.pdf"
+    plain.write_bytes(pdf_with_text([("Nothing to hide here", 72, 700)]))
+    source = tmp_path / "titled.pdf"
+    with pdf._open(plain) as document:
+        attributes = _objc.send(_objc.send(_objc.send(document, "documentAttributes"), "mutableCopy"), "autorelease")
+        title, key = _objc.nsstring("Project Falcon report"), _objc.nsstring("Title")
+        _objc.send(attributes, "setObject:forKey:", title, key, argtypes=(_objc.id, _objc.id), restype=None)
+        _objc.send(document, "setDocumentAttributes:", attributes, argtypes=(_objc.id,), restype=None)
+        pdf._save(document, source)
+
+    done = macos.pdf.redact(source, "Project Falcon", tmp_path / "out.pdf")
+
+    assert done.matches == {"Project Falcon": 1} and done.pages == {}  # no page to redraw
+    assert macos.pdf.metadata(done.path).title == "\u2588" * 14 + " report"
+    assert macos.pdf.text(done.path) == "Nothing to hide here" and b"Falcon" not in _raw_text(done.path)
+
+
+def test_redact_keeps_the_other_annotations_in_the_picture(tmp_path):
+    from tests.helpers import pdf_with_text
+
+    source = tmp_path / "in.pdf"
+    source.write_bytes(pdf_with_text([("Signed by Ana Souza", 72, 700)]))
+    stamped = macos.pdf.add_text(source, "APPROVED", tmp_path / "stamped.pdf", page=1, position=(72, 400), size=36)
+
+    output = macos.pdf.redact(stamped, "Ana Souza", tmp_path / "out.pdf").path
+
+    seen = macos.vision.text(macos.pdf.render(output, 1, size=1600))
+    assert "APPROVED" in seen and "Signed by" in seen and "Souza" not in seen
+
+
+def test_redact_removes_hidden_text_and_counts_every_match(tmp_path, monkeypatch):
+    from macos import pdf
+    from tests.helpers import pdf_with_text
+
+    # Invisible text, as OCR adds: still text to extract, so it must go.
+    source = tmp_path / "hidden.pdf"
+    source.write_bytes(pdf_with_text([("Visible line", 72, 700), ("Ana Souza", 72, 600)], invisible=[1]))
+    assert "Ana Souza" in macos.pdf.text(source)
+    done = macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf")
+    assert done.pages == {1: 1} and b"Souza" not in _raw_text(done.path)
+
+    # A match with no box to draw still has its page redrawn: that's what removes the text.
+    found = pdf._redactions
+    monkeypatch.setattr(pdf, "_redactions", lambda *args: (found(*args)[0], []))
+    done = macos.pdf.redact(source, "Ana Souza", tmp_path / "boxless.pdf")
+    assert done.pages == {1: 1} and b"Souza" not in _raw_text(done.path)
+    monkeypatch.undo()
+
+    # A comment holding a target twice counts twice.
+    plain = tmp_path / "plain.pdf"
+    plain.write_bytes(pdf_with_text([("Signed by Ana Souza", 72, 700)]))
+    noted = macos.pdf.add_text(plain, "Ana Souza, Ana Souza", tmp_path / "noted.pdf", page=1, position=(72, 400))
+    done = macos.pdf.redact(noted, "Ana Souza", tmp_path / "noted-out.pdf")
+    assert done.matches == {"Ana Souza": 3} and done.pages == {1: 3}
+
+
+def test_redact_doesnt_join_an_annotations_properties(tmp_path):
+    from macos import pdf
+    from tests.helpers import pdf_form
+
+    form = tmp_path / "form.pdf"
+    pdf_form(form)
+    filled = macos.pdf.fill_form(form, {"Full name": "Souza"}, tmp_path / "filled.pdf")
+    source = tmp_path / "noted.pdf"
+    with pdf._open(filled) as document:
+        for _, widget in pdf._widgets(document):
+            if _objc.pystring(_objc.send(widget, "fieldName")) == "Full name":
+                _objc.send(widget, "setContents:", _objc.nsstring("Ana"), argtypes=(_objc.id,), restype=None)
+        pdf._save(document, source)
+
+    # "Ana" is the field's comment and "Souza" its value: "Ana Souza" is in neither.
+    with pytest.raises(ValueError, match="'Ana Souza' isn't in the PDF"):
+        macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf")
+    assert macos.pdf.redact(source, "Souza", tmp_path / "out.pdf").matches == {"Souza": 1}
+
+
+def test_redact_searches_every_text_an_annotation_holds(tmp_path):
+    from macos import pdf
+    from macos._objc import CGPoint, CGRect, CGSize
+    from tests.helpers import pdf_form, pdf_with_text
+
+    # A choice option and a radio state, nowhere in the page's text.
+    form = tmp_path / "form.pdf"
+    pdf_form(form)
+    done = macos.pdf.redact(form, "Large", tmp_path / "form-out.pdf")
+    assert done.pages == {1: 1} and b"Large" not in _raw_text(done.path)
+
+    # A comment whose author is the name, on a page that doesn't show it, while another page does.
+    first, second = tmp_path / "1.pdf", tmp_path / "2.pdf"
+    first.write_bytes(pdf_with_text([("Signed by Ana Souza", 72, 700)]))
+    second.write_bytes(pdf_with_text([("Reviewed", 72, 700)]))
+    merged = macos.pdf.merge([first, second], tmp_path / "merged.pdf")
+    source = tmp_path / "noted.pdf"
+    with pdf._open(merged) as document:
+        note = _objc.send(
+            _objc.send(_objc.cls("PDFAnnotation"), "alloc"),
+            "initWithBounds:forType:withProperties:",
+            CGRect(CGPoint(72, 600), CGSize(20, 20)),
+            _objc.nsstring("Text"),
+            None,
+            argtypes=(CGRect, _objc.id, _objc.id),
+        )
+        _objc.send(note, "autorelease")
+        _objc.send(note, "setContents:", _objc.nsstring("Looks fine"), argtypes=(_objc.id,), restype=None)
+        _objc.send(note, "setUserName:", _objc.nsstring("Ana Souza"), argtypes=(_objc.id,), restype=None)
+        _objc.send(pdf._page(document, 2), "addAnnotation:", note, argtypes=(_objc.id,), restype=None)
+        pdf._save(document, source)
+
+    done = macos.pdf.redact(source, "Ana Souza", tmp_path / "out.pdf")
+    assert done.pages == {1: 1, 2: 1} and b"Souza" not in _raw_text(done.path)
+
+
+def test_redact_reads_the_whole_annotation_dictionary(tmp_path):
+    from tests.helpers import pdf_with_text
+
+    # The name only in a comment's subject (/Subj), on a page that doesn't show it, while another page does.
+    first, second = tmp_path / "1.pdf", tmp_path / "2.pdf"
+    first.write_bytes(
+        pdf_with_text([("Report", 72, 700)], annotations=["/Subtype /Text /Rect [72 600 92 620] /Subj (Ana Souza review)"])
+    )
+    second.write_bytes(pdf_with_text([("Signed by Ana Souza", 72, 700)]))
+    merged = macos.pdf.merge([first, second], tmp_path / "merged.pdf")
+    done = macos.pdf.redact(merged, "Ana Souza", tmp_path / "out.pdf")
+    assert done.pages == {1: 1, 2: 1} and b"Souza" not in _raw_text(done.path)
+
+    # Rich-text contents (/RC), which PDFKit doesn't read: on a page left as it is, they must not stay behind.
+    # PDFKit doesn't write them back; should a macOS keep them, this fails, and they need reading.
+    # The name is found only in the title, so the page itself is left as it is.
+    rich = tmp_path / "rich.pdf"
+    rich.write_bytes(
+        pdf_with_text(
+            [("Report", 72, 700)],
+            annotations=["/Subtype /Text /Rect [72 400 92 420] /Contents (Fine) /RC (<body><p>Ask Ana Souza</p></body>)"],
+            title="Ana Souza report",
+        )
+    )
+    assert b"Ask Ana Souza" in rich.read_bytes() and macos.pdf.metadata(rich).title == "Ana Souza report"
+    done = macos.pdf.redact(rich, "Ana Souza", tmp_path / "rich-out.pdf")
+    assert done.matches == {"Ana Souza": 1} and done.pages == {}
+    assert b"Ask Ana" not in _raw_text(done.path) and b"Souza" not in _raw_text(done.path)
