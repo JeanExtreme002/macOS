@@ -1,7 +1,7 @@
 [project]
 name = "pymacos"
 dynamic = ["version"]
-description = "A Pythonic interface to macOS."
+description = "A Python library for automating and controlling macOS."
 authors = [
     { name = "Jean Loui Bernard Silva de Jesus", email = "contact@jeanloui.dev" },
 ]
