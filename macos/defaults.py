@@ -158,6 +158,7 @@ def write(domain: str, key: str, value: Any, *, current_host: bool = False) -> N
 
 def delete(domain: str, key: str, *, current_host: bool = False) -> bool:
     """Remove ``key`` from ``domain``; return whether it was set."""
+    _check(domain)
     existed = _own(domain, key, _MISSING, current_host) is not _MISSING
     _store(domain, key, None, current_host)
     return existed
@@ -200,7 +201,8 @@ def restored(*what: Union[str, Tuple[str, str]], current_host: bool = False) -> 
                     if name not in value:
                         delete(domain, name, current_host=current_host)
                 for name, old in value.items():
-                    if read(domain, name, current_host=current_host) != old:
+                    # The domain's own value: one equal to the global fallback still has to be written back.
+                    if _own(domain, name, missing, current_host) != old:
                         write(domain, name, old, current_host=current_host)
             elif value is missing:
                 delete(domain, name_or_all, current_host=current_host)

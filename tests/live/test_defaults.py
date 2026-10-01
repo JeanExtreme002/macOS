@@ -61,5 +61,11 @@ def test_delete_and_restored_ignore_the_global_domain():
         with macos.defaults.restored((domain, "AppleLocale")):
             macos.defaults.write(domain, "AppleLocale", "fr_FR")
         assert macos.defaults.keys(domain) == []  # deleted again, not set to the global value
+
+        # The domain's own key, set to the same value as the global one, comes back after being deleted.
+        macos.defaults.write(domain, "AppleLocale", macos.defaults.read(macos.defaults.GLOBAL, "AppleLocale"))
+        with macos.defaults.restored(domain):
+            macos.defaults.delete(domain, "AppleLocale")
+        assert macos.defaults.keys(domain) == ["AppleLocale"]
     finally:
         _forget(domain)
