@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import macos
-from tests.helpers import WALLPAPER_MOVIE, png_size, rgb_png
+from tests.helpers import WALLPAPER_MOVIE, pdf_with_text, png_size, rgb_png
 
 
 def test_ocr_reads_a_quick_look_preview(tmp_path):
@@ -29,6 +29,19 @@ def test_ocr_languages_and_errors(tmp_path):
         macos.vision.text(tmp_path / "missing.png")
     with pytest.raises(macos.MacOSError):
         macos.vision.text(b"not an image")
+
+
+def test_pdfs_are_refused_and_read_once_rendered(tmp_path):
+    document = tmp_path / "scan.pdf"
+    document.write_bytes(pdf_with_text([("INVOICE 2026 TOTAL 42.00", 72, 700)]))
+
+    for call in (macos.vision.text, macos.vision.faces, macos.vision.scan_document):
+        with pytest.raises(ValueError, match="macos.pdf.render"):
+            call(document)
+    with pytest.raises(ValueError, match="macos.pdf.render"):
+        macos.vision.lines(document.read_bytes())
+    # The documented way: draw the page, then read it.
+    assert "INVOICE 2026 TOTAL 42.00" in macos.vision.text(macos.pdf.render(document, page=1, size=2048))
 
 
 def test_qr_code_round_trip():

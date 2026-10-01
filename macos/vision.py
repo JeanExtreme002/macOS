@@ -101,8 +101,33 @@ def _load() -> None:
     framework("Vision")
 
 
+def _refuse_pdf(image: Image) -> None:
+    """
+    Raise ``ValueError`` for a PDF.
+
+    Vision reads images: given a PDF it sees a 0 x 0 picture. Reading only its
+    first page would quietly drop the rest, so the caller picks the pages.
+    """
+    if isinstance(image, (bytes, bytearray)):
+        head = bytes(image[:1024])
+    else:
+        try:
+            with open(Path(image).expanduser(), "rb") as file:
+                head = file.read(1024)
+        except OSError:
+            return  # missing or unreadable: the usual errors follow
+    # The header opens the file, maybe after some blank padding. Anywhere else
+    # it's only text, such as a PNG comment that mentions a PDF.
+    if re.match(rb"[\x00\s]*%PDF-\d", head):
+        raise ValueError(
+            "Vision reads images, not PDFs: draw the pages with macos.pdf.render(), "
+            "e.g. macos.vision.text(macos.pdf.render(path, page=1, size=2048))"
+        )
+
+
 def _handler(image: Image) -> int:
     """An autoreleased ``VNImageRequestHandler`` for a path or image bytes."""
+    _refuse_pdf(image)
     options = _objc.send(_objc.cls("NSDictionary"), "dictionary")
     handler = _objc.send(_objc.cls("VNImageRequestHandler"), "alloc")
     if isinstance(image, (bytes, bytearray)):
@@ -192,7 +217,8 @@ def lines(image: Image, *, languages: Optional[Sequence[str]] = None, fast: bool
     Find the lines of text in an image, top to bottom.
 
     ``image`` is a path or the image file's bytes, in any format macOS can
-    open (PNG, JPEG, HEIC, TIFF, PDF...). ``languages`` lists the languages to
+    open (PNG, JPEG, HEIC, TIFF...); for a PDF, draw its pages with
+    :func:`macos.pdf.render`. ``languages`` lists the languages to
     expect, most likely first (e.g. ``["fr-FR", "en-US"]``; see
     :func:`languages`); by default Vision detects them. ``fast=True`` trades
     accuracy for speed.
@@ -460,6 +486,7 @@ def scan_document(image: Image) -> Optional[bytes]:
         macos.vision.text(scan)                          # read it
         macos.pdf.from_images([scan], "receipt.pdf")     # or file it
     """
+    _refuse_pdf(image)
     _load()
     with _objc.autorelease_pool():
         picture = _objc.ciimage(image)
@@ -663,6 +690,7 @@ def smart_crop(image: Image, width: int, height: int) -> bytes:
     """
     if width <= 0 or height <= 0:
         raise ValueError("width and height must be positive, not {} x {}".format(width, height))
+    _refuse_pdf(image)
     _load()
     with _objc.autorelease_pool():
         picture = _objc.ciimage(image)

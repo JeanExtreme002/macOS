@@ -16,12 +16,19 @@ macos.vision.text("receipt.png")
 ```
 
 The image can be a path or the bytes of an image file, in any format macOS
-opens (PNG, JPEG, HEIC, TIFF, PDF...). That makes it easy to combine with other
+opens (PNG, JPEG, HEIC, TIFF...). That makes it easy to combine with other
 features:
 
 ```python
 macos.vision.text(macos.clipboard.paste_image())      # text of a copied image
 macos.vision.text(macos.screenshot(region=(0, 0, 800, 600)))
+```
+
+Vision reads images, not PDFs: a PDF raises `ValueError`. Draw the pages you
+want with {func}`macos.pdf.render` first:
+
+```python
+macos.vision.text(macos.pdf.render("scan.pdf", page=1, size=2048))
 ```
 
 ## Languages
