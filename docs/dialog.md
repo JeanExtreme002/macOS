@@ -53,6 +53,8 @@ fruit = macos.dialog.choose(
 ```
 
 {func}`~macos.dialog.choose` returns the chosen option, or `None` if cancelled.
+{func}`~macos.dialog.confirm` and {func}`~macos.dialog.prompt` take a `title`
+too.
 
 ## Picking files and folders
 
@@ -63,7 +65,7 @@ target = macos.dialog.choose_folder("Where should the backup go?")
 ```
 
 `types` accepts extensions (`"pdf"`, `".png"`) and type identifiers
-(`"public.image"` for any image). {func}`~macos.dialog.choose_file` and
+(`"public.image"` for any image), and `folder` is where the picker opens. {func}`~macos.dialog.choose_file` and
 {func}`~macos.dialog.choose_folder` return a {class}`pathlib.Path`, or `None`
 if cancelled; {func}`~macos.dialog.choose_files` returns a list, empty if
 cancelled.

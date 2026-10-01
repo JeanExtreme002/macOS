@@ -647,6 +647,8 @@ def thermal_state() -> str:
     """
     How hot the Mac is running: ``'nominal'``, ``'fair'``, ``'serious'`` or ``'critical'``.
 
+    ``'unknown'`` if a later macOS reports a state this package doesn't know.
+
     At ``'serious'`` macOS slows the processor down to cool it; at
     ``'critical'`` it's close to shutting down. A long job can check it and
     pause::
@@ -1582,7 +1584,8 @@ def port_owner(port: int, protocol: str = "tcp") -> Optional[Process]:
             print(owner.name, owner.pid)   # Python 4123
             owner.kill()
 
-    Only this user's processes are seen, as with :func:`ports`.
+    ``protocol`` is ``"tcp"`` (the default) or ``"udp"``. Only this user's
+    processes are seen, as with :func:`ports`.
     """
     if not 0 < port < 65536:
         raise ValueError("port must be from 1 to 65535, not {}".format(port))

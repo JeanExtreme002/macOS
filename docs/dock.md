@@ -13,8 +13,8 @@ macos.dock.add_app("Visual Studio Code")
 macos.dock.remove_app("Podcasts")
 ```
 
-Each change restarts the Dock to apply it: it disappears for a second. No
-permission is needed.
+Each change restarts the Dock to apply it ({func}`~macos.dock.restart` does it
+by hand): it disappears for a second. No permission is needed.
 
 ## Settings
 
@@ -72,9 +72,10 @@ macos.dock.add_app("Terminal", index=0)   # first, right after Finder
 macos.dock.remove_app("com.apple.Maps")   # by name, bundle ID or path
 ```
 
-{func}`~macos.dock.add_app` finds the app as {func}`macos.apps.open` does, and
-doesn't add it twice. {func}`~macos.dock.remove_app` takes it out of the Dock;
-the app stays installed.
+{func}`~macos.dock.add_app` finds the app as {func}`macos.apps.open` does,
+raising {class}`~macos.AppNotFoundError` when it isn't installed, and doesn't
+add it twice. {func}`~macos.dock.remove_app` takes it out of the Dock and
+returns whether it was there; the app stays installed.
 
 Blank spaces group the apps: {func}`~macos.dock.add_spacer` adds one, at the
 end or before the app at `index`, and {func}`~macos.dock.remove_spacers`
@@ -88,8 +89,11 @@ macos.dock.remove_spacers()   # 2
 
 ## Folders
 
-{func}`~macos.dock.add_folder` keeps a folder next to the Trash, as a stack of
-its items or as the folder, opening as a fan, a grid or a list:
+{func}`~macos.dock.add_folder` keeps a folder next to the Trash. `display` is
+its icon, a `"stack"` of its items (the default) or the `"folder"`; `view` is
+how it opens, `"automatic"` (the default), `"fan"`, `"grid"` or `"list"`; and
+`sort` orders its items by `"name"`, `"date_added"` (the default),
+`"date_modified"`, `"date_created"` or `"kind"`:
 
 ```python
 macos.dock.add_folder("~/Downloads", view="grid", sort="date_added")

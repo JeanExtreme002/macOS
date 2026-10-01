@@ -26,7 +26,7 @@ They are the notifications macOS sends apps, so no permission is needed.
 | `app_launched`, `app_quit`, `app_activated` | An app opens, quits, or comes to the front | `event.app`, an {class}`~macos.apps.App` |
 | `app_hidden`, `app_unhidden` | An app is hidden (⌘H), or shown again | `event.app` |
 | `volume_mounted`, `volume_unmounted` | A disk, USB drive or disk image is mounted or ejected | `event.path`, where it's mounted |
-| `power_connected`, `power_disconnected` | The Mac starts, or stops, running on its charger | |
+| `power_connected`, `power_disconnected` | The Mac starts, or stops, running on its charger (never on a Mac without a battery) | |
 | `network_changed` | Another Wi-Fi network, a cable plugged in, offline or back online | |
 | `usb_connected`, `usb_disconnected` | A USB device is plugged in, or removed | `event.device`, its name |
 | `displays_changed` | A display is connected, removed, rearranged or set to another resolution | |
@@ -50,7 +50,9 @@ macos.events.run()
 
 {func}`~macos.events.run` calls the callbacks one at a time, on the thread
 that called it, which must be the main thread: macOS delivers these events
-there. It returns after {func}`~macos.events.stop` or `timeout` seconds.
+there. It returns after {func}`~macos.events.stop` or `timeout` seconds; an
+exception in a callback stops it and propagates. With no callbacks
+registered, it raises `ValueError`.
 {func}`~macos.events.on` returns a {class}`~macos.events.Handler`, whose
 `remove()` unregisters it; {func}`~macos.events.off` removes every callback of
 an event.

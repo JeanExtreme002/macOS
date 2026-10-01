@@ -20,8 +20,9 @@ reaching the app in front needs [Accessibility](permissions.md#accessibility).
 ## Registering shortcuts
 
 Shortcuts are written as for {func}`macos.keyboard.press`: `"ctrl+option+s"`,
-`"cmd+shift+k"`, `"f5"`... Pick ones apps don't use: once registered, the app
-in front doesn't get them.
+`"cmd+shift+k"`, `"f5"`... Pick ones apps don't use: while
+{func}`~macos.hotkeys.run` or {func}`~macos.hotkeys.wait` listens, the app in
+front doesn't get them.
 
 ```python
 macos.hotkeys.register("ctrl+option+p", pause_music)
@@ -30,9 +31,10 @@ macos.hotkeys.run()
 ```
 
 {func}`~macos.hotkeys.run` calls the callbacks on the thread that called it,
-one at a time, until {func}`~macos.hotkeys.stop` or `timeout` seconds. Holding
-the keys down doesn't repeat the call. {func}`~macos.hotkeys.unregister`
-removes a shortcut.
+one at a time, until {func}`~macos.hotkeys.stop` or `timeout` seconds; an
+exception in a callback stops it and propagates. Holding the keys down doesn't
+repeat the call, and registering a shortcut again replaces its callback.
+{func}`~macos.hotkeys.unregister` removes a shortcut.
 
 ## Waiting for a shortcut
 

@@ -538,7 +538,8 @@ def run(*, timeout: Optional[float] = None) -> None:
 
     Call it from the main thread: macOS delivers these events there.
     Callbacks run one at a time; an exception in one stops :func:`run` and
-    propagates. Ctrl-C stops it too.
+    propagates. Ctrl-C stops it too. Raises :class:`ValueError` when no
+    callback is registered.
     """
     with _lock:
         names = sorted({handler.name for handler in _handlers})

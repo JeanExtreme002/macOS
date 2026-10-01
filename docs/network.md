@@ -77,7 +77,7 @@ after the other, which reads each more exactly. It goes through
 
 ```python
 signal = macos.network.wifi_signal()
-signal.rssi, signal.quality       # (-62, 'good'): -50 is excellent, below -80 poor
+signal.rssi, signal.quality       # (-62, 'good'): -55 and up is excellent, below -75 poor
 signal.snr                        # 33 dB above the noise
 signal.band, signal.channel       # ('5GHz', 157)
 signal.transmit_rate              # 866.0 Mbit/s: the link's speed, not the internet's
@@ -147,7 +147,8 @@ with their `status`: `'connected'`, `'connecting'`, `'disconnecting'` or
 `id`, and waits until it's connected, up to `timeout` seconds (30 by
 default), raising {class}`~macos.MacOSError` if it fails; `wait=False`
 returns at once. It uses the password saved with the VPN: one that asks each
-time may show its prompt. {func}`~macos.network.disconnect_vpn` disconnects it.
+time may show its prompt. {func}`~macos.network.disconnect_vpn` disconnects it,
+waiting the same way.
 
 A script that needs the office network can connect only while it runs:
 

@@ -119,7 +119,7 @@ macos.open_with("notes.md", "com.microsoft.VSCode")
 
 The app can be a name, a bundle identifier or a path, as for
 {func}`~macos.apps.open`. Pass `background=True` to open without bringing the
-app to the front.
+app to the front. A path that doesn't exist raises `FileNotFoundError`.
 
 `macos.open` is not included in `from macos import *`, so it never replaces
 Python's built-in `open()`.
@@ -142,7 +142,9 @@ macos.apps.set_default_for("md", "Visual Studio Code")
 ```
 
 Since macOS 26, macOS asks the user to confirm the change, and the function
-waits for the answer (`timeout`, one minute by default). The default browser
+waits for the answer (`timeout`, one minute by default); it raises
+{class}`~macos.MacOSError` when the change is declined or the answer doesn't
+come. The default browser
 can't be changed this way: macOS asks for that one in System Settings.
 
 ## Login items
@@ -170,8 +172,9 @@ dragging it to Applications does:
 macos.apps.install_from_dmg("~/Downloads/Rectangle.dmg")   # '/Applications/Rectangle.app'
 ```
 
-It mounts the image, copies the `.app`, and unmounts it. An app already
-installed raises `FileExistsError`, unless `replace=True`. To mount an image
+It mounts the image, copies the `.app` into `destination` (`/Applications` by
+default), and unmounts it. An app already installed raises `FileExistsError`,
+unless `replace=True`. To mount an image
 yourself, see {func}`macos.system.mount_image`.
 
 ## Downloaded apps
@@ -229,7 +232,8 @@ Trash, so *Put Back* undoes it. Only your own files are touched: `/Library`'s
 need an administrator.
 
 It raises {class}`~macos.MacOSError` for an app that's running (quit it first;
-a dry run works all the same) or that comes with macOS, like Safari. An app
+a dry run works all the same) or that comes with macOS, like Safari, and
+{class}`~macos.AppNotFoundError` for one that isn't installed. An app
 installed for every user may need an administrator to be moved: then nothing
 is moved, and the error says so.
 

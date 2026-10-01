@@ -19,7 +19,8 @@ macos.audio.convert("song.mp3", "song.m4a", lossless=True)   # Apple Lossless
 
 It reads anything macOS plays (MP3, AAC, WAV, AIFF, FLAC...) and writes
 `.m4a` (AAC, or Apple Lossless with `lossless=True`), `.wav`, `.aiff` and
-`.caf`. `quality` (`"high"`, `"medium"` or `"low"`) sets the AAC quality.
+`.caf`, the last three as 16-bit PCM. `quality` (`"high"`, `"medium"` or
+`"low"`) sets the AAC quality; `lossless=True` is only for `.m4a`.
 It uses the `afconvert` command that ships with macOS.
 
 ## Editing
@@ -40,7 +41,8 @@ macos.audio.speed("lecture.m4a", "lecture-fast.m4a", 1.5)
   into chipmunks; `keep_pitch=False` changes it with the speed.
 
 The output's extension sets the format, and `quality` and `lossless` work as
-for {func}`~macos.audio.convert`. Editing a `.wav` into a `.wav` loses nothing.
+for {func}`~macos.audio.convert`. The edits work on 16-bit samples: a 16-bit
+`.wav` edited into a `.wav` loses nothing, but a 24-bit one comes out 16-bit.
 
 ## What's in a recording
 

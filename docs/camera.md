@@ -12,8 +12,10 @@ macos.camera.record("hello.mov", seconds=5)
 ```
 
 Photos and videos need the [Camera permission](permissions.md#camera-and-microphone),
-which macOS asks for the first time. The camera's green light is on while it
-works.
+which macOS asks for the first time.
+{func}`~macos.camera.has_permission` tells whether it's granted without asking;
+{func}`~macos.camera.request_permission` asks. The camera's green light is on
+while it works.
 
 ## Cameras
 
@@ -27,7 +29,7 @@ first: the built-in one, USB webcams, an iPhone through Continuity. Each
 ```python
 macos.camera.photo("me.jpg")                       # the default camera
 macos.camera.photo("desk.png", camera="Logitech")  # another one, by name
-path = macos.camera.photo()                        # a temporary .jpg
+path = macos.camera.photo()                        # a temporary .jpg, yours to delete
 ```
 
 The extension sets the format: `.jpg`, `.png`, `.heic` or `.tiff`. The camera

@@ -131,8 +131,9 @@ def screenshot(
       temporary ``.png`` is created; deleting it is up to you.
     - ``region``: ``(x, y, width, height)`` in points, from the top-left corner
       of the main display.
-    - ``display``: capture this display (``1`` is the main one) instead of the
-      main display.
+    - ``display``: capture this display, by its position (``1`` is the main
+      one), instead of the main display: not a :class:`~macos.screen.Display`
+      or its id.
     - ``cursor``: include the mouse pointer.
     - ``check_permission``: raise if the Screen Recording permission is
       missing. Pass ``False`` to accept a capture without other apps' windows.
@@ -1085,6 +1086,10 @@ def display_modes(display: Union[None, int, Display] = None) -> List[DisplayMode
     """
     The resolutions ``display`` (the main one by default) can use, largest first.
 
+    ``display`` is a :class:`Display` from :func:`displays`, or its
+    :attr:`~Display.id`: not the position :func:`macos.screenshot`'s
+    ``display`` counts from 1.
+
     ::
 
         [f"{m.width}×{m.height} @ {m.refresh_rate:g} Hz" for m in macos.screen.display_modes()]
@@ -1102,7 +1107,7 @@ def display_modes(display: Union[None, int, Display] = None) -> List[DisplayMode
 
 
 def display_mode(display: Union[None, int, Display] = None) -> DisplayMode:
-    """The resolution ``display`` (the main one by default) uses now."""
+    """The resolution ``display`` (the main one by default) uses now; ``display`` works as in :func:`display_modes`."""
     cg = _arrangement_api()
     ref = cg.CGDisplayCopyDisplayMode(_display_id(display))
     if not ref:
@@ -1145,9 +1150,9 @@ def set_display_mode(
         macos.screen.set_display_mode(1728, 1117)                    # more space on a MacBook Pro
         macos.screen.set_display_mode(2560, 1440, refresh_rate=144, display=external)
 
-    It must be one of :func:`display_modes`. With ``refresh_rate``, the
-    closest to it; without, the highest. Without ``hidpi``, the sharp Retina
-    mode when there's one.
+    It must be one of :func:`display_modes`, and ``display`` works as there.
+    With ``refresh_rate``, the closest to it; without, the highest. Without
+    ``hidpi``, the sharp Retina mode when there's one.
     Kept after a restart, like System Settings › Displays. To go back, call
     it again with the :func:`display_mode` read before.
     """
@@ -1188,6 +1193,8 @@ def set_main_display(display: Union[int, Display]) -> None:
     """
     Make ``display`` the main one, with the menu bar and the Dock, like dragging the menu bar in System Settings › Displays.
 
+    ``display`` works as in :func:`display_modes`.
+
     The displays keep their places: the whole arrangement moves so that
     ``display`` is at its top-left corner.
     """
@@ -1220,6 +1227,8 @@ def mirrored() -> bool:
 def mirror(display: Union[int, Display], of: Union[None, int, Display] = None) -> None:
     """
     Make ``display`` show the same picture as ``of`` (the main display by default), like Mirror Displays.
+
+    Both work as ``display`` in :func:`display_modes`.
 
     ::
 

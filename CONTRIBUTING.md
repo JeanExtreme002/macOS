@@ -50,7 +50,7 @@ mypy macos
 
 ```bash
 pip install -r docs/requirements.txt
-python -m sphinx -W -b html docs docs/_build/html
+python -m sphinx -n -W --keep-going -b html docs docs/_build/html
 ```
 
 Then open `docs/_build/html/index.html`.
@@ -58,6 +58,9 @@ Then open `docs/_build/html/index.html`.
 ## Pull requests
 
 - Use [Conventional Commits](https://www.conventionalcommits.org) for the title
-  (`feat: ...`, `fix: ...`, `docs: ...`).
+  (`feat: ...`, `fix: ...`, `docs: ...`). The type is one of `feat`, `fix`,
+  `perf`, `refactor`, `revert`, `docs`, `ci`, `build`, `chore`, `test` or
+  `style`, and the subject starts with a lowercase letter and doesn't end with
+  a period. A check enforces it.
 - Add a test for every bug fix and new feature.
 - Keep the package dependency-free.

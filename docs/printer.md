@@ -43,7 +43,8 @@ macos.printer.print_file(
 )
 ```
 
-It returns once the file is queued, not printed.
+It returns once the file is queued, not printed. `title` names the job in the
+queue; it's the file's name by default.
 
 ## The queue
 

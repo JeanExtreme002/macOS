@@ -13,8 +13,9 @@ Read and control the tabs of Safari, Chrome and the other Chromium browsers (Bra
 By default it talks to the browser in front, or else the one running; it
 never opens a browser to read it. Goes through AppleScript, so the first
 time macOS asks to allow the app running Python (your terminal or IDE) to
-control the browser. Firefox and Arc can't be scripted this way, and raise
-:class:`~macos.errors.NotSupportedError`.
+control the browser. Firefox, Arc and a few others can't be scripted this
+way: naming one with ``app=`` raises :class:`~macos.errors.NotSupportedError`,
+and by default they're passed over.
 """
 
 from dataclasses import dataclass
@@ -278,7 +279,8 @@ def run_js(script: str, app: Optional[str] = None) -> Optional[str]:
     Advanced); in Chrome and the others, *View › Developer › Allow
     JavaScript from Apple Events*. Otherwise it raises
     :class:`~macos.errors.PermissionDeniedError`. Return ``JSON.stringify(...)``
-    to get structured data back.
+    to get structured data back. With no browser running, it raises
+    :class:`~macos.errors.MacOSError`.
     """
     browser = _browser(app)
     if browser is None or not _is_running(browser):

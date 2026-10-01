@@ -15,7 +15,8 @@ macos.shortcuts.run("Translate", input="Hola, mundo")  # 'Hello, world'
 What you pass as `input` becomes the shortcut's *Shortcut Input*:
 
 - a `str` is passed as **text**;
-- a {class}`pathlib.Path`, or a list of paths, is passed as **files**.
+- a {class}`pathlib.Path`, or a list of paths (each a `Path` or a `str`), is
+  passed as **files**.
 
 ```python
 from pathlib import Path
@@ -25,14 +26,14 @@ macos.shortcuts.run("Resize Image", input=Path("photo.jpg"))
 macos.shortcuts.run("Make GIF", input=[Path("a.png"), Path("b.png")])
 ```
 
-A plain string is always text, even if it looks like a path: wrap file names in
-`Path(...)`.
+A plain string on its own is always text, even if it looks like a path: wrap a
+single file name in `Path(...)`.
 
 ## Output
 
 {func}`~macos.shortcuts.run` returns the shortcut's text output, or `None` if
 it produced none. When the shortcut outputs a file (an image, a PDF...), pass
-`output` to save it:
+`output` to save it; `run` then returns `None`:
 
 ```python
 macos.shortcuts.run("Make GIF", input=[Path("a.png"), Path("b.png")], output="animation.gif")
@@ -57,3 +58,4 @@ Running shortcuts needs macOS 12 or later.
 
 - {func}`macos.shortcuts.run`
 - {func}`macos.shortcuts.list`
+- {class}`macos.ShortcutNotFoundError`

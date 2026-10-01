@@ -216,7 +216,8 @@ def print_file(
         macos.printer.print_file("slides.pdf", "Office LaserJet", pages="1-3,7", two_sided=True, copies=2)
 
     ``pages`` is a range like ``"1-3,7"``; ``paper`` a size such as
-    ``"A4"`` or ``"Letter"``. It returns once the job is queued, not
+    ``"A4"`` or ``"Letter"``; ``title`` names the job in the queue (the
+    file's name by default). It returns once the job is queued, not
     printed: follow it with :func:`jobs`.
     """
     file = Path(os.path.expanduser(os.fspath(path))).absolute()

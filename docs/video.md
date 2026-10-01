@@ -44,7 +44,7 @@ macos.video.convert("talk.mov", "talk.m4a")                        # the sound o
 - `quality` is `"high"` (the default), `"medium"` or `"low"`, a small preview.
 - `height` fits the video in 640×480, 960×540, 1280×720, 1920×1080 or
   3840×2160 (`height=480` to `2160`), keeping its proportions: a 16:9 video at
-  `height=480` becomes 640×360.
+  `height=480` becomes 640×360. With `height`, `quality` is ignored.
 - `hevc=True` encodes in HEVC, smaller than H.264 at the same quality, at the
   high quality or at `height=1080` or `2160`.
 

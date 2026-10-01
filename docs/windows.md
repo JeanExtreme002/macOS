@@ -20,15 +20,17 @@ one {mod}`macos.keyboard` and {mod}`macos.mouse` need.
 ## Finding windows
 
 {func}`~macos.windows.list` returns the windows of every app, or of one app
-given by name or as an {class}`~macos.apps.App`. `title` keeps the windows
-whose title contains it:
+given by name or as an {class}`~macos.apps.App`, menu bar apps and minimized
+windows included. `title` keeps the windows whose title contains it, ignoring
+case:
 
 ```python
 macos.windows.list()                              # every app's windows
 macos.windows.list("Preview", title="invoice")    # Preview's invoice windows
 ```
 
-{func}`~macos.windows.focused` returns the window keystrokes go to.
+{func}`~macos.windows.focused` returns the window keystrokes go to, or `None`
+when the app in front has none.
 
 ## Moving and resizing
 
@@ -147,7 +149,8 @@ It needs the [Screen Recording permission](permissions.md#screen-recording).
 ## Waiting for a window
 
 {func}`~macos.windows.wait_for` waits until a window shows up, after an action
-that opens one:
+that opens one, and returns `None` if `timeout` seconds (10 by default) pass
+first:
 
 ```python
 macos.keyboard.press("cmd+s")

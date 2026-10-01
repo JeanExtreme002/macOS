@@ -29,6 +29,9 @@ has:
   `'bluetooth'`, `'hdmi'` or `'airplay'`.
 - `is_output` and `is_input`: a headset can be both.
 
+{func}`~macos.audio.default_output` and {func}`~macos.audio.default_input`
+return the device in use, or `None` when there's none.
+
 ## Switching
 
 {func}`~macos.audio.set_output` and {func}`~macos.audio.set_input` take a
@@ -63,8 +66,8 @@ They act on the default input, or on `device=`, given as for
 {func}`~macos.audio.set_input`. Muting works for every app at once, which
 makes a handy "mute me" shortcut in meetings. Microphones without a mute
 switch raise {class}`~macos.NotSupportedError`; set their volume to 0
-instead. To know whether an app is recording, see
-{func}`macos.system.microphone_in_use`.
+instead. Those without an adjustable volume raise it for the volume too. To
+know whether an app is recording, see {func}`macos.system.microphone_in_use`.
 
 ## Recording the microphone
 
@@ -81,7 +84,8 @@ another microphone, switch to it first with {func}`~macos.audio.set_input`.
 
 {func}`~macos.audio.input_level` tells how loud the microphone hears it right
 now, from 0.0 (silence) to 1.0: about 0.01 in a quiet room, 0.1 to 0.3 for
-someone talking nearby.
+someone talking nearby. It listens for `seconds` (0.3 by default) and
+averages.
 
 ```python
 import time

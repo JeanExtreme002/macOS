@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-Detect the language and the sentiment of a text, offline.
+Understand text, offline: its language, its sentiment, its meaning, and the
+names and keywords in it.
 
 ::
 
@@ -42,7 +43,7 @@ def _recognizer(text: str) -> int:
 
 def detect(text: str) -> Optional[str]:
     """
-    Return the most likely language of ``text`` as an ISO code (``'pt'``, ``'en'``, ``'zh-Hans'``...).
+    Return the most likely language of ``text`` as an ISO code (``'en'``, ``'fr'``, ``'zh-Hans'``...).
 
     Returns ``None`` when there's nothing to detect. A few words are enough,
     but a single word is often guessed wrong: check :func:`guess` for how sure
@@ -133,8 +134,9 @@ def similarity(first: str, second: str, *, language: Optional[str] = None) -> fl
     """
     Score how close two texts are in meaning, from -1.0 to 1.0 (higher is closer).
 
-    Two single words are compared with a word model, anything longer with a
-    sentence model. ``language`` (``'pt'``, ``'en'``...) is detected when
+    Two single words are compared with a word model (a sentence model when
+    one of them isn't in it), anything longer with a sentence model.
+    ``language`` (``'en'``, ``'fr'``...) is detected when
     omitted, but detection needs a few words: for single words or very short
     texts, pass it (``similarity("car", "automobile", language="en")``), or
     they may be read as another language. Like :func:`entities`, it raises

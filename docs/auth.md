@@ -30,6 +30,9 @@ only the fingerprint:
 macos.auth.confirm("delete the old backups", only_touch_id=True)
 ```
 
+When Touch ID isn't set up, or is locked after failed tries, that raises
+{class}`~macos.NotSupportedError` instead of asking.
+
 {func}`~macos.auth.is_available` tells, without asking, whether it can:
 
 ```python

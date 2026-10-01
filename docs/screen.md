@@ -130,9 +130,13 @@ macos.screen.set_display_mode(1728, 1117)                 # more space on a MacB
 macos.screen.set_display_mode(2560, 1440, refresh_rate=144, display=external)
 ```
 
-Without `refresh_rate`, it picks the highest; without `hidpi`, the sharp
-Retina mode when there's one. The change stays after a restart: to go back,
-call it with the {func}`~macos.screen.display_mode` read before.
+Here `display` is a {class}`~macos.screen.Display` from
+{func}`~macos.screen.displays`, or its `id`, and the main display when left
+out. It's not the position that {func}`~macos.screenshot`'s `display` counts
+from 1. With `refresh_rate`, it picks the closest one; without, the highest.
+Without `hidpi`, it picks the sharp Retina mode when there's one. The change
+stays after a restart: to go back, call it with the
+{func}`~macos.screen.display_mode` read before.
 
 With several displays, {func}`~macos.screen.set_main_display` moves the menu
 bar and the Dock to another one, and {func}`~macos.screen.mirror` shows the
@@ -142,6 +146,7 @@ same picture on two, for a projector:
 projector = next(d for d in macos.screen.displays() if not d.is_builtin)
 
 macos.screen.mirror(projector)
+macos.screen.mirrored()          # True
 macos.screen.stop_mirroring()
 macos.screen.set_main_display(projector)
 ```
@@ -255,7 +260,7 @@ macos.screen.start_screensaver()
 
 It starts the screen saver right away, like a hot corner. When the Mac asks
 for the password after the screen saver begins (System Settings › Lock Screen),
-this also locks it.
+this also locks it once that delay passes.
 
 {func}`~macos.screen.set_screensaver_delay` sets after how many minutes of
 inactivity it starts, or never (`None`), like System Settings › Lock Screen:
