@@ -1,7 +1,7 @@
 # Errors
 
-Every exception the package raises on purpose derives from
-{class}`~macos.MacOSError`, so a single `except` catches them all:
+The errors that come from macOS derive from {class}`~macos.MacOSError`, so a
+single `except` catches them all:
 
 ```python
 try:
@@ -22,10 +22,22 @@ catches {class}`~macos.PermissionDeniedError`, and `except LookupError` catches
 | {class}`~macos.AppNotFoundError` | No app matches the name, or it didn't start in time |
 | {class}`~macos.ShortcutNotFoundError` | No shortcut has the name (also a `LookupError` and a `CommandError`) |
 | {class}`~macos.KeychainError` | The Keychain returned an error (see its `status`) |
-| {class}`~macos.CommandError` | A system command failed (see its `returncode` and `stderr`) |
+| {class}`~macos.CommandError` | A system command failed (see its `cmd`, `returncode` and `stderr`) |
+| {class}`~macos.MacOSError` | Any other failure macOS reports, such as a page that can't be drawn |
 
-Invalid arguments, such as an unsupported screenshot format, raise the usual
-`ValueError`.
+Mistakes in the call, and problems with files, raise the usual builtin
+exceptions instead:
+
+| Exception | Raised when |
+|---|---|
+| `ValueError` | An invalid argument, such as an unsupported screenshot format |
+| `TypeError` | An argument of the wrong type, such as a volume that isn't an `int` |
+| `FileNotFoundError` | An input file or folder doesn't exist |
+| `FileExistsError` | The destination already exists |
+| `NotADirectoryError` | A folder was expected, but the path is a file |
+| `TimeoutError` | A wait ran out of time, such as {func}`macos.clipboard.wait_for_change` |
+| `OSError` | A file's attributes can't be read or changed |
+| `ProcessLookupError`, `PermissionError` | {func}`macos.system.kill` on a process that's gone, or another user's |
 
 ## Reference
 

@@ -67,5 +67,6 @@ Passwords go straight to the Keychain and never show up in the process list.
 macOS often fails silently: a screenshot taken without the Screen Recording
 permission just comes back mostly empty. `pymacos` checks first and raises
 {class}`~macos.PermissionDeniedError`, saying which permission is missing and
-where to turn it on. Everything it raises derives from
-{class}`~macos.MacOSError`. See [Errors](errors.md).
+where to turn it on. The errors that come from macOS derive from
+{class}`~macos.MacOSError`; invalid arguments and missing files raise the
+usual `ValueError` or `FileNotFoundError`. See [Errors](errors.md).

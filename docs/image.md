@@ -26,6 +26,8 @@ macos.image.convert("photo.heic", "photo.jpg", quality=0.8)   # quality: 0.0 to 
 macos.image.convert("scan.tiff", "scan.png")
 ```
 
+`quality` applies to JPEG and HEIC; the other formats are lossless.
+
 Metadata such as the date, camera and orientation is kept. Animated GIFs and
 multi-page TIFFs keep all their frames when converted to GIF or TIFF; the other
 formats hold a single image, so they get the first frame. To convert a whole
@@ -100,7 +102,8 @@ macos.image.replace_background("me.jpg", "beach.jpg", "me-at-the-beach.jpg")
 
 Vision finds the people in the photo and keeps them sharp, in front of a
 blurred background or of another picture (scaled to fill it). `strength`
-sets the blur. Both raise `ValueError` when the photo shows no person. With
+sets the blur. Both raise `ValueError` when the photo shows no person, and
+need macOS 12 or later. With
 {func}`macos.camera.photo`, they make a quick portrait from the webcam.
 
 ## Watermarks
@@ -156,6 +159,8 @@ fewer.
 {func}`~macos.image.info` returns an {class}`~macos.image.ImageInfo` with the
 `width` and `height` in pixels, the `format` (`'jpeg'`, `'png'`, `'heic'`...),
 whether it `has_alpha` (transparency), the EXIF `orientation` and the `dpi`.
+The size is as stored: a portrait photo with orientation 6 or 8 shows with
+its width and height swapped.
 
 ## Metadata
 
@@ -223,8 +228,9 @@ image = macos.image.qr_code("https://python.org", size=512)
 Path("site.png").write_bytes(image)
 ```
 
-`correction` sets how much damage the code survives: `"L"`, `"M"` (the
-default), `"Q"` or `"H"`. To read QR codes, see {func}`macos.vision.barcodes`.
+`size` is the side in pixels, up to 4096. `correction` sets how much damage
+the code survives: `"L"`, `"M"` (the default), `"Q"` or `"H"`; higher levels
+hold less data. To read QR codes, see {func}`macos.vision.barcodes`.
 
 ## Reference
 

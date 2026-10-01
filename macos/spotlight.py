@@ -115,7 +115,8 @@ def metadata(path: PathLike) -> Dict[str, Any]:
     Return the Spotlight metadata of ``path`` as a dict, e.g.
     ``{"kMDItemContentType": "com.adobe.pdf", "kMDItemNumberOfPages": 3, ...}``.
 
-    Dates are :class:`datetime.datetime` objects and lists are lists. Files
+    Dates are :class:`datetime.datetime` objects (in UTC, without a time
+    zone) and lists are lists. Files
     outside the index (e.g. in a folder Spotlight skips) only have the basic
     ``kMDItemFS...`` attributes.
     """

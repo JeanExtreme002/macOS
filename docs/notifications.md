@@ -15,7 +15,7 @@ macos.notify("3 tests failed", title="CI", subtitle="main", sound="Basso")
 ```
 
 `sound` is the name of a system alert sound, such as `"Basso"`, `"Glass"`,
-`"Ping"` or `"Submarine"`. The full list is in `/System/Library/Sounds`.
+`"Ping"` or `"Submarine"`. {func}`macos.sound.names` lists them all.
 
 ## Getting notified when a script finishes
 
@@ -46,7 +46,8 @@ Because of this, macOS shows the notification as coming from *Script Editor*.
 ## When notifications are turned off
 
 If notifications are turned off for Script Editor, macOS drops them without any
-error. {func}`macos.notify` checks that setting first and raises
+error. {func}`macos.notify` checks that setting first (and right after the very
+first notification, which turns it on or off) and raises
 {class}`~macos.PermissionDeniedError` instead, saying where to turn them on. See
 [Permissions](permissions.md#notifications).
 

@@ -18,8 +18,8 @@ macos.music.next()
 
 {func}`~macos.music.now_playing` returns the song Music or Spotify is on,
 playing or paused, as a {class}`~macos.music.Track`, or `None`. When both run,
-it prefers the one playing. It never opens a player: with none running, it
-returns `None`.
+it prefers the one playing; `app="Spotify"` reads only that one. It never
+opens a player: with none running, it returns `None`.
 
 ## Controlling the player
 
@@ -49,7 +49,8 @@ These need the player running, and raise {class}`~macos.MacOSError`
 otherwise.
 
 The first time, macOS asks to allow the app running Python to control the
-player (see [Permissions](permissions.md#automation)).
+player (see [Permissions](permissions.md#automation)); if that's denied, the
+calls raise {class}`~macos.PermissionDeniedError`.
 
 ## Reference
 

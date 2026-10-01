@@ -903,8 +903,9 @@ def remap(key: str, to: Optional[str]) -> None:
         macos.keyboard.remap("right_option", "ctrl")
         macos.keyboard.remap("caps_lock", None)          # back to Caps Lock
 
-    Keys are named as for :func:`press`: letters, digits, ``f1`` to ``f20``,
-    modifiers (``cmd``, ``right_cmd``, ``option``, ``right_option``, ``ctrl``,
+    Keys are named as for :func:`press`, plus the right-hand modifiers:
+    letters, digits, ``f1`` to ``f20``, modifiers (``cmd``, ``right_cmd``,
+    ``option``, ``right_option``, ``ctrl``,
     ``shift``, ``fn``...) and ``caps_lock``, ``escape``, ``enter``, ``tab``...
     Applies at once, without a permission, until the Mac restarts: to keep
     it, run it at login with :func:`macos.schedule.add`.

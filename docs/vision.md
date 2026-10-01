@@ -76,7 +76,8 @@ for code in macos.vision.barcodes("poster.jpg"):
     print(code.kind, code.payload)   # QR https://python.org
 ```
 
-Each {class}`~macos.vision.Barcode` has its `payload`, its `kind` (`'QR'`,
+Each {class}`~macos.vision.Barcode` has its `payload` (`None` for binary
+content), its `kind` (`'QR'`,
 `'EAN13'`...) and its `box`. To make a QR code, see {func}`macos.image.qr_code`.
 
 ## What's in an image
@@ -252,7 +253,9 @@ Each joint is `(x, y, confidence)`: fractions of the image from its top-left
 corner, and how sure Vision is. A {class}`~macos.vision.Pose` has 19 joints
 (`nose`, `left_shoulder`, `right_knee`...) and a {class}`~macos.vision.Hand`
 21 (`wrist`, `thumb_tip`, `index_mcp`...), with its `side` (`'left'` or
-`'right'`, the person's own). Only the joints Vision sees are there. With
+`'right'`, the person's own, or `None` when Vision can't tell).
+{func}`~macos.vision.hand_pose` finds up to `max_hands` hands (4 by default).
+Only the joints Vision sees are there. With
 {func}`macos.camera.photo`, they make a posture check or a gesture trigger.
 
 ## Reference

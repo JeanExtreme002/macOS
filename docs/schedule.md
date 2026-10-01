@@ -27,6 +27,7 @@ the script, and when to run it:
 - `every`: seconds between runs, or a {class}`~datetime.timedelta`.
 - `at`: a time of day, `"09:00"` or a {class}`~datetime.time`, or a list of
   them; with `weekdays` (`["mon", "wed", "fri"]`), only on those days.
+  `every` and `at` can't go together, and `weekdays` needs `at`.
 - `at_login=True`: each time you log in, and once right away.
 - `when_changed`: a file or folder, or a list of them: see
   [Running when something happens](#running-when-something-happens).
@@ -82,8 +83,8 @@ find which:
 macos.schedule.add("backup-photos", "copy_photos.py", at_mount=True)
 ```
 
-These combine with the others: `every=3600, when_changed="~/Inbox"` runs
-hourly and on changes.
+These combine with `every`, `at` and `at_login`:
+`every=3600, when_changed="~/Inbox"` runs hourly and on changes.
 
 ## Checking on jobs
 

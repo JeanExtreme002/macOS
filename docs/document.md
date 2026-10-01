@@ -46,7 +46,7 @@ indexing or feeding to a model:
 
 ```python
 text = macos.document.text("minutes.docx")
-macos.language.detect(text)   # 'pt'
+macos.language.detect(text)   # 'en'
 ```
 
 For a PDF, see {func}`macos.pdf.text`.

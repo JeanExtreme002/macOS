@@ -110,7 +110,9 @@ def read(domain: str, key: Optional[str] = None, *, default: Any = None, current
     """
     The value of ``key`` in ``domain`` (an app's bundle ID, or :data:`GLOBAL`), or ``default`` when it isn't set.
 
-    Without ``key``, returns all the domain's values, as a ``dict``.
+    As apps see it, a key an app's domain doesn't set falls back to the
+    global domain's value (``defaults read`` doesn't). Without ``key``,
+    returns all the domain's own values, as a ``dict``.
     ``current_host=True`` reads the settings kept for this Mac only, like
     ``defaults -currentHost``.
     """

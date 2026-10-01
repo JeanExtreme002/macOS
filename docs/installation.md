@@ -17,7 +17,7 @@ The library has no dependencies and needs no compiler: it's pure Python.
 
 ## Requirements
 
-- macOS
+- macOS (some features need macOS 12, 14 or 15; their pages say which)
 - Python 3.9 or later
 
 ## Other operating systems

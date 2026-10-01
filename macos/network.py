@@ -232,7 +232,7 @@ class WiFiSignal:
     """How good the Wi-Fi connection is right now."""
 
     rssi: int
-    """Signal strength, in dBm: -50 is excellent, -70 fair, below -80 poor."""
+    """Signal strength, in dBm: -55 and up is excellent, below -75 poor (see :attr:`quality`)."""
     noise: int
     """Background noise, in dBm: the lower, the better."""
     transmit_rate: float
@@ -252,7 +252,12 @@ class WiFiSignal:
 
     @property
     def quality(self) -> str:
-        """``'excellent'``, ``'good'``, ``'fair'`` or ``'poor'``, from the signal strength."""
+        """
+        ``'excellent'``, ``'good'``, ``'fair'`` or ``'poor'``, from the signal strength.
+
+        From :attr:`rssi`: -55 dBm and up is excellent, -67 and up good, -75
+        and up fair, lower poor.
+        """
         if self.rssi >= -55:
             return "excellent"
         if self.rssi >= -67:

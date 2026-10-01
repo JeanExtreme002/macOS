@@ -123,7 +123,7 @@ class Battery:
     """Whether the Mac is running on AC power."""
     time_remaining: Optional[timedelta]
     """Time until empty on battery, or until full while charging.
-    ``None`` while macOS is still estimating, or when fully charged."""
+    ``None`` while macOS is still estimating, or when plugged in but not charging."""
     cycle_count: Optional[int] = None
     """How many full charge cycles the battery has gone through."""
     health: Optional[int] = None

@@ -1,7 +1,8 @@
 # Language
 
-{mod}`macos.language` detects the language and the sentiment of a text with
-Apple's NaturalLanguage framework. It runs on the Mac, offline.
+{mod}`macos.language` detects the language and the sentiment of a text,
+compares meanings, and finds the names and keywords in it, with Apple's
+NaturalLanguage framework. It runs on the Mac, offline.
 
 ```python
 import macos
@@ -12,9 +13,9 @@ macos.language.sentiment("I love this!")     # 1.0
 
 ## Detecting the language
 
-{func}`~macos.language.detect` returns an ISO code such as `'pt'`, `'en'`,
+{func}`~macos.language.detect` returns an ISO code such as `'en'`, `'fr'`,
 `'fr'` or `'zh-Hans'`, or `None` for empty text. {func}`~macos.language.guess`
-shows how sure it is:
+shows how sure it is, for the `limit` most likely languages (3 by default):
 
 ```python
 macos.language.guess("Bonjour tout le monde")
@@ -27,7 +28,7 @@ probability before trusting it.
 ## Sentiment
 
 {func}`~macos.language.sentiment` scores how positive a text sounds, from
-`-1.0` (very negative) to `1.0` (very positive):
+`-1.0` (very negative) to `1.0` (very positive), or `None` for empty text:
 
 ```python
 macos.language.sentiment("This is terrible and I hate it.")   # -1.0
@@ -48,13 +49,14 @@ macos.language.similarity(question, "I forgot the password of my account")   # 0
 macos.language.similarity(question, "What time does the store open?")        # 0.04
 ```
 
-Two single words use a word model; anything longer, a sentence model. Pass
+Two single words use a word model (or the sentence model, when one of them
+isn't in it); anything longer, a sentence model. Pass
 `language` for single words or very short texts: detecting it needs a few
 words, and "car automobile" alone reads as French.
 
 ```python
-macos.language.similarity("carro", "automóvel", language="pt")   # 0.17
-macos.language.similarity("carro", "banana", language="pt")      # -0.27
+macos.language.similarity("car", "automobile", language="en")   # 0.13
+macos.language.similarity("car", "banana", language="en")       # -0.26
 ```
 
 Opposites such as "happy" and "sad" often score as related, because they show

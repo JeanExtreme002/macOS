@@ -3,17 +3,19 @@
 """
 Exceptions raised by the ``macos`` package.
 
-Every exception derives from :class:`MacOSError`, so ``except macos.MacOSError``
-catches anything the package raises on purpose. Where a builtin exception has
+The errors that come from macOS derive from :class:`MacOSError`, so
+``except macos.MacOSError`` catches them all. Where a builtin exception has
 the same meaning, the package's exception subclasses it too, so existing
 ``except PermissionError`` / ``except LookupError`` handlers keep working.
+Invalid arguments and missing files raise the usual builtins instead
+(``ValueError``, ``FileNotFoundError``...).
 """
 
 from typing import Optional, Sequence
 
 
 class MacOSError(Exception):
-    """Base class for every error raised by the ``macos`` package."""
+    """Base class for the errors the ``macos`` package raises when macOS fails or refuses."""
 
 
 class NotSupportedError(MacOSError):

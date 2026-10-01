@@ -218,7 +218,8 @@ def connect(device: Union[str, Device], *, timeout: float = 10.0) -> Device:
     ``device`` is a :class:`Device`, its address, its full name or part of
     its name when that matches only one device (``"AirPods"``). The device
     must be on and in range. This returns once the device is connected, or
-    raises :class:`~macos.errors.MacOSError` after ``timeout`` seconds.
+    raises :class:`~macos.errors.MacOSError` after ``timeout`` seconds, or
+    right away when Bluetooth is off.
     """
     return _connection(device, "openConnection", "connect to", True, timeout)
 

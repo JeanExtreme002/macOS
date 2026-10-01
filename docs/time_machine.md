@@ -34,16 +34,17 @@ macos.notify("Backup done")
 {func}`~macos.time_machine.is_backing_up` tells whether a backup is running, and
 {func}`~macos.time_machine.progress` how far it is, from 0.0 to 1.0 (`None` when
 none runs, or while it's getting ready).
-{func}`~macos.time_machine.last_backup` returns when the latest backup was made;
-it needs the backup disk to be connected, and may need Full Disk Access for the
-app running Python.
+{func}`~macos.time_machine.last_backup` returns when the latest backup was made,
+or `None` when there's none yet or the backup disk isn't connected; it may need
+Full Disk Access for the app running Python.
 
 ## Leaving files out
 
 {func}`~macos.time_machine.exclude` leaves a file or folder out of the backups,
 from the next one on: what can be downloaded or rebuilt again
 (`node_modules`, virtual environments, caches, virtual machines) only makes
-backups big and slow. {func}`~macos.time_machine.include` backs it up again.
+backups big and slow. {func}`~macos.time_machine.include` backs it up again,
+but doesn't undo an exclusion made in System Settings or by macOS itself.
 
 ```python
 from pathlib import Path

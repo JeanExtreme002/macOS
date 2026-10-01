@@ -1567,8 +1567,9 @@ def images(
     JPEG and JPEG 2000 pictures are saved as they're embedded, without
     compressing them again; the others become PNG (or TIFF, for CMYK). A
     picture used on several pages is saved once. Pictures in rare
-    encodings (indexed colors, 1-bit masks...) are skipped. To save
-    whole pages as images, see :func:`render`.
+    encodings (indexed colors, 1-bit masks...) are skipped. ``pages``
+    (numbered from 1) keeps only those pages' pictures. To save whole
+    pages as images, see :func:`render`.
     """
     source = Path(path).expanduser().absolute()
     if not source.exists():

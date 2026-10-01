@@ -44,16 +44,19 @@ macos.music.now_playing()                            # Track(title='Imagine', ar
 
 macos.browser.current_tab()                          # Tab(title='pymacos', url='https://github.com/...', ...)
 
-macos.events.on("wake", lambda event: macos.say("Welcome back"))
 macos.schedule.add("backup", "backup.py", every=3600)
+
+macos.events.on("wake", lambda event: macos.say("Welcome back"))
+macos.events.run()                                   # calls it on each wake, until Ctrl-C
 ```
 
 The keyboard, the mouse and windows need the
 [Accessibility permission](permissions.md#accessibility). See
 [Apps](apps.md), [Clipboard](clipboard.md), [Keyboard](keyboard.md),
 [Mouse](mouse.md), [Windows](windows.md), [Shortcuts](shortcuts.md),
-[Music](music.md), [Browser](browser.md), [Events](events.md) and
-[Schedule](schedule.md), plus [Hotkeys](hotkeys.md) for global shortcuts.
+[Music](music.md), [Browser](browser.md), [Events](events.md),
+[Schedule](schedule.md) and [Maps](maps.md), plus [Hotkeys](hotkeys.md) for
+global shortcuts.
 
 ### User Interaction
 
@@ -83,7 +86,8 @@ macos.video.add_audio("trip.mov", "music.m4a", "trip-music.mp4", volume=0.4)
 ```
 
 See [Finder](finder.md), [Spotlight](spotlight.md), [Images](image.md),
-[PDF](pdf.md), [Audio Files](audio-files.md) and [Video](video.md).
+[PDF](pdf.md), [Documents](document.md), [Audio Files](audio-files.md) and
+[Video](video.md).
 
 ### Intelligence
 
@@ -140,7 +144,8 @@ for device in macos.bluetooth.devices():
 See [Appearance](appearance.md), [Volume](volume.md), [Audio](audio.md),
 [Dock](dock.md), [Defaults](defaults.md), [Time Machine](time_machine.md),
 [Power](power.md), [Screen](screen.md), [Camera](camera.md),
-[Bluetooth](bluetooth.md), [Network](network.md) and [System](system.md).
+[Bluetooth](bluetooth.md), [Network](network.md), [Printer](printer.md),
+[Settings](settings.md), [Trackpad](trackpad.md) and [System](system.md).
 
 ## Putting it together
 

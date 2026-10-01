@@ -43,7 +43,8 @@ The names are in {data}`~macos.trackpad.GESTURES`: `swipe_between_pages`,
 `pinch_to_zoom`, `rotate`, `smart_zoom`, `notification_center`,
 `swipe_between_full_screen_apps`, `mission_control`, `app_expose`,
 `launchpad` and `show_desktop`. The swipes between full-screen apps and up
-to Mission Control take the number of fingers, `3` or `4`: four frees
+to Mission Control take the number of fingers, `3` or `4` (`True` is 3), or
+`False` to turn them off: four frees
 three fingers for three-finger drag. Changing the Dock's gestures restarts
 the Dock.
 

@@ -21,7 +21,10 @@ preferences every app shares. No permission is needed.
 
 {func}`~macos.defaults.read` returns the value, with its type: `bool`, `int`,
 `float`, `str`, `bytes`, {class}`~datetime.datetime`, or lists and dicts of them.
-A key that isn't set returns `default` (`None` unless given). Without a key, it
+A key that isn't set returns `default` (`None` unless given). As apps see
+their preferences, a key an app's domain doesn't set falls back to the global
+domain's, so `read("com.apple.dock", "AppleLocale")` returns the system's
+locale where `defaults read` says it doesn't exist. Without a key, it
 returns the whole domain as a dict, and {func}`~macos.defaults.keys` lists its
 keys:
 
@@ -34,7 +37,7 @@ macos.defaults.keys("com.apple.dock")   # ['autohide', 'orientation', 'persisten
 
 {func}`~macos.defaults.write` stores the value with its Python type, so `True`
 is a boolean and `[1, 2]` an array, and {func}`~macos.defaults.delete` removes
-a key:
+a key and returns whether it was set:
 
 ```python
 macos.defaults.write("com.apple.finder", "ShowPathbar", True)

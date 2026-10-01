@@ -25,7 +25,7 @@ same number as System Settings › Battery › Battery Health.
 
 `time_remaining` is the time until the battery is empty, or until it's full
 while charging. It's `None` while macOS is still estimating it, and when the
-battery is full and plugged in.
+Mac is plugged in but not charging (full, or holding the charge).
 
 ## Low Power Mode
 
@@ -34,7 +34,8 @@ macos.power.low_power_mode()   # True when on (System Settings › Battery)
 ```
 
 Low Power Mode makes the Mac slower to save energy, so a long job can check
-it and lighten its work, like {func}`macos.system.thermal_state`.
+it and lighten its work, like {func}`macos.system.thermal_state`. It's always
+`False` before macOS 12, which didn't have it.
 
 ## Keeping the Mac awake
 
@@ -79,11 +80,11 @@ for blocker in macos.power.sleep_blockers():
 ```
 
 Each {class}`~macos.power.SleepBlocker` has the process (`pid`, `process`),
-what it says it's doing (`reason`), whether it keeps the display on too
-(`display`), since when (`since`) and, when it gives up by itself, until when
-(`until`). macOS itself shows up as `powerd` while the display is on; apps
-playing sound or video, {func}`~macos.power.keep_awake` and `caffeinate` are
-the usual others.
+what it says it's doing (`reason`), the macOS name of the request (`kind`),
+whether it keeps the display on too (`display`), since when (`since`) and,
+when it gives up by itself, until when (`until`). macOS itself shows up as
+`powerd` while the display is on; apps playing sound or video,
+{func}`~macos.power.keep_awake` and `caffeinate` are the usual others.
 
 ## Sleeping
 
@@ -98,7 +99,7 @@ off), {func}`~macos.power.sleep_display` also locks the screen.
 ## The charger
 
 {func}`~macos.power.adapter` tells about the charger the Mac is plugged into,
-or `None` on battery:
+or `None` on battery and on a desktop Mac:
 
 ```python
 macos.power.adapter()   # Adapter(watts=96, name='96W USB-C Power Adapter', manufacturer='Apple Inc.', ...)

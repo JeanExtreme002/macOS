@@ -156,6 +156,7 @@ def add(
     - ``at``: a time of day, ``"09:00"`` or a :class:`~datetime.time`, or
       several, ``["09:00", "18:00"]``; with ``weekdays`` (``["mon", "fri"]``),
       only on those days. Seconds are ignored: launchd counts minutes.
+      ``every`` and ``at`` can't go together, and ``weekdays`` needs ``at``.
     - ``at_login``: run it each time you log in, and once right away.
     - ``when_changed``: a file or folder, or several, to watch: the script
       runs when one changes, and in a folder, when a file is added, removed
@@ -167,7 +168,8 @@ def add(
     - ``at_mount``: run it each time a disk is mounted: an external drive, a
       USB stick, a disk image, a network share.
 
-    These combine: ``every=3600, when_changed="~/Inbox"`` runs hourly and on changes.
+    ``when_changed`` and ``at_mount`` combine with the others:
+    ``every=3600, when_changed="~/Inbox"`` runs hourly and on changes.
 
     It runs with this Python (``python=`` picks another, such as a virtual
     environment's), in the script's folder, with ``args`` as its
