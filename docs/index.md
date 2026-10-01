@@ -75,6 +75,7 @@ New here? Read [Why pymacos?](why.md), then start with
 why
 installation
 quickstart
+recipes
 permissions
 ```
 
