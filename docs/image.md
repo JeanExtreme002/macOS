@@ -26,7 +26,8 @@ macos.image.convert("photo.heic", "photo.jpg", quality=0.8)   # quality: 0.0 to 
 macos.image.convert("scan.tiff", "scan.png")
 ```
 
-`quality` applies to JPEG and HEIC; the other formats are lossless.
+`quality` applies to JPEG and HEIC. PNG, TIFF and BMP keep every pixel as it
+is; GIF holds 256 colors at most, so a photo loses some of its colors.
 
 Metadata such as the date, camera and orientation is kept. Animated GIFs and
 multi-page TIFFs keep all their frames when converted to GIF or TIFF; the other

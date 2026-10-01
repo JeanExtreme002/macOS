@@ -14,7 +14,7 @@ macos.language.sentiment("I love this!")     # 1.0
 ## Detecting the language
 
 {func}`~macos.language.detect` returns an ISO code such as `'en'`, `'fr'`,
-`'fr'` or `'zh-Hans'`, or `None` for empty text. {func}`~macos.language.guess`
+`'es'` or `'zh-Hans'`, or `None` for empty text. {func}`~macos.language.guess`
 shows how sure it is, for the `limit` most likely languages (3 by default):
 
 ```python
