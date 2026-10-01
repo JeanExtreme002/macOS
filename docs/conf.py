@@ -90,7 +90,8 @@ autodoc_default_options = {
     "members": True,
     "show-inheritance": True,
 }
-autodoc_member_order = "bysource"
+# Class members in alphabetical order, as the modules and their entries in api.md.
+autodoc_member_order = "alphabetical"
 autodoc_typehints = "description"
 # The type variable that keeps a decorated function's signature: internal, not documented.
 nitpick_ignore = [("py:class", "macos.auth._Function")]
