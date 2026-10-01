@@ -9,7 +9,7 @@ Read, convert, resize and edit images, HEIC included, and their metadata.
     macos.image.convert("IMG_0042.heic", "IMG_0042.jpg")
     macos.image.resize("photo.jpg", "small.jpg", width=800)
     macos.image.rotate("photo.jpg", "turned.jpg", 90)
-    macos.image.location("IMG_0042.heic")      # (-22.9519, -43.2105)
+    macos.image.location("IMG_0042.heic")      # (37.8199, -122.4783)
 
 Uses ImageIO, the framework Preview and Photos use, so every format macOS can
 open is supported, iPhone photos (HEIC) and WebP included, with no Pillow or C

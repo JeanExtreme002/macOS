@@ -164,7 +164,7 @@ where a photo was taken, from its EXIF and GPS data:
 
 ```python
 macos.image.taken_at("IMG_0042.heic")   # datetime.datetime(2024, 5, 1, 10, 30)
-macos.image.location("IMG_0042.heic")   # (-22.9519, -43.2105): latitude, longitude
+macos.image.location("IMG_0042.heic")   # (37.8199, -122.4783): latitude, longitude
 ```
 
 Both return `None` when the image doesn't record it, as with screenshots and
@@ -187,7 +187,7 @@ adds a location to photos taken without GPS:
 from datetime import datetime, timedelta
 
 macos.image.set_taken_at("IMG_0042.jpg", datetime(2024, 5, 1, 10, 30))
-macos.image.set_location("IMG_0042.jpg", -22.9519, -43.2105)
+macos.image.set_location("IMG_0042.jpg", 37.8199, -122.4783)
 
 # The camera was 3 hours behind for the whole trip:
 for photo in Path("~/Pictures/Trip").expanduser().glob("*.jpg"):
