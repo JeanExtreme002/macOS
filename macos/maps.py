@@ -6,7 +6,7 @@ Turn an address into coordinates, and coordinates into an address, as Maps does.
 ::
 
     place = macos.maps.geocode("20 W 34th St, New York, NY")[0]
-    place.latitude, place.longitude          # (-23.5614, -46.6559)
+    place.latitude, place.longitude          # (40.748479, -73.985411)
     macos.maps.reverse_geocode(48.8584, 2.2945).city   # 'Paris'
 
 Goes through Apple's geocoding service (``CLGeocoder``): it needs the
