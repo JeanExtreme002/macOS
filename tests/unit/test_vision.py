@@ -68,4 +68,7 @@ def test_pdfs_are_refused_before_vision_sees_a_blank_image(tmp_path):
             macos.vision.smart_crop(image, 100, 100)
 
     _refuse_pdf(b"\x89PNG\r\n\x1a\n")
+    # An image may mention a PDF in its metadata: only a header that opens the file counts.
+    _refuse_pdf(b"\x89PNG\r\n\x1a\n...tEXtComment\x00%PDF-1.4 exported")
+    _refuse_pdf(b"%PDF-but no version")
     _refuse_pdf(tmp_path / "missing.png")  # left to the usual FileNotFoundError

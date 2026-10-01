@@ -116,8 +116,9 @@ def _refuse_pdf(image: Image) -> None:
                 head = file.read(1024)
         except OSError:
             return  # missing or unreadable: the usual errors follow
-    # The header may come after a few bytes of junk, as PDF readers allow.
-    if b"%PDF-" in head:
+    # The header opens the file, maybe after some blank padding. Anywhere else
+    # it's only text, such as a PNG comment that mentions a PDF.
+    if re.match(rb"[\x00\s]*%PDF-\d", head):
         raise ValueError(
             "Vision reads images, not PDFs: draw the pages with macos.pdf.render(), "
             "e.g. macos.vision.text(macos.pdf.render(path, page=1, size=2048))"
