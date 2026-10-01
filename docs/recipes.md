@@ -26,9 +26,10 @@ for file in downloads.iterdir():
         continue
 
     for folder, extensions in KINDS.items():
-        if file.suffix.lower() in extensions:
-            (downloads / folder).mkdir(exist_ok=True)
-            file.rename(downloads / folder / file.name)
+        target = downloads / folder / file.name
+        if file.suffix.lower() in extensions and not target.exists():
+            target.parent.mkdir(exist_ok=True)
+            file.rename(target)
 ```
 
 ```python
@@ -38,7 +39,8 @@ macos.schedule.add("tidy-downloads", "tidy_downloads.py", when_changed="~/Downlo
 ```
 
 Files still being downloaded end in `.download` or `.crdownload`, so they're
-left alone until they're done. Running the script from launchd, macOS asks
+left alone until they're done. A download named like a file already sorted
+stays where it is, rather than replacing it. Running the script from launchd, macOS asks
 once for Python to access the Downloads folder.
 
 ## Black out Social Security numbers in a folder of PDFs
@@ -84,6 +86,8 @@ for device in macos.bluetooth.devices():
 ```
 
 ```python
+import macos
+
 macos.schedule.add("battery-check", "battery_check.py", every=15 * 60)
 ```
 
@@ -104,15 +108,22 @@ layouts = {
     "ctrl+option+up": "maximize"
 }
 
+def snap(layout):
+    window = macos.windows.focused()
+    if window is not None:   # the app in front may have no window
+        window.snap(layout)
+
 for keys, layout in layouts.items():
-    macos.hotkeys.register(keys, lambda layout=layout: macos.windows.focused().snap(layout))
+    macos.hotkeys.register(keys, lambda layout=layout: snap(layout))
 
 macos.hotkeys.register("ctrl+option+t", lambda: macos.windows.tile_all(gap=8))
 
 macos.hotkeys.run()   # until Ctrl-C
 ```
 
-Moving windows needs the [Accessibility permission](permissions.md#accessibility).
+Listening to the shortcuts needs the [Input Monitoring](permissions.md#input-monitoring)
+and [Accessibility](permissions.md#accessibility) permissions, for the app
+running Python.
 
 ## Turn a folder of Word documents into PDFs
 
@@ -159,17 +170,18 @@ then run this to have its text on the clipboard:
 ```python
 import macos
 
+# macOS marks every screenshot it takes: only those, not other images in the folder.
 folder = macos.screen.screenshot_folder()
-kind = macos.screen.screenshot_format()   # 'png', unless you changed it
-
-shots = sorted(folder.glob("*." + kind), key=lambda path: path.stat().st_mtime)
+shots = macos.spotlight.search("kMDItemIsScreenCapture == 1", folder=folder)
 
 if shots:
-    text = macos.vision.text(shots[-1])
+    newest = max(shots, key=lambda path: path.stat().st_mtime)
+    text = macos.vision.text(newest)
     macos.clipboard.copy(text)
     macos.notify(text[:80] or "No text found", title="Copied")
 ```
 
-It reads the newest image in the folder screenshots go to (the Desktop,
-unless you changed it). {func}`~macos.vision.text` reads the text on the Mac
+It reads the newest screenshot in the folder screenshots go to (the Desktop,
+unless you changed it), found through Spotlight, which takes a few seconds to
+see a new one. {func}`~macos.vision.text` reads the text on the Mac
 itself, with no internet needed. Add `languages=["fr-FR"]` for text in another language.
