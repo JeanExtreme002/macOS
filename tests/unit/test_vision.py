@@ -54,3 +54,18 @@ def test_text_spans_ignore_case_whatever_the_length():
     assert _spans("Straße STRASSE", "strasse") == [(0, 6), (7, 14)]  # "ß" folds to "ss"
     assert _spans("ßA", "a") == [(1, 2)]
     assert _spans("anything", "") == []
+
+
+def test_pdfs_are_refused_before_vision_sees_a_blank_image(tmp_path):
+    from macos.vision import _refuse_pdf
+
+    document = tmp_path / "scan.png"  # the name doesn't matter, the bytes do
+    document.write_bytes(b"%PDF-1.7\n...")
+    for image in (b"%PDF-1.4\n...", bytearray(b"\r\n%PDF-1.4\n..."), document, str(document)):
+        with pytest.raises(ValueError, match="macos.pdf.render"):
+            _refuse_pdf(image)
+        with pytest.raises(ValueError, match="macos.pdf.render"):
+            macos.vision.smart_crop(image, 100, 100)
+
+    _refuse_pdf(b"\x89PNG\r\n\x1a\n")
+    _refuse_pdf(tmp_path / "missing.png")  # left to the usual FileNotFoundError
