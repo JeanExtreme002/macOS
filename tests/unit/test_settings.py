@@ -740,6 +740,7 @@ def test_defaults_restored(monkeypatch):
         return store.pop((domain, key), None) is not None
 
     monkeypatch.setattr(defaults, "read", read)
+    monkeypatch.setattr(defaults, "_own", lambda domain, key, default, current_host: store.get((domain, key), default))
     monkeypatch.setattr(defaults, "write", write)
     monkeypatch.setattr(defaults, "delete", delete)
     monkeypatch.setattr(defaults, "keys", lambda domain, *, current_host=False: sorted(k for d, k in store if d == domain))
