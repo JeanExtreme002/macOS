@@ -270,11 +270,18 @@ _EXIF_DATE = "%Y:%m:%d %H:%M:%S"
 
 def _offset(text: Any) -> Optional[timezone]:
     """An EXIF time zone offset such as ``'-03:00'``."""
-    if not isinstance(text, str) or len(text.strip()) != 6:
+    if not isinstance(text, str):
+        return None
+    text = text.strip()
+    if len(text) != 6 or text[0] not in "+-" or text[3] != ":":
+        return None
+    if not text[1:3].isascii() or not text[1:3].isdigit() or not text[4:6].isascii() or not text[4:6].isdigit():
         return None
     try:
-        sign = -1 if text.strip()[0] == "-" else 1
-        hours, minutes = int(text.strip()[1:3]), int(text.strip()[4:6])
+        sign = -1 if text[0] == "-" else 1
+        hours, minutes = int(text[1:3]), int(text[4:6])
+        if hours > 23 or minutes > 59:
+            return None
         return timezone(sign * timedelta(hours=hours, minutes=minutes))
     except ValueError:
         return None

@@ -35,6 +35,20 @@ def test_taken_at_reads_the_time_zone_when_recorded(monkeypatch):
     assert macos.image.taken_at("photo.jpg") == datetime(2024, 5, 1, 10, 30)
 
 
+@pytest.mark.parametrize("offset", ["+01:99", "x01:00", "+01x00", "+24:00", "+01:-1", "+aa:00"])
+def test_taken_at_ignores_invalid_offsets(monkeypatch, offset):
+    exif = {"DateTimeOriginal": "2024:05:01 10:30:00", "OffsetTimeOriginal": offset}
+    monkeypatch.setattr(macos.image, "metadata", lambda path: {"{Exif}": exif})
+    assert macos.image.taken_at("photo.jpg") == datetime(2024, 5, 1, 10, 30)
+
+
+@pytest.mark.parametrize("offset, minutes", [("+05:30", 330), ("-03:45", -225), ("+00:00", 0), ("-00:00", 0), ("+23:59", 1439)])
+def test_taken_at_preserves_valid_offsets(monkeypatch, offset, minutes):
+    exif = {"DateTimeOriginal": "2024:05:01 10:30:00", "OffsetTimeOriginal": offset}
+    monkeypatch.setattr(macos.image, "metadata", lambda path: {"{Exif}": exif})
+    assert macos.image.taken_at("photo.jpg") == datetime(2024, 5, 1, 10, 30, tzinfo=timezone(timedelta(minutes=minutes)))
+
+
 def test_set_taken_at_writes_the_offset(monkeypatch):
     written = []
     monkeypatch.setattr(macos.image, "_set_properties", lambda path, changes, output: written.append(changes))
