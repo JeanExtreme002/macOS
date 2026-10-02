@@ -277,14 +277,11 @@ def _offset(text: Any) -> Optional[timezone]:
         return None
     if not text[1:3].isascii() or not text[1:3].isdigit() or not text[4:6].isascii() or not text[4:6].isdigit():
         return None
-    try:
-        sign = -1 if text[0] == "-" else 1
-        hours, minutes = int(text[1:3]), int(text[4:6])
-        if hours > 23 or minutes > 59:
-            return None
-        return timezone(sign * timedelta(hours=hours, minutes=minutes))
-    except ValueError:
+    sign = -1 if text[0] == "-" else 1
+    hours, minutes = int(text[1:3]), int(text[4:6])
+    if hours > 23 or minutes > 59:
         return None
+    return timezone(sign * timedelta(hours=hours, minutes=minutes))
 
 
 def taken_at(path: PathLike) -> Optional[datetime]:
