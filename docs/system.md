@@ -38,6 +38,12 @@ SD cards) or `is_ejectable`.
 {func}`~macos.system.eject` only accepts ejectable
 volumes; when two share a name, pass the path.
 
+A volume that's busy is retried for a few seconds, since macOS can hold one
+briefly right after it mounts. If it stays busy, the error carries `diskutil`'s
+message, which often names the process that refused. To look yourself,
+{func}`~macos.system.who_uses` lists this user's processes using it (system
+services such as Spotlight don't show up there).
+
 ## Disk images
 
 {func}`~macos.system.mount_image` mounts a `.dmg` (or `.iso`) without opening a

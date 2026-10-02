@@ -1,5 +1,6 @@
 """Unit tests for :mod:`macos.system`. They run on any platform."""
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -34,6 +35,82 @@ def test_eject(fake_run, monkeypatch):
         macos.system.eject("Macintosh HD")
     with pytest.raises(ValueError, match="no mounted volume"):
         macos.system.eject("Nope")
+
+
+DISSENT = (
+    "Unmount of disk13 failed: at least one volume could not be unmounted\n"
+    "Unmount was dissented by PID 4123 (/Applications/Preview.app/Contents/MacOS/Preview)"
+)
+
+
+class Answers(list):
+    """The (returncode, stderr) each next command gets, and when each one started on the fake clock."""
+
+    took = 0.0  # how long each command runs
+    starts: list
+
+
+@pytest.fixture
+def answers(fake_run, monkeypatch):
+    """Answer each command with the next answer queued, on a clock that only sleep() and commands move."""
+    queued = Answers()
+    queued.starts = []
+    clock = [0.0]
+
+    def run(args, **kwargs):
+        fake_run.calls.append({"args": list(args), **kwargs})
+        queued.starts.append(clock[0])
+        clock[0] += queued.took
+        returncode, stderr = queued.pop(0) if queued else (0, "")
+        return subprocess.CompletedProcess(args, returncode, "", stderr)
+
+    monkeypatch.setattr(macos._system.subprocess, "run", run)
+    monkeypatch.setattr(macos.system.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(macos.system.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    return queued
+
+
+@pytest.fixture
+def backup(monkeypatch):
+    volume = macos.system.Volume("Backup", Path("/Volumes/Backup"), 10, 5, False, True, True)
+    monkeypatch.setattr(macos.system, "volumes", lambda: [volume])
+    return volume
+
+
+def test_eject_waits_out_a_volume_busy_for_a_moment(answers, fake_run, backup):
+    # Right after mounting, a system service can hold the volume briefly.
+    answers.extend([(1, "Volume failed to eject"), (1, "Volume failed to eject")])
+    macos.system.eject("Backup")
+    assert [call["args"] for call in fake_run.calls] == [["diskutil", "eject", "/Volumes/Backup"]] * 3
+
+
+def test_eject_names_the_process_still_using_the_volume(answers, fake_run, backup):
+    answers.extend([(1, DISSENT)] * 100)
+    with pytest.raises(macos.errors.CommandError, match=r"dissented by PID 4123 \(.*Preview\)"):
+        macos.system.eject("Backup")
+    assert 2 < len(fake_run.calls) < 100  # retried for a few seconds, then gave up
+
+
+def test_eject_starts_no_try_after_the_wait(answers, backup):
+    # Slow commands must not carry a try past the deadline: the sleep is capped by what's left.
+    answers.took = 0.1  # a try ends at 4.9 s: an uncapped 0.5 s sleep would start the next at 5.4 s
+    answers.extend([(1, DISSENT)] * 100)
+    with pytest.raises(macos.errors.CommandError):
+        macos.system.eject("Backup")
+    assert max(answers.starts) <= macos.system._BUSY_WAIT
+
+
+def test_eject_does_not_retry_other_errors(answers, fake_run, backup):
+    answers.append((1, "Unable to find disk for /Volumes/Backup"))
+    with pytest.raises(macos.errors.CommandError, match="Unable to find disk"):
+        macos.system.eject("Backup")
+    assert len(fake_run.calls) == 1
+
+
+def test_unmount_image_waits_out_a_busy_image(answers, fake_run):
+    answers.append((16, 'hdiutil: couldn\'t unmount "disk13" - Resource busy'))
+    macos.system.unmount_image("/Volumes/Tool")
+    assert [call["args"] for call in fake_run.calls] == [["hdiutil", "detach", "/Volumes/Tool"]] * 2
 
 
 def test_eject_refuses_folders_and_hidden_system_volumes(fake_run, monkeypatch, tmp_path):

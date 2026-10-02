@@ -503,12 +503,41 @@ def volumes() -> List[Volume]:
     return sorted(found, key=lambda volume: volume.path != Path("/"))
 
 
+# Just after a volume mounts, a system service (Spotlight indexing it, for one)
+# can hold it for a moment, and ejecting it then fails with "busy". A program
+# that keeps a file open on it holds it for good: once this wait is over, the
+# last error is raised as is.
+_BUSY_WAIT = 5.0
+_BUSY_MARKERS = ("failed to eject", "failed to unmount", "could not be unmounted", "dissented", "resource busy")
+
+
+def _release(args: List[str]) -> None:
+    """Run an eject/detach command, retrying for a few seconds while the volume is busy."""
+    deadline = time.monotonic() + _BUSY_WAIT
+    while True:
+        try:
+            _run(args)
+            return
+        except CommandError as error:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not any(marker in error.stderr.lower() for marker in _BUSY_MARKERS):
+                raise
+            # Never sleep past the deadline, so the last try starts by then.
+            time.sleep(min(0.5, remaining))
+
+
 def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
     """
     Eject a volume, like Finder's eject button. Unsaved work on it is not waited for.
 
     ``volume`` is a :class:`Volume`, its name (``"Backup"``) or its mount
     path. When several volumes share a name, pass the path.
+
+    A volume that's busy is retried for a few seconds, since macOS can hold one
+    briefly right after it mounts. If it stays busy, the
+    :class:`~macos.errors.CommandError` carries ``diskutil``'s message, which
+    often names the process that refused; :func:`who_uses` lists this user's
+    processes using it (system services don't show up there).
     """
     if isinstance(volume, Volume):
         chosen = volume
@@ -531,7 +560,7 @@ def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
         raise ValueError("the startup disk can't be ejected")
     if not chosen.is_ejectable:
         raise ValueError("{} can't be ejected".format(chosen.name))
-    _run(["diskutil", "eject", str(chosen.path)])
+    _release(["diskutil", "eject", str(chosen.path)])
 
 
 def mount_image(path: Union[str, "os.PathLike[str]"]) -> Path:
@@ -573,8 +602,13 @@ def mount_image(path: Union[str, "os.PathLike[str]"]) -> Path:
 
 
 def unmount_image(mount_point: Union[str, "os.PathLike[str]"], *, force: bool = False) -> None:
-    """Unmount a disk image mounted with :func:`mount_image` (or from Finder), given where it's mounted."""
-    _run(["hdiutil", "detach", str(Path(mount_point)), *(["-force"] if force else [])])
+    """
+    Unmount a disk image mounted with :func:`mount_image` (or from Finder), given where it's mounted.
+
+    Like :func:`eject`, a busy image is retried for a few seconds. ``force=True``
+    unmounts it even while a program has files open on it.
+    """
+    _release(["hdiutil", "detach", str(Path(mount_point)), *(["-force"] if force else [])])
 
 
 @dataclass(frozen=True)
