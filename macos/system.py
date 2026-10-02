@@ -506,7 +506,7 @@ def volumes() -> List[Volume]:
 # Just after a volume mounts, a system service (Spotlight indexing it, for one)
 # can hold it for a moment, and ejecting it then fails with "busy". A program
 # that keeps a file open on it holds it for good: once this wait is over, the
-# error says which process refused.
+# last error is raised as is.
 _BUSY_WAIT = 5.0
 _BUSY_MARKERS = ("failed to eject", "failed to unmount", "could not be unmounted", "dissented", "resource busy")
 
@@ -519,10 +519,11 @@ def _release(args: List[str]) -> None:
             _run(args)
             return
         except CommandError as error:
-            busy = any(marker in error.stderr.lower() for marker in _BUSY_MARKERS)
-            if not busy or time.monotonic() >= deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not any(marker in error.stderr.lower() for marker in _BUSY_MARKERS):
                 raise
-        time.sleep(0.5)
+            # Never sleep past the deadline, so the last try starts by then.
+            time.sleep(min(0.5, remaining))
 
 
 def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
@@ -533,9 +534,10 @@ def eject(volume: Union[str, "os.PathLike[str]", Volume]) -> None:
     path. When several volumes share a name, pass the path.
 
     A volume that's busy is retried for a few seconds, since macOS can hold one
-    briefly right after it mounts. If a program keeps it in use, the
-    :class:`~macos.errors.CommandError` names the process, and
-    :func:`who_uses` lists the ones using it.
+    briefly right after it mounts. If it stays busy, the
+    :class:`~macos.errors.CommandError` carries ``diskutil``'s message, which
+    often names the process that refused; :func:`who_uses` lists this user's
+    processes using it (system services don't show up there).
     """
     if isinstance(volume, Volume):
         chosen = volume

@@ -43,14 +43,24 @@ DISSENT = (
 )
 
 
+class Answers(list):
+    """The (returncode, stderr) each next command gets, and when each one started on the fake clock."""
+
+    took = 0.0  # how long each command runs
+    starts: list
+
+
 @pytest.fixture
 def answers(fake_run, monkeypatch):
-    """Answer each command with the next (returncode, stderr) queued, on a clock that only sleep() moves."""
-    queued = []
+    """Answer each command with the next answer queued, on a clock that only sleep() and commands move."""
+    queued = Answers()
+    queued.starts = []
     clock = [0.0]
 
     def run(args, **kwargs):
         fake_run.calls.append({"args": list(args), **kwargs})
+        queued.starts.append(clock[0])
+        clock[0] += queued.took
         returncode, stderr = queued.pop(0) if queued else (0, "")
         return subprocess.CompletedProcess(args, returncode, "", stderr)
 
@@ -79,6 +89,15 @@ def test_eject_names_the_process_still_using_the_volume(answers, fake_run, backu
     with pytest.raises(macos.errors.CommandError, match=r"dissented by PID 4123 \(.*Preview\)"):
         macos.system.eject("Backup")
     assert 2 < len(fake_run.calls) < 100  # retried for a few seconds, then gave up
+
+
+def test_eject_starts_no_try_after_the_wait(answers, backup):
+    # Slow commands must not carry a try past the deadline: the sleep is capped by what's left.
+    answers.took = 0.1  # a try ends at 4.9 s: an uncapped 0.5 s sleep would start the next at 5.4 s
+    answers.extend([(1, DISSENT)] * 100)
+    with pytest.raises(macos.errors.CommandError):
+        macos.system.eject("Backup")
+    assert max(answers.starts) <= macos.system._BUSY_WAIT
 
 
 def test_eject_does_not_retry_other_errors(answers, fake_run, backup):
