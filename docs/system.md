@@ -38,6 +38,10 @@ SD cards) or `is_ejectable`.
 {func}`~macos.system.eject` only accepts ejectable
 volumes; when two share a name, pass the path.
 
+A volume that's busy is retried for a few seconds, since macOS can hold one
+briefly right after it mounts. If a program keeps using it, the error names the
+process, and {func}`~macos.system.who_uses` lists them all.
+
 ## Disk images
 
 {func}`~macos.system.mount_image` mounts a `.dmg` (or `.iso`) without opening a
